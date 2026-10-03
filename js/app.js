@@ -787,7 +787,30 @@
     const b = $('#btn-newgame');
     if (!resetArmed) { resetArmed = true; b.textContent = 'CLICK AGAIN TO WIPE AND RESTART'; b.classList.add('bad'); setTimeout(() => { resetArmed = false; b.textContent = 'NEW GAME'; b.classList.remove('bad'); }, 4000); return; }
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
-    window.removeEventListener('beforeunload', save); location.reload();
+    // a page reload is the cleanest reset, but inside a hosted viewer's frame a reload can land on a blank page
+    let topLevel = false; try { topLevel = window.top === window; } catch (e) { topLevel = false; }
+    if (topLevel) { window.removeEventListener('beforeunload', save); location.reload(); return; }
+    softReset();
+  }
+  /* rebuild the whole game state in place, without reloading the page */
+  function softReset() {
+    if (S.run) { S.run = null; renderRunState(); }
+    hideCard();
+    S.comp = {}; S.tons = 15; S.line = []; S.sel = null;
+    S.money = START_BANK; S.tonnes = 0; S.kwh = 0; S.batches = 0; S.lifetime = 0;
+    S.owned = new Set(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
+    S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
+    S.clock = 0; S.contract = null; S.contracts = {}; S.lastSpec = null; S.feedPrepaid = false; S.ext = {};
+    Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
+    API.emit('load', S.ext);
+    setFeedLock(false); applyPlant(); renderFeedSelect();
+    $('#log').innerHTML = '';
+    applyLinePreset('starter');
+    lastRankIdx = rankOf(netWorth()).idx;
+    log('New game. You own a hammermill shredder and ' + fmtMoney(START_BANK) + '. Grind scrap, bank the margin, buy your first sorter.', 'ok');
+    API.emit('newgame'); renderAll(); save();
+    const b = $('#btn-newgame'); resetArmed = false; b.textContent = 'NEW GAME'; b.classList.remove('bad');
+    $('#help').classList.remove('hidden');
   }
 
   /* ---------------- boot ---------------- */
@@ -795,7 +818,9 @@
   function setMuted(m) { S.muted = m; Audio.setMuted(m); $('#btn-mute').innerHTML = m ? '&#128263;' : '&#128266;'; }
 
   function boot() {
-    API.S = S;   // modules may need the state during boot (veto and load hooks run before the full API is assigned)
+    API.S = S;
+    Object.assign(API, { S, Score, softReset, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+      setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};
     API.emit('load', S.ext);
@@ -828,8 +853,7 @@
     window.addEventListener('resize', () => { cam.resize(); drawPSD(node(S.sel) ? info(S.sel) : null); });
     window.addEventListener('beforeunload', save);
     document.addEventListener('pointerdown', () => Audio.init(), { once: true });
-    Object.assign(API, { S, cam, Score, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
-      setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
+    API.cam = cam;
     CS.app = API;
     renderAll(); renderRunState();
     API.booted = true; API.emit('boot');

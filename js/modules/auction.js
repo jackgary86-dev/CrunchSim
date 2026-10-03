@@ -261,6 +261,7 @@
       build(); render();
     });
     app.on('render', render);
+    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); tickBoard(st, rng, clockH(), 0, genOpts()); render(); });
     app.on('tick', (p) => {
       if (!(p.dh > 0)) return;
       marketStep(st.market, rng, p.dh);

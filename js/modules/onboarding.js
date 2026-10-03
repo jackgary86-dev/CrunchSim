@@ -328,6 +328,7 @@
       if (app.S && app.S.batches === 0 && !state.done) armTour();
     });
     app.on('batchStart', () => { if (state.tour) endTour('finished: first batch running'); });
+    app.on('newgame', () => { state.done = false; if (state.tour) endTour('reset'); if (app.S && app.S.batches === 0) armTour(); });
     app.on('tick', () => { if (state.tour) placeTour(); });
 
     function injectCss() {

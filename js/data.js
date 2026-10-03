@@ -348,6 +348,34 @@
     const M = MACHINES[id]; M.id = id;
     M.defaults = {}; (M.settings || []).forEach(function (st) { M.defaults[st.id] = st.def; });
   });
+  /* Plan footprint of each machine in metres, width x depth: typical skid or plan sizes of mid-size units from vendor
+   * data sheets (drive, feed chute and discharge included, no access aisles). Used by the floor-space module.
+   */
+  const FOOTPRINT = {
+    jaw: [3, 2],          // single-toggle jaw with ~900x600 mm feed opening sits on a 3x2 m skid
+    cone: [4, 3],         // standard 4 ft cone crusher with drive and lube unit
+    roll: [3, 2],         // double-roll crusher, 1 m rolls
+    hpgr: [5, 3],         // HPGR with two drive trains alongside the rolls
+    vsi: [4, 4],          // rotor crusher is square in plan, drive on the side
+    hammer: [7, 5],       // 60x60 in automobile shredder box with motor and infeed conveyor
+    tub: [9, 4],          // trailer-mounted tub grinder is about 9 m long
+    twin: [5, 3],         // twin-shaft shredder with hopper and hydraulic power pack
+    single: [4, 3],       // single-shaft shredder with ram box
+    granulator: [2, 2],   // granulator and its sound enclosure
+    chipper: [4, 2],      // drum chipper with infeed table
+    ball: [9, 3],         // 2.4 m x 3.6 m ball mill with girth gear drive and feed end
+    cryo: [6, 3],         // cryogenic mill with pre-cooler screw and LN2 manifold
+    colloid: [2, 1],      // bench-scale colloid mill on a frame
+    homog: [3, 2],        // high-pressure homogenizer with its pump block
+    atomizer: [2, 2],     // high-pressure pump skid and nozzle stand
+    freezer: [8, 3],      // tunnel blast freezer, belt length sets the dwell time
+    magnet: [3, 2],       // magnetic drum over a 1.2 m belt
+    eddy: [4, 2],         // eddy current separator with splitter and feed vibrator
+    air: [3, 3],          // zig-zag column with fan and cyclone
+    screen: [5, 2],       // 5x1.5 m inclined vibrating screen deck
+    sinkfloat: [6, 3]     // heavy-media drum with media pumps and drain screens
+  };
+  Object.keys(MACHINES).forEach(function (id) { const f = FOOTPRINT[id]; if (f) MACHINES[id].foot = { w: f[0], d: f[1] }; });
 
   const MACHINE_GROUPS = [
     ['Compression', ['jaw', 'cone', 'roll', 'hpgr']],
@@ -463,7 +491,10 @@
     logistics: { name: 'Feed logistics', icon: '🚚', desc: 'Bigger batches per run', unit: 't per batch', levels: [30, 60, 120, 250, 500], costs: [3000, 9000, 30000, 110000] },
     power: { name: 'Power contract', icon: '⚡', desc: 'Cheaper electricity', unit: '$/kWh', levels: [0.12, 0.10, 0.085, 0.07, 0.055], costs: [4000, 12000, 40000, 150000] },
     market: { name: 'Offtake deals', icon: '📈', desc: 'Better prices for every product', unit: '× price', levels: [1.0, 1.08, 1.16, 1.25, 1.35], costs: [15000, 45000, 160000, 550000] },
-    nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] }
+    nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] },
+    // Plant hall floor area: 12x8, 20x12, 30x18, 50x30, 80x50 m. A pre-engineered steel hall costs roughly $500-1000 per m2
+    // built; at PRICE_SCALE the added floor runs $80-240 per m2, rising with span. Machine footprints are MACHINES[id].foot.
+    room: { name: 'Plant hall', icon: '🏭', desc: 'More floor area for machines', unit: 'm²', levels: [96, 240, 540, 1500, 4000], costs: [12000, 45000, 160000, 600000], dims: [[12, 8], [20, 12], [30, 18], [50, 30], [80, 50]] }
   };
   // Supplier contracts: some feeds must be unlocked before they can be bought.
   const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000 };

@@ -579,9 +579,12 @@
   function stopRun(why) {
     const r = S.run; if (!r) return;
     S.run = null;
-    const dt = S.clock - r.t0, powerC = r.kwh * Sim.prices.power, net = r.rev - r.feedC - powerC - r.extra;
-    S.money += r.rev - powerC - r.extra; S.tonnes += r.done; S.kwh += r.kwh; S.batches++; S.lifetime += Math.max(0, r.rev - powerC - r.extra);
-    log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
+    const dt = S.clock - r.t0, powerC = r.kwh * Sim.prices.power;
+    // a module may take the products into inventory instead of selling them now (returns a short reason string)
+    const held = API.veto('autoSell', { r, bins: binList() }); r.held = held;
+    const sold = held ? 0 : r.rev, net = sold - r.feedC - powerC - r.extra;
+    S.money += sold - powerC - r.extra; S.tonnes += r.done; S.kwh += r.kwh; S.batches++; S.lifetime += Math.max(0, sold - powerC - r.extra);
+    log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + (r.held ? 'to ' + r.held + ' worth ' : '') + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
     Audio.ui(why === 'complete' ? 'done' : 'click');
     let cs = null; const C = contract();
     if (C && why === 'complete') {
@@ -646,7 +649,7 @@
     card.innerHTML = '<div class="card">' + head +
       '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>' +
       (cs ? '<dl><dt>Contract fee (' + fmtNum(cs.deliveredT, 1) + ' t of ' + esc(cs.C.label) + ' shipped)</dt><dd class="ok">' + fmtMoney(cs.fee) + '</dd></dl>' : '') +
-      '<dl><dt>Products sold</dt><dd class="ok">' + fmtMoney(r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') +
+      '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') +
       (best ? '<dt>Best product</dt><dd>' + esc(best.M ? best.M.short + ' / ' + (best.M.outs ? best.M.outs[best.port] : best.port) : '') + ' · ' + fmtMoney(best.st.value) + '/t</dd>' : '') +
       '<dt>Bank</dt><dd>' + fmtMoney(S.money) + '</dd><dt>Net worth (score)</dt><dd>' + fmtMoney(netWorth()) + '</dd></dl>' +
       (rankUp ? '<div class="rankup">RANK UP \u00b7 ' + esc(rankUp.toUpperCase()) + '</div>' : '') +

@@ -75,7 +75,7 @@
       for (const mat in st.perMat) {
         const pm = st.perMat[mat]; if (!pm || !(pm.mass > 0)) continue;
         const dt = pm.mass / 1000 * tonnes;
-        addLot(stock, mat, dt, pm.mass / st.total, st.grade, pm.sizeFactor, pm.p80);
+        addLot(stock, mat, dt, pm.mass / st.total, st.grade, pm.sizeFactor * (pm.priceFactor == null ? 1 : pm.priceFactor), pm.p80);
         const p = produced[mat] || (produced[mat] = { t: 0, lnp: 0 });
         p.lnp = (p.t * p.lnp + dt * Math.log(pm.p80 > 0 ? pm.p80 : 1e-3)) / (p.t + dt); p.t += dt;
       }

@@ -439,6 +439,63 @@
       else { b.textContent = fmtMoney(F.unlock); b.className = 'buy' + (S.money < F.unlock ? ' poor' : ''); b.addEventListener('click', () => { if (unlockFeed(id)) { renderFeedSelect(); markDirty(true); } else renderBank(); }); }
       row.appendChild(b); sp.appendChild(row);
     }
+    renderNextPurchase();
+  }
+
+  /* ---------------- next purchase ----------------
+   * Trial-adds each unowned separator (and the cone and jaw) after the last node of the current line and ranks them by the
+   * margin they add per head-tonne. Feed cost cancels in the difference, so it is left out. Computed only here, from renderBank.
+   */
+  const TRIAL_MACHINES = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen', 'cone', 'jaw'];
+  function lineMarginNoFeed(line) {
+    const ev = Sim.evalLine(line, S.comp), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
+    if (!(R > 0)) return -Infinity;
+    let P = 0, extra = 0, wearC = 0, rev = 0;
+    ev.nodes.forEach((n) => { P += Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
+    ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m); if (st.total > 0.5) rev += st.value; });
+    return rev - P / R * Sim.prices.power - extra - wearC;
+  }
+  /* null when the line cannot run on this feed; otherwise up to three {m, port, gain} sorted by gain */
+  function nextPurchases() {
+    const last = S.line[S.line.length - 1]; if (!last) return [];
+    const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
+    const ports = MACHINES[last.m].kind === 'separator' ? ['extract', 'residue'] : ['product'];
+    const out = [];
+    TRIAL_MACHINES.forEach((m) => {
+      if (S.owned.has(m)) return;
+      let best = null;
+      ports.forEach((port) => {
+        const n = Sim.makeNode(m, {}, { uid: last.uid, port }); n.level = levelOf(m);
+        const gain = lineMarginNoFeed(S.line.concat([n])) - base;
+        if (!best || gain > best.gain) best = { m, port, gain };
+      });
+      if (best && best.gain > 0.5) out.push(best);   // under fifty cents a tonne is noise
+    });
+    return out.sort((a, b) => b.gain - a.gain).slice(0, 3);
+  }
+  function renderNextPurchase() {
+    const box = $('#next-buy'); if (!box) return; box.innerHTML = '';
+    const note = (t) => box.appendChild(el('div', 'small', t));
+    if (!S.line.length) { note('Build a line first. This block ranks the sorters that would add the most margin to its end.'); return; }
+    if (Object.keys(unownedIn(S.line)).length) { note('Buy the machines already on the line first.'); return; }
+    const picks = nextPurchases();
+    if (!picks) { note('The line cannot run on this feed, so nothing can be ranked.'); return; }
+    if (!picks.length) { note('No unowned sorter or crusher adds margin at the end of this line. Try another output port or feed.'); return; }
+    const last = S.line[S.line.length - 1];
+    picks.forEach((p) => {
+      const M = MACHINES[p.m];
+      const row = el('div', 'urow', '<span class="ic ok">&#9650;</span><span><div class="nm">' + esc(M.name) + ' <b class="ok">+' + fmtMoney(p.gain) + '/t</b></div><div class="cur">after ' + S.line.length + ':' + esc(MACHINES[last.m].short) + '/' + esc(p.port.toUpperCase()) + ' · pays back in ' + fmtNum(Math.ceil(M.price / p.gain), 0) + ' t</div></span>');
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = fmtMoney(M.price); b.className = 'buy' + (S.money < M.price ? ' poor' : ''); b.title = 'Buy it and add it to the end of the line';
+      b.addEventListener('click', () => buyAndAppend(p.m, p.port));
+      row.appendChild(b); box.appendChild(row);
+    });
+  }
+  function buyAndAppend(m, port) {
+    const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; }
+    if (!S.owned.has(m) && !buyMachine(m)) { renderBank(); return; }
+    const last = S.line[S.line.length - 1];
+    const n = Sim.makeNode(m, {}, last ? { uid: last.uid, port } : 'feed'); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom';
+    Audio.ui('click'); log('Added ' + MACHINES[m].name + ' as node ' + S.line.length + '.'); markDirty(true);
   }
 
   /* ---------------- telemetry ---------------- */
@@ -729,7 +786,7 @@
     API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
     if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; setFeedLock(true); }
-    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a twin-shaft shredder, a jaw crusher, a magnet and a screen, and ' + fmtMoney(START_BANK) + '. Grind scrap, bank the margin, buy a better plant.', 'ok'); }
+    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder and ' + fmtMoney(START_BANK) + '. Unsorted shred sells at a discount: run a few batches, then buy your first sorter from NEXT PURCHASE in the bank panel.', 'ok'); }
     else { renderFeedSelect(); syncFeedRows(); log('Session restored.', 'ok'); }
     lastRankIdx = rankOf(netWorth()).idx;
     setSpeed(S.speed); setMuted(S.muted);

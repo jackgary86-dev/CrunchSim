@@ -157,8 +157,8 @@
       let got = 0, worstBin = null, worstMass = 0;
       S.ev.terminals.forEach((t) => {
         const a = t.stream.m[m]; if (!a) return; const mass = Sim.sum(a); if (mass <= 0) return;
-        const st = Sim.binStats(t.stream.m), pm = st.perMat[m];
-        got += mass / 1000 * D.sell * Sim.prices.market * (pm && pm.sizeFactor != null ? pm.sizeFactor : 1) * st.grade;
+        const st = Sim.binStats(t.stream.m, t.form), pm = st.perMat[m];
+        got += pm && pm.value != null ? pm.value : 0;
         if (st.grade < 0.6 && mass > worstMass) { worstMass = mass; worstBin = { t, st, share: mass / hm }; }
       });
       const loss = ideal - got;
@@ -202,8 +202,8 @@
   function binList() {
     if (!S.ev) return [];
     return S.ev.terminals.map((t) => {
-      const st = Sim.binStats(t.stream.m); const n = info(t.uid);
-      return { key: t.key, uid: t.uid, port: t.port, M: n ? n.M : null, idx: n ? n.index : -1, st, temp: t.stream.temp };
+      const st = Sim.binStats(t.stream.m, t.form); const n = info(t.uid);
+      return { key: t.key, uid: t.uid, port: t.port, M: n ? n.M : null, idx: n ? n.index : -1, st, temp: t.stream.temp, form: t.form || null };
     }).filter((b) => b.st.total > 0.5).sort((a, b) => b.st.total - a.st.total);
   }
   function revenuePerHeadT() { let v = 0; for (const b of binList()) v += b.st.value; return v; }
@@ -359,6 +359,7 @@
         else if (warn) { st = warn + ' WARN'; stc = 'warn'; }
         else if (inf.kind === 'separator') st = Math.round(100 * (Sim.streamMass(S.ev.ports[n.uid + ':extract']) / Math.max(inf.inKg, 1e-9))) + '% OUT';
         else if (inf.kind === 'conditioner') st = '-30 C';
+        else if (inf.kind === 'furnace') st = inf.meltKg > 0 ? Math.round(100 * inf.purity) + '% PURE' : 'NO MELT';
         else st = inf.ratio > 1.05 ? (inf.ratio).toFixed(1) + ':1' : 'PASS';
         if (lim) st += ' ◄';
       }
@@ -386,7 +387,7 @@
     const src = $('#m-src'); src.innerHTML = ''; src.appendChild(new Option('Head feed', 'feed'));
     for (let i = 0; i < k; i++) {
       const o = S.line[i], OM = MACHINES[o.m];
-      const ports = OM.kind === 'separator' ? ['extract', 'residue'] : (OM.kind === 'conditioner' ? ['product'] : ['product', 'rejects']);
+      const ports = OM.kind === 'separator' ? ['extract', 'residue'] : (OM.kind === 'conditioner' ? ['product'] : (OM.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects']));
       ports.forEach((p) => src.appendChild(new Option((i + 1) + '. ' + OM.name + ' → ' + (OM.outs ? OM.outs[p] : p), o.uid + ':' + p)));
     }
     src.value = n.src === 'feed' ? 'feed' : n.src.uid + ':' + n.src.port;
@@ -455,6 +456,8 @@
       h += ro('TO EXTRACT', Math.round(100 * ex / tot), '%', 'good') + ro('TO RESIDUE', Math.round(100 - 100 * ex / tot), '%') + ro('FEED P80', fmtSize(inf.F80), '');
     } else if (inf.kind === 'conditioner') {
       h += ro('OUTLET', '-30', '°C', 'good') + ro('CHILL ENERGY', fmtNum(inf.eT, 1), 'kWh/t', 'hi') + ro('FEED P80', fmtSize(inf.F80), '');
+    } else if (inf.kind === 'furnace') {
+      h += ro('MELT PURITY', inf.meltKg > 0 ? Math.round(100 * inf.purity) : '--', '%', inf.meltKg <= 0 ? 'bad' : inf.purity >= 0.95 ? 'good' : inf.purity >= 0.85 ? '' : 'bad') + ro('TO DROSS', Math.round(100 * inf.drossFrac), '%', inf.drossFrac > 0.2 ? 'bad' : inf.drossFrac > 0.08 ? 'hi' : '') + ro('MELT ENERGY', fmtNum(inf.eT, 0), 'kWh/t', 'hi');
     } else {
       h += ro('FEED F80', fmtSize(inf.F80), '') + ro('PRODUCT P80', fmtSize(inf.P80), '', 'good') + ro('REDUCTION', inf.ratio > 1.02 ? fmtNum(inf.ratio, 1) + ':1' : 'none', '', inf.ratio > 1.02 ? '' : 'bad');
       h += ro('SPEC. ENERGY', fmtNum(inf.eT, inf.eT >= 10 ? 1 : 2), 'kWh/t', inf.eT > 30 ? 'hi' : '');
@@ -463,7 +466,7 @@
     if (inf.ln2PerHeadT > 0 && inf.flowAcc > 0) h += ro('LIQUID N2', fmtNum(inf.ln2PerHeadT / inf.flowAcc / 1000, 2), 'kg/kg', 'hi');
     if (inf.flowRej > 1e-6) h += ro('SCALPED OFF', Math.round(100 * inf.flowRej / Math.max(inf.flowIn, 1e-9)), '%', 'bad');
     $('#readouts').innerHTML = h;
-    let t = '<div class="r h"><span>MATERIAL</span><span>FEED</span><span>' + (inf.kind === 'separator' ? 'EXTRACT' : inf.kind === 'conditioner' ? 'kWh/t' : 'RESPONSE') + '</span><span>' + (inf.kind === 'comminution' ? 'kWh/t' : '') + '</span></div>';
+    let t = '<div class="r h"><span>MATERIAL</span><span>FEED</span><span>' + (inf.kind === 'separator' ? 'EXTRACT' : inf.kind === 'conditioner' ? 'kWh/t' : inf.kind === 'furnace' ? 'TO INGOT' : 'RESPONSE') + '</span><span>' + (inf.kind === 'comminution' || inf.kind === 'furnace' ? 'kWh/t' : '') + '</span></div>';
     const rows = Object.keys(inf.perMat).map((m) => [m, inf.perMat[m]]).sort((a, b) => b[1].mass - a[1].mass);
     for (const [m, pm] of rows) {
       const D = MATERIALS[m], share = Math.round(100 * pm.mass / Math.max(inf.inKg, 1e-9));
@@ -471,6 +474,7 @@
       let c3 = '', c4 = '';
       if (inf.kind === 'separator') c3 = '<span class="bar"><i style="width:' + Math.round(pm.extractFrac * 100) + '%"></i></span>';
       else if (inf.kind === 'conditioner') c3 = fmtNum(pm.E, 1);
+      else if (inf.kind === 'furnace') { c3 = '<span class="bar"><i class="' + (pm.meltFrac < 0.3 ? 'lo' : pm.meltFrac < 0.8 ? 'mid' : '') + '" style="width:' + Math.round(pm.meltFrac * 100) + '%"></i></span>'; c4 = pm.accMass > 0 ? fmtNum(pm.E, 0) : '--'; }
       else { const r = pm.liquid && !(M.mix.hyd > 0) ? 0 : pm.resp; c3 = '<span class="bar"><i class="' + (r < 0.3 ? 'lo' : r < 0.6 ? 'mid' : '') + '" style="width:' + Math.round(r * 100) + '%"></i></span>'; c4 = pm.accMass > 0 ? fmtNum(pm.E, pm.E >= 10 ? 0 : 1) : '--'; }
       t += '<div class="r"><span><i style="display:inline-block;width:8px;height:8px;background:' + D.color + ';margin-right:5px;border-radius:2px"></i>' + esc(D.name) + '</span><span>' + share + '%</span><span>' + c3 + '</span><span>' + c4 + '</span></div>';
     }
@@ -545,7 +549,7 @@
       const top = comps.slice(0, 3).map(([mm, v]) => esc(MATERIALS[mm].name) + ' ' + Math.round(100 * v.mass / st.total) + '%').join(', ');
       const d = el('div', 'bin', '<div class="h"><b>' + esc(name.toUpperCase()) + (shippedKeys.has(b.key) ? '<span class="ship">SHIPPED</span>' : '') + '</b><span>' + fmtNum(st.total, 0) + ' kg</span></div>' +
         '<div class="comp">' + comps.map(([mm, v]) => '<i style="width:' + (100 * v.mass / st.total) + '%;background:' + MATERIALS[mm].color + '"></i>').join('') + '</div>' +
-        '<div class="d"><span>' + top + '</span></div><div class="d"><span>P80 ' + fmtSize(st.p80) + ' · purity ' + Math.round(st.share * 100) + '% · price grade ' + Math.round(st.grade * 100) + '%' + (b.temp ? ' · frozen' : '') + '</span><span class="val">' + fmtMoney(st.value) + '</span></div>');
+        '<div class="d"><span>' + top + '</span></div><div class="d"><span>P80 ' + fmtSize(st.p80) + ' · purity ' + Math.round(st.share * 100) + '% · price grade ' + Math.round(st.grade * 100) + '%' + (b.temp ? ' · frozen' : '') + (b.form ? ' · ' + esc(b.form) : '') + '</span><span class="val">' + fmtMoney(st.value) + '</span></div>');
       box.appendChild(d);
     });
   }

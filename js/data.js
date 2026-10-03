@@ -137,6 +137,21 @@
   Object.keys(MATERIALS).forEach(function (id) { MATERIALS[id].id = id; });
   const MAT_ORDER = ['steel', 'castiron', 'aluminum', 'copper', 'brass', 'potmetal', 'wood', 'rubber', 'plastic', 'glass', 'granite', 'limestone', 'gel', 'water'];
 
+  /* ---------------- SMELTING DATA ----------------
+   * melt: melting point (C). meltKWh: theoretical energy to heat 1 t from 25 C and melt it (sensible + latent heat,
+   * handbook cp and heat of fusion). cpL: liquid specific heat kJ/kg K, for superheat above the melting point.
+   * drossK: fraction of chunky scrap lost to oxide at modest superheat. ingot: $/t for a clean cast ingot or billet.
+   */
+  const SMELT = {
+    aluminum: { melt: 660, meltKWh: 269, cpL: 1.18, drossK: 0.035, ingot: 2400 },   // 0.90 kJ/kgK x 635 K + 397 kJ/kg latent = 969 kJ/kg; 2-5% melt loss on clean scrap; secondary Al ingot ~$2,400/t
+    copper: { melt: 1085, meltKWh: 170, cpL: 0.49, drossK: 0.012, ingot: 9500 },    // 0.385 x 1060 + 205 latent = 613 kJ/kg; copper barely oxidises in a covered bath; refined copper ~$9,500/t
+    brass: { melt: 920, meltKWh: 141, cpL: 0.45, drossK: 0.030, ingot: 6200 },      // 0.38 x 895 + 168 latent = 508 kJ/kg; zinc fumes off a hot brass melt; brass ingot ~$6,200/t
+    potmetal: { melt: 385, meltKWh: 70, cpL: 0.48, drossK: 0.025, ingot: 2600 },    // zinc: 0.39 x 360 + 112 latent = 252 kJ/kg; zamak ingot ~$2,600/t
+    steel: { melt: 1510, meltKWh: 364, cpL: 0.82, drossK: 0.020, ingot: 550 },      // ~0.70 x 1485 + 270 latent = 1310 kJ/kg; EAF metallic yield 90-95%; billet ~$550/t
+    castiron: { melt: 1180, meltKWh: 259, cpL: 0.90, drossK: 0.030, ingot: 450 }     // 0.60 x 1155 + 240 latent = 933 kJ/kg; pig iron ~$450/t
+  };
+  Object.keys(SMELT).forEach(function (id) { Object.assign(MATERIALS[id], SMELT[id]); });
+
   /* ---------------- MACHINES ---------------- */
   const S = (id, label, unit, min, max, step, def, log) => ({ id, label, unit, min, max, step, def, log: !!log });
 
@@ -344,6 +359,43 @@
       best: 'Splitting non-ferrous mixes by density.', avoid: 'Very fine material and anything porous that soaks the medium.'
     }
   };
+  /* ---- smelting ----
+   * kind 'furnace': metals listed in `melts` whose melting point is below the tap temperature leave as ingots; everything
+   * else goes to the dross port. eta is thermal efficiency on the theoretical melt enthalpy (SMELT above), so energy
+   * per tonne = (meltKWh + superheat) / eta. drossF scales oxidation loss; slagKWh is what heating non-metal charge costs.
+   */
+  Object.assign(MACHINES, {
+    induction: {
+      name: 'Induction furnace', short: 'INDC', cat: 'Smelting', kind: 'furnace', scene: 'furnace',
+      melts: ['aluminum', 'copper', 'brass', 'potmetal'], eta: 0.50, drossF: 1.0, slagKWh: 150,   // coreless induction couples poorly to Al: 269/0.5 + superheat ~ 600 kWh/t, copper ~ 360-400 kWh/t (industry figures 550-650 and 350-450)
+      cap: 4, capRef: 1, capExp: 0, maxFeed: 300,                                                   // 4 t/h melt rate for a 5 t coreless furnace; the crucible mouth takes pieces to ~300 mm
+      pidle: 120, prated: 3000, life: 150, price: 750000, service: 45000, wearInfo: 'crucible refractory', consumable: 2,   // 3 MW supply; holding power ~120 kW; lining lasts ~250 heats x 5 t; $2/t of flux
+      settings: [S('tap', 'Tap temperature', '°C', 450, 1250, 10, 740)],
+      outs: { product: 'Ingots', dross: 'Dross' },
+      how: 'A water-cooled copper coil around a refractory crucible induces eddy currents in the charge, which heat it from the inside and stir the bath. The tap temperature sets the superheat: every metal whose melting point is below it melts into one alloy, anything above it sits in the bath unmelted. Hotter taps cost more energy and oxidise more metal into dross.',
+      best: 'Clean, sorted aluminum, copper, brass or zinc scrap. Pure feed makes a pure ingot.', avoid: 'Steel and cast iron: this crucible is lined and rated for non-ferrous temperatures. Mixed metals melt into worthless alloy soup. Fines and swarf burn to oxide.'
+    },
+    arc: {
+      name: 'Electric arc furnace', short: 'EAF', cat: 'Smelting', kind: 'furnace', scene: 'furnace',
+      melts: ['steel', 'castiron'], eta: 0.85, drossF: 1.0, slagKWh: 150,                           // 364/0.85 + superheat ~ 450 kWh/t electrical, as a scrap EAF (oxygen and carbon supply the rest of the heat)
+      cap: 12, capRef: 1, capExp: 0, maxFeed: 600,                                                  // a 10 t heat every ~50 min; the charge bucket takes pieces to ~600 mm
+      pidle: 250, prated: 8000, life: 360, price: 1200000, service: 72000, wearInfo: 'hearth refractory and electrodes', consumable: 9,   // 8 MVA transformer; auxiliaries ~250 kW; hearth ~300 heats; graphite electrodes ~1.8 kg/t at $5/kg
+      settings: [S('tap', 'Tap temperature', '°C', 1250, 1750, 10, 1600)],
+      outs: { product: 'Ingots', dross: 'Dross' },
+      how: 'Three graphite electrodes strike an arc onto a charge of scrap steel. The arc runs above 3000 C, so steel and cast iron melt in under an hour. Slag floats the oxides off and the steel is tapped into billets. A furnace this size draws megawatts, so the power contract matters.',
+      best: 'Magnet-cleaned steel and cast iron.', avoid: 'Copper and zinc in the charge dissolve into the steel and cannot be removed: they poison the heat. Non-metals burn off and waste power.'
+    },
+    kiln: {
+      name: 'Reverberatory kiln', short: 'REVB', cat: 'Smelting', kind: 'furnace', scene: 'furnace',
+      melts: ['aluminum', 'copper', 'brass', 'potmetal'], eta: 0.30, drossF: 1.8, slagKWh: 150,   // gas-fired reverberatory: 25-35% thermal efficiency; a flame over an open bath oxidises 5-10% of the aluminum; fuel billed at the plant energy price
+      cap: 6, capRef: 1, capExp: 0, maxFeed: 500,                                                   // a wide hearth door takes bulky charge to ~500 mm
+      pidle: 350, prated: 6000, life: 600, price: 350000, service: 21000, wearInfo: 'hearth refractory', consumable: 4,   // 6 MW of burners; a hot hearth loses ~350 kW on hold; a bricked hearth lasts years; $4/t of salt flux
+      settings: [S('tap', 'Tap temperature', '°C', 450, 1250, 10, 760)],
+      outs: { product: 'Ingots', dross: 'Dross' },
+      how: 'A gas flame plays over a shallow bath in a brick hearth; the roof reflects (reverberates) the heat down onto the charge. It is cheap to build and takes big, dirty charges, but most of the heat goes up the stack and the flame oxidises the surface of the melt, so dross losses are high.',
+      best: 'Bulk aluminum when capital is tight.', avoid: 'Steel, fines, and anything you want melted efficiently.'
+    }
+  });
   Object.keys(MACHINES).forEach(function (id) {
     const M = MACHINES[id]; M.id = id;
     M.defaults = {}; (M.settings || []).forEach(function (st) { M.defaults[st.id] = st.def; });
@@ -354,7 +406,8 @@
     ['Impact and shred', ['vsi', 'hammer', 'tub', 'twin', 'single', 'granulator', 'chipper']],
     ['Fine and cold', ['ball', 'cryo', 'freezer']],
     ['Hydraulic', ['colloid', 'homog', 'atomizer']],
-    ['Separation', ['magnet', 'eddy', 'air', 'screen', 'sinkfloat']]
+    ['Separation', ['magnet', 'eddy', 'air', 'screen', 'sinkfloat']],
+    ['Smelting', ['induction', 'arc', 'kiln']]
   ];
 
   /* ---------------- PRESET FEEDS ---------------- */
@@ -447,6 +500,15 @@
       nodes: [
         { m: 'atomizer', s: { bar: 300 }, src: 'feed' }
       ]
+    },
+    ingot: {
+      name: 'Zorba to aluminum ingot', feed: 'zorba', tons: 10,
+      blurb: 'Shred, float the aluminum off the heavy metals, then melt it into ingots.',
+      nodes: [
+        { m: 'twin', s: { width: 40 }, src: 'feed' },
+        { m: 'sinkfloat', s: { sg: 3.2 }, src: '1:product' },
+        { m: 'induction', s: { tap: 740 }, src: '2:extract' }
+      ]
     }
   };
 
@@ -484,7 +546,8 @@
     ['Cryogenic grinding in tire recycling', 'https://xray.greyb.com/tires/cryogenic-grinding'],
     ['Energy-efficient comminution with VSI and HPGR (Materials, MDPI)', 'https://doi.org/10.3390/ma18153553'],
     ['Colloid Mill vs. Homogenizer (Pion)', 'https://www.pion-inc.com/blog/what-is-a-colloid-mill-how-does-it-compare-to-a-homogenizer'],
-    ['Scrap metal size reduction techniques (Okon Recycling)', 'https://www.okonrecycling.com/industrial-scrap-metal-recycling/steel-and-aluminum/scrap-metal-size-reduction-techniques/']
+    ['Scrap metal size reduction techniques (Okon Recycling)', 'https://www.okonrecycling.com/industrial-scrap-metal-recycling/steel-and-aluminum/scrap-metal-size-reduction-techniques/'],
+    ['Improving energy efficiency in aluminum melting (U.S. DOE Industrial Technologies Program)', 'https://www.energy.gov/sites/prod/files/2013/11/f4/aluminum_melting.pdf']
   ];
 
   G.CS = G.CS || {};

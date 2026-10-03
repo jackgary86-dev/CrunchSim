@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrunchSim plant floor</title>
+  <meta name="description" content="CrunchSim plant floor: the flowsheet as a 3D plant with belts, machines, bins and fragments routed by the same physics as the game.">
+  <meta name="theme-color" content="#070a0f">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23070a0f'/><path d='M22 30h56v12H22zM30 58h40v12H30z' fill='%237fe3ff'/><path d='M46 44l8 12-8 2z' fill='%23ffb25c'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* page-specific bits; everything else reuses the game's classes */
+    #view-wrap { position: relative; flex: 1; min-height: 320px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #0a0f16; }
+    #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #view:active { cursor: grabbing; }
+    #view-title { position: absolute; top: 8px; left: 10px; display: flex; flex-direction: column; pointer-events: none; }
+    #view-title .nm { font-family: var(--mono); font-size: 16px; letter-spacing: 2px; color: var(--cyan); text-shadow: 0 0 8px rgba(127,227,255,.4); }
+    #view-title .cat { font-size: 10px; letter-spacing: 2px; color: var(--muted); }
+    #view-status { position: absolute; top: 8px; right: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; padding: 2px 8px; border: 1px solid var(--green); color: var(--green); border-radius: 2px; pointer-events: none; }
+    #view-status.idle { border-color: var(--muted); color: var(--muted); }
+    #view-status.on { animation: blink 1.2s steps(2) infinite; }
+    #view-hint { position: absolute; bottom: 6px; left: 10px; pointer-events: none; letter-spacing: 1px; }
+    #view-msg-line { position: absolute; bottom: 6px; right: 10px; font-family: var(--mono); font-size: 11px; color: var(--red); pointer-events: none; }
+    .view-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 30px; text-align: center; color: var(--amber); font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+    .back { font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); text-decoration: none; border: 1px solid var(--line-2); border-radius: 3px; padding: 5px 10px; }
+    .back:hover { color: var(--cyan); border-color: var(--cyan); }
+    #nodes { display: flex; flex-direction: column; gap: 6px; }
+    .n3 { border: 1px solid var(--line-2); border-radius: 3px; background: var(--panel-2); padding: 6px 8px; }
+    .n3h { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 8px; cursor: pointer; }
+    .n3h:hover .nm { color: var(--cyan); }
+    .n3h .idx { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+    .n3h .nm { font-size: 12px; }
+    .n3h .src { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .n3h .st { font-family: var(--mono); font-size: 10px; color: var(--cyan); text-align: right; white-space: nowrap; }
+    .n3h .st.bad { color: var(--red); } .n3h .st.warn { color: var(--amber); }
+    .n3 .setting { grid-template-columns: 110px 1fr 64px; margin: 4px 0 0; }
+    .bin { cursor: pointer; }
+    .bin:hover { border-color: var(--cyan); }
+    .brows { font-family: var(--mono); font-size: 10px; margin: 2px 0 4px; }
+    .brows .r { display: grid; grid-template-columns: 1fr 64px 36px; gap: 6px; padding: 1px 0; border-bottom: 1px dotted var(--line); color: var(--muted); }
+    .brows .r span:nth-child(2), .brows .r span:nth-child(3) { text-align: right; }
+    .brows i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+    #mine-note { margin-left: 8px; }
+    @media (max-width: 900px) { #view-wrap { min-height: 360px; } }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brand"><span class="logo">CRUNCH<b>SIM</b></span><span class="sub">PLANT FLOOR &middot; 3D DEMO</span></div>
+    <div class="tele"><span class="lbl">HEAD RATE</span><span id="t-rate" class="val cyan">0 t/h</span></div>
+    <div class="tele"><span class="lbl">PLANT POWER</span><span id="t-power" class="val">0 kW</span></div>
+    <div class="tele"><span class="lbl">PRODUCT VALUE</span><span id="t-value" class="val amber">$0/t</span></div>
+    <div class="tele hide-narrow"><span class="lbl">FRAGMENTS &middot; FPS</span><span id="t-frag" class="val">0 &middot; 0 fps</span></div>
+    <div class="runbox">
+      <button id="btn-run" class="primary" type="button">&#9654; RUN</button>
+      <div class="speed"><span class="lbl">SPEED</span>
+        <button type="button" class="spd on" data-speed="1">1&times;</button>
+        <button type="button" class="spd" data-speed="2">2&times;</button>
+        <button type="button" class="spd" data-speed="4">4&times;</button>
+      </div>
+      <div class="progress" title="Batch progress"><div id="prog"></div></div>
+    </div>
+    <div class="spacer"></div>
+    <a class="back" href="index.html">&larr; GAME</a>
+  </header>
+
+  <aside id="left">
+    <section class="panel" id="plant-panel-left">
+      <h2>Plant</h2>
+      <div class="row"><label for="feed">Feed</label><select id="feed"></select></div>
+      <div class="row"><label for="line">Line</label><select id="line"></select></div>
+      <div class="row"><label>Saved</label><button id="btn-mine" type="button" class="buy">USE MY PLANT</button><span id="mine-note" class="small"></span></div>
+      <div id="feed-info" class="small"></div>
+    </section>
+    <section class="panel" id="nodes-panel">
+      <h2>Machines <span class="tag">click to look</span></h2>
+      <div id="nodes"></div>
+    </section>
+  </aside>
+
+  <main id="center">
+    <div id="view-wrap">
+      <canvas id="view"></canvas>
+      <div id="view-title"><span class="nm">PLANT FLOOR</span><span class="cat">FLOWSHEET IN 3D &middot; FRAGMENTS ROUTED BY THE SIM</span></div>
+      <div id="view-status" class="idle">STANDBY</div>
+      <div id="view-hint" class="small">DRAG rotate &middot; WHEEL zoom &middot; RIGHT-DRAG pan &middot; SPACE run &middot; 1 2 3 speed</div>
+      <div id="view-msg-line"></div>
+    </div>
+  </main>
+
+  <aside id="right">
+    <section class="panel" id="plant-panel">
+      <h2>Plant</h2>
+      <div class="readouts" id="plant-readouts"></div>
+    </section>
+    <section class="panel" id="bins-panel">
+      <h2>Product bins <span class="small">per tonne of feed</span></h2>
+      <div id="bins"></div>
+    </section>
+    <section class="panel">
+      <h2>About</h2>
+      <p class="small" style="line-height:1.5;margin:0">Machines are laid out in flowsheet order along the hall. A node fed from a secondary port, or from a port another node already uses, gets its own belt lane. Unused ports end in bins. Fragments shrink at crushers and shredders and are routed at separators with the same partition curves the sim uses, so a slider change moves the traffic at once. Bin fill follows the sim's steady-state bin masses as the batch progresses.</p>
+    </section>
+  </aside>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/score.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/plant3d.js"></script>
+</body>
+</html>

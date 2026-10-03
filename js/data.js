@@ -607,6 +607,36 @@
     // built; at PRICE_SCALE the added floor runs $80-240 per m2, rising with span. Machine footprints are MACHINES[id].foot.
     room: { name: 'Plant hall', icon: '🏭', desc: 'More floor area for machines', unit: 'm²', levels: [96, 240, 540, 1500, 4000], costs: [12000, 45000, 160000, 600000], dims: [[12, 8], [20, 12], [30, 18], [50, 30], [80, 50]] }
   };
+  /* ---------------- OFFICE AND FACILITY UPGRADES (module js/modules/facility.js) ----------------
+   * Same shape as PLANT_UPGRADES: levels[0] is the baseline a new yard has, costs[i] buys levels[i + 1]. Costs are real-world
+   * figures at PRICE_SCALE like the machines. The module applies each effect; see the header of js/modules/facility.js.
+   */
+  const OFFICE_UPGRADES = {
+    // scrap brokers take a 3-5% commission on offtake; selling direct to mills (LV 1-2) and hedging on the LME (LV 3) keeps it in the yard
+    desk: { name: 'Trading desk', icon: '📊', desc: 'Sell direct and hedge: better offtake prices', unit: '× price', levels: [1.0, 1.03, 1.06, 1.10], costs: [12000, 40000, 140000] },
+    // a sieve shaker, a stack of test sieves and a bench run about $25k; the lab reports a six-class sieve analysis of every product bin
+    lab: { name: 'Sampling lab', icon: '🔬', desc: 'Sieve analysis of every product bin', unit: 'size classes', levels: [0, 6], costs: [5000] },
+    // a SCADA control room with a historian (about $40k of HMI stations and licences) lets a whole shift be reviewed in minutes: 300x
+    control: { name: 'Control room', icon: '🖥', desc: 'Review a shift in minutes: faster sim speed', unit: '× max speed', levels: [60, 300], costs: [8000] }
+  };
+  const FACILITY_UPGRADES = {
+    // without a certified weighbridge loads are taken on the seller's ticket and a batch is what the yard can hand-check; an 18 m
+    // 60 t pit weighbridge ($30-60k installed) takes a full semi-trailer (20 t payload) per weigh, a second deck doubles that, and
+    // a drive-through twin lane with unmanned ticketing takes B-double road trains (80 t)
+    weighbridge: { name: 'Weighbridge', icon: '⚖', desc: 'Bigger loads accepted per batch', unit: 't per batch', levels: [0, 20, 40, 80], costs: [6000, 18000, 50000] },
+    // vendor field service bills travel and labour at a 15-30% premium over an in-house crew with a crane bay (LV 1); a hardfacing
+    // station (LV 2) rebuilds hammers and liners for about half the price of new parts
+    maint: { name: 'Maintenance bay', icon: '🔧', desc: 'Cheaper service and wear parts', unit: '× service cost', levels: [1.0, 0.85, 0.70], costs: [9000, 30000] },
+    // NEMA MG-1 service factor: a motor on a stiff dedicated 11 kV supply runs continuously at 1.15x nameplate, while the start-up
+    // voltage sag of a shared LV feed forces a derate. A 2 MVA transformer bay costs about $100k, a second bay with ring main $350k
+    substation: { name: 'Power substation', icon: '🔌', desc: 'Drives run at their service factor', unit: '× rated power', levels: [1.0, 1.08, 1.15], costs: [20000, 70000] },
+    // shredder fines and baghouse dust (1-2% of feed) go to landfill at $50-60/t and dust-suppression water is bought by the m3: a
+    // baghouse (LV 1) keeps the fines dry and saleable with the fluff, a closed-loop water plant (LV 2) recycles media and wash water
+    treatment: { name: 'Dust & water treatment', icon: '💧', desc: 'Lower disposal and water cost', unit: '/t saved', levels: [0, 1.0, 2.0], costs: [7000, 25000] },
+    // liquid nitrogen by tanker into a 20,000 L bulk tank costs about 15% less per kg than micro-bulk deliveries, and a telemetry-managed
+    // tank farm on a take-or-pay contract gets the full bulk rate, about 30% below
+    ln2farm: { name: 'Nitrogen tank farm', icon: '🧊', desc: 'Bulk liquid nitrogen deliveries', unit: '× LN2 price', levels: [1.0, 0.85, 0.70], costs: [10000, 35000] }
+  };
   // Supplier contracts: some feeds must be unlocked before they can be bought.
   const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000 };
   Object.keys(FEEDS).forEach(function (id) { FEEDS[id].unlock = FEED_UNLOCK[id] || 0; });
@@ -632,4 +662,5 @@
 
   G.CS = G.CS || {};
   Object.assign(G.CS, { PRICE_SCALE: PRICE_SCALE, STARTER_MACHINES: STARTER_MACHINES, START_BANK: START_BANK, LEVEL_MAX: LEVEL_MAX, LEVEL_FX: LEVEL_FX, levelCost: levelCost, PLANT_UPGRADES: PLANT_UPGRADES, RANKS: RANKS, MECH: MECH, MECH_LABEL: MECH_LABEL, MATERIALS: MATERIALS, MAT_ORDER: MAT_ORDER, MACHINES: MACHINES, MACHINE_GROUPS: MACHINE_GROUPS, FEEDS: FEEDS, LINES: LINES, SOURCES: SOURCES });
+  Object.assign(G.CS, { OFFICE_UPGRADES: OFFICE_UPGRADES, FACILITY_UPGRADES: FACILITY_UPGRADES });
 })(typeof window !== 'undefined' ? window : globalThis);

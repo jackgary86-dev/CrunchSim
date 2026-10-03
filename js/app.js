@@ -763,7 +763,7 @@
   function load() {
     try {
       const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (!d || !Array.isArray(d.line)) return false;
-      S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, 500);
+      S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
       S.line = d.line.filter((n) => MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed' }));
       const uids = new Set(S.line.map((n) => n.uid));
       S.line.forEach((n, i) => { if (n.src !== 'feed' && !(uids.has(n.src.uid) && S.line.findIndex((x) => x.uid === n.src.uid) < i)) n.src = 'feed'; });

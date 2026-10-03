@@ -43,6 +43,8 @@
   const API = {
     on(evt, fn) { (hooks[evt] || (hooks[evt] = [])).push(fn); if (evt === 'boot' && API.booted) fn(); },
     emit(evt, payload) { (hooks[evt] || []).forEach((fn) => { try { fn(payload); } catch (e) { console.error('module hook ' + evt, e); } }); },
+    /* ask modules whether an action may proceed; the first non-empty string returned is the reason it may not */
+    veto(evt, payload) { let why = ''; (hooks['veto:' + evt] || []).some((fn) => { try { why = fn(payload) || ''; } catch (e) { console.error('module veto ' + evt, e); } return !!why; }); return why; },
     /* add a panel to a column ('left' | 'right' | 'center'); returns the <section> to fill */
     addPanel(column, id, title, before) {
       const col = $('#' + column), sec = el('section', 'panel', '<h2>' + esc(title) + '</h2>'); sec.id = id;
@@ -171,6 +173,7 @@
 
   function feedCostPerT() {
     if (contract()) return 0;   // toll processing: the client supplies the feed
+    if (S.feedPrepaid) return 0; // a lot bought at auction (modules set and clear this flag)
     const p = FEEDS[S.feedPreset];
     if (p && sameComp(p.comp, S.comp)) return p.cost;
     let tot = 0, c = 0, n = 0;
@@ -271,6 +274,7 @@
     add.addEventListener('change', renderAddButton);
     $('#btn-add').addEventListener('click', () => {
       const m = add.value, last = S.line[S.line.length - 1];
+      const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; }
       if (!S.owned.has(m) && !buyMachine(m)) { renderBank(); return; }
       const src = last ? { uid: last.uid, port: primaryPort(last) } : 'feed';
       const n = Sim.makeNode(m, {}, src); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom'; sel.value = 'custom';
@@ -324,7 +328,9 @@
   }
   function primaryPort(n) { const M = MACHINES[n.m]; return M.kind === 'separator' ? 'extract' : 'product'; }
   function applyLinePreset(id) {
-    const L = LINES[id]; S.linePreset = id; S.line = Sim.buildLine(L); S.sel = S.line[0].uid;
+    const L = LINES[id];
+    const why = API.veto('applyLine', { id, nodes: L.nodes }); if (why) { Audio.ui('deny'); log(why, 'bad'); $('#line-preset').value = LINES[S.linePreset] ? S.linePreset : 'custom'; return; }
+    S.linePreset = id; S.line = Sim.buildLine(L); S.sel = S.line[0].uid;
     if (contract()) { /* contract feed stays */ }
     else if (L.feed && S.suppliers.has(L.feed)) applyFeedPreset(L.feed);
     else if (L.feed) log('This line is designed for ' + FEEDS[L.feed].name + ', which needs a supplier contract (' + fmtMoney(FEEDS[L.feed].unlock) + ').', 'warn');

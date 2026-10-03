@@ -367,7 +367,18 @@
     quarry: { name: 'Quarry run-of-mine', blurb: 'Granite and limestone.', cost: 5, comp: { granite: 0.6, limestone: 0.4 } },
     lab: { name: 'Gel and water', blurb: 'Soft stuff you cannot crush.', cost: 20, comp: { gel: 0.5, water: 0.5 } },
     gel: { name: 'Hydrogel', blurb: 'Pure gel blocks.', cost: 60, comp: { gel: 1 } },
-    water: { name: 'Water', blurb: 'A bulk liquid.', cost: 0, comp: { water: 1 } }
+    water: { name: 'Water', blurb: 'A bulk liquid.', cost: 0, comp: { water: 1 } },
+    // Office furniture is particleboard and MDF held together by steel screws, staples and glides with plastic trim:
+    // about 93% wood by mass. A clear-out pays a small tipping fee (-$5/t) because the board is clean enough to chip.
+    chair: { name: 'Office clear-out', blurb: 'Desks and chairs: particleboard full of screws, staples and plastic glides.', cost: -5, comp: { wood: 0.93, steel: 0.05, plastic: 0.02 } },
+    // Washing machine by mass (WEEE composition studies): ~55% steel shell and drum, 5% cast iron (drum spider), 4% copper
+    // (motor windings and wiring), 3% aluminum, 18% plastics (tub and panels), 4% rubber (hoses, door seal), 3% glass (door)
+    // and the concrete counterweight (~8%, stood in for by limestone). Whole units trade at about $60/t.
+    appliance: { name: 'White goods', blurb: 'Washing machines: a steel shell round a concrete counterweight, motor copper and a plastic tub.', cost: 60, comp: { steel: 0.55, castiron: 0.05, copper: 0.04, aluminum: 0.03, plastic: 0.18, rubber: 0.04, glass: 0.03, limestone: 0.08 } },
+    // A mixed C&D skip topped up with yard scrap, so every material is present. Weights follow C&D waste surveys
+    // (concrete and masonry dominate the non-metal, wood ~15%, plastics 1-3%, glass a few percent) plus a scrap-metal
+    // fraction; the metal content makes it worth paying $40/t for, the rubble keeps that price low.
+    everything: { name: 'Everything', blurb: 'A mixed skip: all fourteen materials at once. The universal plant was built for it.', cost: 40, comp: { steel: 0.28, castiron: 0.03, aluminum: 0.08, copper: 0.02, brass: 0.015, potmetal: 0.025, wood: 0.16, rubber: 0.05, plastic: 0.025, glass: 0.04, granite: 0.09, limestone: 0.155, gel: 0.015, water: 0.015 } }
   };
 
   /* ---------------- PRESET FLOWSHEETS ---------------- */
@@ -447,6 +458,24 @@
       nodes: [
         { m: 'atomizer', s: { bar: 300 }, src: 'feed' }
       ]
+    },
+    universal: {
+      name: 'Universal sorting plant', feed: 'everything', tons: 20,
+      blurb: 'Tear, liberate in the hammermill, then sort by magnetism, air, eddy current, density and size. Without a sensor sorter the heavy sinks stay a copper-brass-zinc mix and glass stays with the stone.',
+      // Air at 11 m/s lifts wood (terminal velocity ~9 m/s) and plastic flake (~6 m/s) and drops rubber, glass and metal (13 m/s and up).
+      // Sink-float 2.9 floats aluminum (2.7) off the zinc, brass and copper (6.6 to 9.0). Sink-float 1.0 floats wood and plastic
+      // (0.5, 0.95) and sinks rubber (1.10). The 50 mm screen on the eddy reject pulls the stone, which the hammermill broke to
+      // under 50 mm, away from rubber and wood that stayed coarse (measured in tests/universal.js: +$14/t of product).
+      nodes: [
+        { m: 'twin', s: { width: 60 }, src: 'feed' },
+        { m: 'hammer', s: { grate: 100, rpm: 100 }, src: '1:product' },
+        { m: 'magnet', s: { field: 250 }, src: '2:product' },
+        { m: 'air', s: { air: 11 }, src: '3:residue' },
+        { m: 'eddy', s: { rpm: 3000 }, src: '4:residue' },
+        { m: 'sinkfloat', s: { sg: 2.9 }, src: '5:extract' },
+        { m: 'sinkfloat', s: { sg: 1.0 }, src: '4:extract' },
+        { m: 'screen', s: { aperture: 50 }, src: '5:residue' }
+      ]
     }
   };
 
@@ -466,7 +495,7 @@
     nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] }
   };
   // Supplier contracts: some feeds must be unlocked before they can be bought.
-  const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000 };
+  const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000 };
   Object.keys(FEEDS).forEach(function (id) { FEEDS[id].unlock = FEED_UNLOCK[id] || 0; });
   // Rank is read from net worth: bank plus what the plant would sell for.
   const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [400000, 'Processor'], [1200000, 'Plant operator'], [4000000, 'Industrial group'], [15000000, 'Mega-plant']];

@@ -14,6 +14,13 @@ const INTENDED = {
     ['twin, magnet, chipper', { nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }, { m: 'chipper', s: { len: 20 }, src: '2:residue' }] }],
     ['chipper only (trap)', { nodes: [{ m: 'chipper', s: { len: 20 }, src: 'feed' }] }],
   ],
+  chair: [
+    ['twin, magnet, chipper', { nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }, { m: 'chipper', s: { len: 20 }, src: '2:residue' }] }],
+    ['tub 40, magnet', { nodes: [{ m: 'tub', s: { screen: 40 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }] }],
+    ['chipper only (trap)', { nodes: [{ m: 'chipper', s: { len: 20 }, src: 'feed' }] }],
+    ['twin, chipper (trap: no magnet)',{ nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'chipper', s: { len: 20 }, src: '1:product' }] }],
+    ['hammer, magnet (trap: energy)', { nodes: [{ m: 'hammer', s: { grate: 50, rpm: 100 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }] }],
+  ],
   roadbase: [
     ['jaw, cone, screen', { nodes: [{ m: 'jaw', s: { css: 100 }, src: 'feed' }, { m: 'cone', s: { css: 20 }, src: '1:product' }, { m: 'screen', s: { aperture: 25 }, src: '2:product' }] }],
     ['jaw, cone', { nodes: [{ m: 'jaw', s: { css: 100 }, src: 'feed' }, { m: 'cone', s: { css: 18 }, src: '1:product' }] }],

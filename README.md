@@ -52,6 +52,8 @@ Then browse to <http://localhost:8000>. On GitHub, enable Pages (Settings → Pa
 
 **Controls:** Space runs or stops a batch, 1/2/3 sets simulation speed, M toggles sound, ? opens help. Click a flowsheet node to see it in the cam and edit its settings. Click a material name for its properties. Progress is saved in your browser.
 
+**Plant floor in 3D:** `plant3d.html` lays a flowsheet out as a plant hall: an intake hopper that swallows a car, chair, tire or rock depending on the feed, labelled machine blocks along striped conveyors, and bins that fill with the sim's steady-state product masses. Fragments shrink at crushers and are routed at separators with the same partition curves the game uses, so moving a settings slider changes the traffic at once. Pick a preset feed and line or press "use my plant" to load the line saved by the game. It loads three.js r128 from cdnjs; drag to orbit, wheel to zoom, right-drag to pan.
+
 ## Project layout
 
 ```
@@ -65,6 +67,9 @@ js/scenes-b.js    cam scenes: hydraulic machines, freezer, separators
 js/audio.js       synthesized sound (Web Audio)
 js/score.js       contracts: spec sheets, shipping rule, stars and fees (no DOM)
 js/app.js         UI, run loop, telemetry, game layer (bank, ownership, upgrades, contracts), persistence
+plant3d.html      standalone 3D plant floor demo (three.js r128 from cdnjs; shares data, sim and score)
+js/plant3d.js     plant-floor layout (pure, tested in Node) and the three.js renderer and controls
+gallery.html      developer page: every machine cam scene running live
 tools/build.py    bundles the game into one file for hosts that only allow inline code
 tests/            Node scripts that exercise the physics core
 ```
@@ -82,6 +87,7 @@ node tests/contracts.js
 ```bash
 node tests/sensor.js
 node tests/furnace.js
+node tests/plant3d-layout.js
 ```
 
 ## Sources

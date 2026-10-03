@@ -342,10 +342,22 @@
       outs: { extract: 'Floats (lighter)', residue: 'Sinks (heavier)' },
       how: 'Pieces are dropped into a liquid whose density is tuned between the materials you want to split. Anything lighter floats, anything heavier sinks. A medium at about 2.9 g/cc floats aluminum at 2.7 and sinks zinc, brass and copper: it is how mixed "zorba" is split into valuable fractions.',
       best: 'Splitting non-ferrous mixes by density.', avoid: 'Very fine material and anything porous that soaks the medium.'
+    },
+    sensor: {
+      name: 'Sensor sorter', short: 'XRT', cat: 'Separation', kind: 'separator', scene: 'sensor',
+      // XRT / LIBS belt sorters: about 10 t/h on a 1 m belt of 10-150 mm pieces; about 2 kWh/t for the X-ray tube, the ejection-air
+      // compressor and the belt; 8 kW idle (tube, electronics, belt), 40 kW installed (mostly the compressor); about $300k for a small unit.
+      eSpec: 2.0, cap: 10, capRef: 1, capExp: 0, pidle: 8, prated: 40, life: 1e9, price: 300000, service: 18000, wearInfo: 'n/a',
+      // enum setting: the value is a material id, there is no min/max/step
+      settings: [{ id: 'target', label: 'Target material', enum: MAT_ORDER, def: 'copper' }],
+      outs: { extract: 'Target material', residue: 'Everything else' },
+      how: 'Pieces are spread on a fast belt and run under a scanner: an X-ray transmission (XRT) camera reads the atomic density of each piece, or a laser (LIBS) vaporises a speck of its surface and reads the emission spectrum. A computer decides in milliseconds whether the piece is the target material, and a bank of air valves at the end of the belt fires a jet that kicks that piece over a splitter. It sorts by chemistry rather than by a physical property, so it can pull copper out of brass and zinc, or split alloys, which no magnet, eddy current or sink-float can do.',
+      best: 'Picking one metal out of a mixed non-ferrous stream of 10 to 150 mm pieces.', avoid: 'Fines under about 5 mm: the camera cannot resolve them and the jets miss. Pieces over 200 mm shadow their neighbours. Wet or dusty feed fouls the window.'
     }
   };
   Object.keys(MACHINES).forEach(function (id) {
     const M = MACHINES[id]; M.id = id;
+    // st.def is copied as-is, so an enum setting (a string such as a material id) defaults like a numeric one
     M.defaults = {}; (M.settings || []).forEach(function (st) { M.defaults[st.id] = st.def; });
   });
 
@@ -354,7 +366,7 @@
     ['Impact and shred', ['vsi', 'hammer', 'tub', 'twin', 'single', 'granulator', 'chipper']],
     ['Fine and cold', ['ball', 'cryo', 'freezer']],
     ['Hydraulic', ['colloid', 'homog', 'atomizer']],
-    ['Separation', ['magnet', 'eddy', 'air', 'screen', 'sinkfloat']]
+    ['Separation', ['magnet', 'eddy', 'air', 'screen', 'sinkfloat', 'sensor']]
   ];
 
   /* ---------------- PRESET FEEDS ---------------- */

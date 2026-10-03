@@ -394,8 +394,16 @@
     if (!M.settings.length) box.appendChild(el('div', 'small', 'No adjustable settings.'));
     M.settings.forEach((st) => {
       const row = el('div', 'setting'); const lab = el('label', null, esc(st.label));
-      const r = document.createElement('input'); r.type = 'range'; r.id = 'set-' + st.id;
       const v = n.settings[st.id];
+      if (st.enum) {   // enum setting (a material id): a <select> instead of a range
+        const sel = document.createElement('select'); sel.id = 'set-' + st.id;
+        st.enum.forEach((id) => sel.appendChild(new Option(MATERIALS[id] ? MATERIALS[id].name : id, id)));
+        sel.value = v;
+        const sw = el('span', 'v', swatch(v));
+        sel.addEventListener('change', () => { n.settings[st.id] = sel.value; sw.innerHTML = swatch(sel.value); S.linePreset = 'custom'; $('#line-preset').value = 'custom'; markDirty(); });
+        row.appendChild(lab); row.appendChild(sel); row.appendChild(sw); box.appendChild(row); return;
+      }
+      const r = document.createElement('input'); r.type = 'range'; r.id = 'set-' + st.id;
       if (st.log) { r.min = 0; r.max = 1000; r.step = 1; r.value = Math.round(1000 * Math.log(v / st.min) / Math.log(st.max / st.min)); }
       else { r.min = st.min; r.max = st.max; r.step = st.step; r.value = v; }
       const val = el('span', 'v', fmtSetting(v, st));
@@ -411,7 +419,8 @@
     else mech.appendChild(el('span', null, '<em>' + esc(M.cat.toUpperCase()) + '</em>'));
     $('#m-how').textContent = M.how; $('#m-best').textContent = M.best; $('#m-avoid').textContent = M.avoid;
   }
-  function fmtSetting(v, st) { const d = st.step < 0.1 ? 2 : st.step < 1 ? 1 : 0; return (st.log && v < 1 ? v.toPrecision(2) : v.toFixed(d)) + ' ' + st.unit; }
+  function fmtSetting(v, st) { if (typeof v !== 'number') return MATERIALS[v] ? MATERIALS[v].name : String(v); const d = st.step < 0.1 ? 2 : st.step < 1 ? 1 : 0; return (st.log && v < 1 ? v.toPrecision(2) : v.toFixed(d)) + ' ' + st.unit; }
+  function swatch(id) { const D = MATERIALS[id]; return D ? '<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + D.color + ';vertical-align:middle" title="' + esc(D.name) + '"></i>' : ''; }
 
   /* ---------------- bank panel ---------------- */
   function renderBank() {

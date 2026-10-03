@@ -54,6 +54,7 @@
     },
     booted: false
   };
+  CS.app = API;   // exposed before boot so modules loaded after this file can register hooks; boot() fills in the rest of the API
 
   /* ---------------- game-layer helpers ---------------- */
   function plantValue(key) { const U = PLANT_UPGRADES[key]; return U.levels[Math.min(S.plant[key], U.levels.length - 1)]; }

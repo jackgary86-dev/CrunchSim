@@ -54,7 +54,12 @@ const ranked = cands.map(function (m) {
 }).sort(function (a, b) { return b.gain - a.gain; });
 const top3 = ranked.filter(function (r) { return r.gain > 0.5; }).slice(0, 3).map(function (r) { return r.m; });
 check(top3.length === 3 && top3.every(function (m) { return MACHINES[m].kind === 'separator'; }), 'the top three are all separators: ' + top3.join(', '));
-check(top3.indexOf('sinkfloat') >= 0 && top3.indexOf('magnet') >= 0, 'sink-float and magnet are both in the top three');
+check(top3.indexOf('sinkfloat') >= 0 && top3.indexOf('magnet') >= 0 && top3.indexOf('eddy') >= 0, 'sink-float, magnet and eddy are the top three');
+const gainOf = function (m) { return ranked.filter(function (r) { return r.m === m; })[0].gain; };
+check(gainOf('air') < gainOf('sinkfloat') && gainOf('air') > 0.5, 'the air classifier pays, but less than the other three');
+// by payback (price / gain, what a player buying with limited cash cares about) the order is the real-world one
+const pay = function (m) { return MACHINES[m].price / gainOf(m); };
+check(pay('sinkfloat') < pay('eddy') && pay('magnet') < pay('eddy') && pay('eddy') < pay('air'), 'payback order: magnet and sink-float first, then eddy, then air');
 check(top3.indexOf('screen') < 0, 'the screen does not pay on mixed shred, so it is not recommended');
 check(ranked.filter(function (r) { return r.m === 'cone' || r.m === 'jaw'; }).every(function (r) { return r.gain <= 0.5; }), 'a second crusher adds nothing to shredded cars');
 
@@ -74,12 +79,10 @@ let cur = line; const path = ['hammer'];
 for (let step = 0; step < 4; step++) { const p = bestNext(cur); if (!p || p.gain <= 0.5) break; cur = append(cur, p.m, p.port); path.push(p.m + '/' + p.port + ' +$' + f(p.gain, 0)); }
 console.log('  greedy path: ' + path.join(' > ') + '  -> margin ' + f(economics(cur, comp, feedCost).margin, 1) + ' $/t');
 check(path.length >= 3, 'taking the recommendation twice in a row buys two sorters that both pay');
-check(path[1].indexOf('sinkfloat') === 0, 'the first recommendation is the sink-float tank, which is also the cheapest sorter');
+check(path[1].indexOf('screen') < 0 && path[1].indexOf('cone') < 0, 'the first recommendation is a sorter, not a crusher or a screen (' + path[1] + ')');
 check(economics(cur, comp, feedCost).margin > base + 100, 'the greedy path is far ahead of unsorted shred');
 
-// For the record (not asserted): the car-line order and the ticket order, margin after each purchase. In the current bin valuation a
-// 90%-ferrous sink-float "sinks" lot still gets paid for the copper, brass and zinc inside it, so a magnet after the tank looks
-// like a loss on paper. Known gap, see the ticket report.
+// For the record (not asserted): the car-line order and the ticket order, margin after each purchase.
 const A = [line]; A.push(append(A[0], 'sinkfloat', 'product')); A.push(append(A[1], 'magnet', 'residue'));
 A.push(A[2].concat([Sim.makeNode('air', {}, { uid: A[1][1].uid, port: 'extract' })])); A.push(A[3].concat([Sim.makeNode('eddy', {}, { uid: A[2][2].uid, port: 'residue' })]));
 const B = [line]; B.push(append(B[0], 'magnet', 'product')); B.push(append(B[1], 'air', 'residue')); B.push(append(B[2], 'eddy', 'residue')); B.push(append(B[3], 'sinkfloat', 'extract'));

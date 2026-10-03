@@ -605,7 +605,15 @@
     nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] },
     // Plant hall floor area: 12x8, 20x12, 30x18, 50x30, 80x50 m. A pre-engineered steel hall costs roughly $500-1000 per m2
     // built; at PRICE_SCALE the added floor runs $80-240 per m2, rising with span. Machine footprints are MACHINES[id].foot.
-    room: { name: 'Plant hall', icon: '🏭', desc: 'More floor area for machines', unit: 'm²', levels: [96, 240, 540, 1500, 4000], costs: [12000, 45000, 160000, 600000], dims: [[12, 8], [20, 12], [30, 18], [50, 30], [80, 50]] }
+    room: { name: 'Plant hall', icon: '🏭', desc: 'More floor area for machines', unit: 'm²', levels: [96, 240, 540, 1500, 4000], costs: [12000, 45000, 160000, 600000], dims: [[12, 8], [20, 12], [30, 18], [50, 30], [80, 50]] },
+    // Yard storage for held product (inventory module): concrete push-wall bays, 10 x 10 m with 3 m interlocking-block walls, one
+    // product per bay. bayT: a bay stacked 2 m deep holds about 60 t of bales or loose shred at 0.3 t/m3 bulk density. Costs: a bay
+    // runs $12-15k built (blocks, slab, drainage); at PRICE_SCALE that is about $2,750 per bay added (2, 4, 8, 16 bays per level).
+    // rent.own: a bay on your own land still costs about $8 per batch (100 m2 of industrial land at ~$1.5/m2/month, one batch a
+    // working day). rent.hired: stock that overflows into a hired bay at a neighbouring yard costs about $40 per batch (outdoor
+    // industrial storage at ~$3/m2/month plus a loader in and out). smallT: lots under 3 t (a few bales or big bags) sit together
+    // on the bagged-goods rack and count as one shared bay between them, as a yard does with its odds and ends.
+    storage: { name: 'Yard storage', icon: '🏗', desc: 'More yard bays for held stock', unit: 'bays', levels: [2, 4, 8, 16, 32], costs: [5500, 11000, 22000, 44000], bayT: 60, smallT: 3, rent: { own: 8, hired: 40 } }
   };
   // Supplier contracts: some feeds must be unlocked before they can be bought.
   const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000 };

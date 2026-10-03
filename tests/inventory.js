@@ -1,7 +1,9 @@
 // Exercises the DOM-free parts of js/modules/inventory.js: units, bin absorption (mass and value preserved),
-// the seeded market walk (reproducible from the clock, bounded), selling and save/load round trips.
-require('../js/data.js'); require('../js/sim.js'); require('../js/modules/inventory.js');
-const { MATERIALS, MAT_ORDER, FEEDS, LINES, Sim, Inventory: Inv } = globalThis.CS;
+// the seeded market walk (reproducible from the clock, bounded), selling and save/load round trips, and the
+// hold-to-sell additions of ticket #34: cost basis, withdrawal for deliveries, yard storage rent, price targets and
+// pricing off the market module's per-round factors.
+require('../js/data.js'); require('../js/sim.js'); require('../js/modules/market.js'); require('../js/modules/inventory.js');
+const { MATERIALS, MAT_ORDER, FEEDS, LINES, PLANT_UPGRADES, Sim, Inventory: Inv, Market } = globalThis.CS;
 const f = (x, d = 2) => isFinite(x) ? x.toFixed(d) : '-';
 let fails = 0, n = 0;
 function check(cond, msg) { n++; if (!cond) { fails++; console.log('FAIL ' + msg); } else console.log('ok   ' + msg); }
@@ -99,6 +101,109 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   const junk = Inv.deserialize({ stock: { steel: { t: 'x' }, unobtainium: { t: 5 }, copper: { t: 2, purity: 7, grade: -1, sf: 9, p80: -3 } }, market: { hour: 'soon', drift: 1 } });
   check(!junk.hadMarket && !junk.stock.steel && !junk.stock.unobtainium && junk.stock.copper && junk.stock.copper.purity === 1 && junk.stock.copper.grade === 0 && junk.stock.copper.sf === 1 && junk.stock.copper.p80 > 0, 'garbage input is clamped or dropped');
   check(Inv.deserialize(null).mkt.hour === 0 && Object.keys(Inv.deserialize(undefined).stock).length === 0, 'missing save gives fresh state');
+}
+
+/* ---- ticket #34: cost basis ---- */
+{
+  const s = Inv.newStock();
+  const cost = 15 * 110 + 320 + 12;   // a 15 t ELV batch: feed at $110/t, $320 of power, $12 of consumables
+  const produced = Inv.absorbBins(s, carBins, 15, cost);
+  const allocated = MAT_ORDER.reduce((v, m) => v + (s[m] ? s[m].cost : 0), 0);
+  check(near(allocated, cost), 'the batch cost is shared out over the products in full (' + f(allocated, 2) + ' of ' + cost + ')');
+  const valOf = (m) => Inv.baseValue(s, m);
+  check(MAT_ORDER.every((m) => !s[m] || near(s[m].cost / cost, valOf(m) / MAT_ORDER.reduce((v, k) => v + valOf(k), 0))), 'each product carries cost in proportion to its sales value at split-off');
+  check(near(Object.keys(produced).reduce((v, m) => v + produced[m].cost, 0), cost), 'produced[] reports the cost that went with each material');
+  check(Inv.avgCost(s, 'steel') > 0 && near(Inv.avgCost(s, 'steel'), s.steel.cost / s.steel.t), 'avgCost is $ per tonne of the lot');
+  const steelBefore = s.steel.cost;
+  Inv.absorbBins(s, carBins, 15, 0);
+  check(near(s.steel.cost, steelBefore) && near(s.steel.t, 2 * binsMassPerT(carBins, 'steel') / 1000 * 15), 'a free batch (contract feed, no cost given) adds tonnes but no cost');
+  const s2 = Inv.newStock(); Inv.addLot(s2, 'copper', 1, 1, 1, 1, 20, 500); Inv.addLot(s2, 'copper', 3, 1, 1, 1, 20, 100);
+  check(near(s2.copper.cost, 600) && near(Inv.avgCost(s2, 'copper'), 150), 'merging lots adds their cost: $500 + $100 over 4 t = $150/t');
+  const sold = Inv.sell(s2, 'copper', Inv.newMarket(), 1);
+  check(near(sold.cost, 600), 'a sale reports the cost basis of what was sold');
+}
+
+/* ---- ticket #34: withdrawal for deliveries ---- */
+{
+  const s = Inv.newStock(); Inv.addLot(s, 'aluminum', 4, 0.95, 0.9, 1, 30, 800);
+  const w = Inv.withdrawLot(s, 'aluminum', 1.5);
+  check(near(w.t, 1.5) && near(w.purity, 0.95) && near(w.cost, 300) && near(s.aluminum.t, 2.5) && near(s.aluminum.cost, 500), 'withdrawing 1.5 of 4 t returns the tonnes and the lot purity and leaves the rest with its share of the cost');
+  check(near(s.aluminum.grade, 0.9) && near(s.aluminum.sf, 1) && near(s.aluminum.p80, 30), 'the remaining lot keeps its grade, size factor and p80');
+  const w2 = Inv.withdrawLot(s, 'aluminum', 10);
+  check(near(w2.t, 2.5) && !s.aluminum, 'asking for more than is held withdraws what there is and empties the lot');
+  const w3 = Inv.withdrawLot(s, 'aluminum', 1), w4 = Inv.withdrawLot(s, 'copper', -2);
+  check(w3.t === 0 && w3.purity === 0 && w4.t === 0, 'withdrawing from an empty lot or a bad tonnage returns zero');
+  check(typeof Inv.withdraw === 'function' && Inv.withdraw('steel', 1).t === 0 && typeof Inv.stock() === 'object', 'CS.Inventory.withdraw(material, tonnes) exists for the missions worker (nothing held here)');
+}
+
+/* ---- ticket #34: yard storage ---- */
+{
+  const U = PLANT_UPGRADES.storage;
+  check(U && U.levels.length === 5 && U.costs.length === 4 && U.unit === 'bays' && U.bayT > 0 && U.smallT > 0 && U.smallT < U.bayT && U.rent && U.rent.own > 0 && U.rent.hired > U.rent.own, 'PLANT_UPGRADES.storage has 5 bay levels, 4 costs, a bay size, a small-lot size and own/hired rents');
+  U.levels.forEach((b, i) => check(i === 0 || (b > U.levels[i - 1] && U.costs[i - 1] > (i > 1 ? U.costs[i - 2] : 0)), 'storage level ' + i + ': ' + b + ' bays' + (i ? ' for $' + U.costs[i - 1] : '')));
+  check(Inv.ownedBays(0) === U.levels[0] && Inv.ownedBays(4) === U.levels[4] && Inv.ownedBays(-1) === U.levels[0] && Inv.ownedBays(99) === U.levels[4], 'ownedBays clamps the upgrade level');
+  check(Inv.baysFor(0) === 0 && Inv.baysFor(1) === 1 && Inv.baysFor(U.bayT) === 1 && Inv.baysFor(U.bayT + 0.5) === 2, 'a product takes one ' + U.bayT + ' t bay per ' + U.bayT + ' t started');
+  const s = Inv.newStock(); Inv.absorbBins(s, carBins, 15);
+  const held = MAT_ORDER.filter((m) => s[m] && s[m].t > 1e-6), bigLots = held.filter((m) => s[m].t >= U.smallT), small = held.filter((m) => s[m].t < U.smallT);
+  const st0 = Inv.storage(s, Inv.ownedBays(0));
+  const want = bigLots.reduce((n, m) => n + Math.ceil(s[m].t / U.bayT), 0) + (small.length ? 1 : 0);
+  check(st0.bays === want && st0.shared.length === small.length && bigLots.every((m) => st0.perMat[m] >= 1) && small.every((m) => !st0.perMat[m]), 'a 15 t car batch takes ' + st0.bays + ' bays: ' + bigLots.join(', ') + ' alone, ' + small.length + ' small lots on the shared rack');
+  check(st0.bays <= U.levels[0] && st0.hired === 0 && st0.own === st0.bays, 'so the day-one yard holds a starter batch without hiring bays (rent $' + f(st0.rent, 0) + ')');
+  check(near(st0.rent, st0.own * U.rent.own + st0.hired * U.rent.hired), 'rent = owned bays x $' + U.rent.own + ' + hired bays x $' + U.rent.hired);
+  check(near(Object.keys(st0.rentPerMat).reduce((v, m) => v + st0.rentPerMat[m], 0), st0.rent) && small.every((m) => near(st0.rentPerMat[m], st0.rentPerMat[small[0]])), 'the rent is shared over the materials by bays, the shared bay split evenly');
+  // four car batches: aluminum, plastic and the rest grow past the small-lot size and need bays of their own
+  for (let k = 0; k < 3; k++) Inv.absorbBins(s, carBins, 15);
+  const st4 = Inv.storage(s, Inv.ownedBays(0)), st4b = Inv.storage(s, Inv.ownedBays(4));
+  check(st4.bays > st0.bays && st4.hired > 0 && st4.rent > st0.rent, 'after four batches ' + st4.bays + ' bays are in use, ' + st4.hired + ' hired: rent $' + f(st4.rent, 0) + ' per batch');
+  check(st4b.hired === 0 && st4b.rent < st4.rent, 'with the yard built out nothing is hired and the rent falls to $' + f(st4b.rent, 0));
+  const before = MAT_ORDER.reduce((v, m) => v + (s[m] ? s[m].cost : 0), 0);
+  const charged = Inv.chargeStorage(s, Inv.ownedBays(0));
+  check(near(MAT_ORDER.reduce((v, m) => v + (s[m] ? s[m].cost : 0), 0) - before, charged.rent), 'chargeStorage adds the round\'s rent to the lots\' cost basis');
+  check(Inv.storage(Inv.newStock(), 2).bays === 0 && Inv.storage(Inv.newStock(), 2).rent === 0, 'an empty yard pays no rent');
+  const big = Inv.newStock(); Inv.addLot(big, 'steel', 2.5 * U.bayT, 1, 1, 1, 60); Inv.addLot(big, 'copper', 1, 1, 1, 1, 20);
+  check(Inv.storage(big, 2).bays === 4 && Inv.storage(big, 2).perMat.steel === 3 && Inv.storage(big, 2).shared[0] === 'copper', '150 t of steel takes 3 bays and a tonne of copper the shared one');
+}
+
+/* ---- ticket #34: price targets ---- */
+{
+  const s = Inv.newStock(); Inv.addLot(s, 'copper', 2, 1, 1, 1, 20); Inv.addLot(s, 'steel', 5, 1, 1, 1, 60);
+  const tg = Inv.newTargets();
+  check(Inv.setTarget(tg, 'copper', 9000, false).price === 9000 && tg.copper.auto === false && tg.copper.hit === false, 'a target starts armed with auto-sell off');
+  check(Inv.setTarget(tg, 'unobtainium', 5, true) === null && !tg.unobtainium, 'unknown materials get no target');
+  let price = { copper: 8500, steel: 300 };
+  const at = (m) => price[m];
+  check(Inv.targetEvents(tg, s, at).length === 0, 'below the target nothing fires');
+  price.copper = 9200;
+  let ev = Inv.targetEvents(tg, s, at);
+  check(ev.length === 1 && ev[0].mat === 'copper' && ev[0].price === 9200 && ev[0].target === 9000 && near(ev[0].t, 2) && ev[0].auto === false, 'crossing the target fires one event with price, target, tonnes held and the auto flag');
+  check(Inv.targetEvents(tg, s, at).length === 0 && tg.copper.hit === true, 'it does not fire again while the price stays above');
+  price.copper = 8800; Inv.targetEvents(tg, s, at); price.copper = 9500;
+  check(Inv.targetEvents(tg, s, at).length === 1, 'dropping below and rising again re-arms it');
+  price.copper = 9600; Inv.setTarget(tg, 'copper', 9550, true);
+  ev = Inv.targetEvents(tg, s, at);
+  check(ev.length === 1 && ev[0].auto === true, 'changing the target re-arms it and the auto flag is reported');
+  Inv.setTarget(tg, 'steel', 280, false); price.steel = 290;
+  delete s.steel;
+  check(Inv.targetEvents(tg, s, at).length === 0 && tg.steel.hit === false, 'a target on a material you no longer hold stays quiet and armed');
+  Inv.addLot(s, 'steel', 1, 1, 1, 1, 60);
+  check(Inv.targetEvents(tg, s, at).length === 1, 'and fires as soon as new stock arrives above it');
+  Inv.setTarget(tg, 'steel', 0, true);
+  check(!tg.steel, 'a zero price clears the target');
+  const saved = JSON.parse(JSON.stringify(Inv.serialize(s, Inv.newMarket(), tg))), back = Inv.deserialize(saved);
+  check(back.targets.copper && back.targets.copper.price === 9550 && back.targets.copper.auto === true && back.targets.copper.hit === true && !back.targets.steel, 'targets round-trip through JSON with their auto and hit flags');
+  check(near(back.stock.copper.cost, s.copper.cost) && Inv.deserialize({ targets: { copper: { price: 'x' }, steel: { price: 100, auto: 'yes' } } }).targets.steel.auto === true && !Inv.deserialize({ targets: { copper: { price: 'x' } } }).targets.copper, 'cost round-trips and junk targets are dropped');
+}
+
+/* ---- ticket #33 + #34: prices off the market module ---- */
+{
+  const st = Market.newState(); Market.step(st, 10); Market.step(st, 20);
+  const view = Market.viewOf(st);
+  check(MAT_ORDER.every((m) => near(Inv.priceOf(m, view, 1.08), Market.priceOf(st, m, 1.08))), 'Inventory.priceOf on the market view equals Market.priceOf');
+  check(MAT_ORDER.every((m) => near(Inv.drift(view, m), Market.factorOf(st, m))), 'the market factor is the drift the inventory prices with');
+  const hot = st.hot.mat, s = Inv.newStock(); Inv.addLot(s, hot, 1, 1, 1, 1, 20);
+  check(near(Inv.lotValue(s, hot, view, 1), MATERIALS[hot].sell * st.hot.mul), 'a lot of the hot material is worth the hot multiple');
+  check(['▲', '▼', '►'].includes(Inv.trendArrow(view, 'steel')) && Inv.trendOf(view, hot) === 1, 'the trend arrow reads the per-round change (hot material points up)');
+  check(Market.history(hot).length === 1 && Market.historyOf(st, hot).length === 3, 'sparkline history: one point live (no rounds yet), three after two rounds');
 }
 
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' inventory checks pass'));

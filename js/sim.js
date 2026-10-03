@@ -102,8 +102,8 @@
   }
 
   const LN2_KJ_PER_KG = 259;     // usable cooling per kg of liquid nitrogen
-  // Live prices; the game layer lowers them with plant upgrades.
-  const prices = { power: 0.12, ln2: 0.12, market: 1.0 };
+  // Live prices; the game layer lowers them with plant upgrades. perMat: per-material price factors written by the market module.
+  const prices = { power: 0.12, ln2: 0.12, market: 1.0, perMat: {} };
   function levelOf(node) { return Math.max(0, Math.min(CS.LEVEL_MAX || 5, node.level || 0)); }
   const FX = CS.LEVEL_FX || { cap: 0.2, eta: 0.06, life: 0.3, power: 0.1 };
 
@@ -518,7 +518,7 @@
       else if (p > hi) sf = Math.max(0.2, 1 - 0.6 * Math.log10(p / hi));
       else if (p < lo) sf = Math.max(0.2, 1 - 0.7 * Math.log10(lo / p));
       perMat[mat].sizeFactor = sf;
-      const v = perMat[mat].mass / 1000 * (ingot ? (D.ingot || D.sell) : D.sell) * prices.market * sf * grade * (form === 'dross' ? DROSS_VALUE : 1);
+      const v = perMat[mat].mass / 1000 * (ingot ? (D.ingot || D.sell) : D.sell) * prices.market * ((prices.perMat && prices.perMat[mat]) || 1) * sf * grade * (form === 'dross' ? DROSS_VALUE : 1);
       perMat[mat].value = v; value += v;
     }
     return { total, share, domGroup: domG, grade, value, perMat, p80: percentile(aggregateMap(mats)), form: form || null };

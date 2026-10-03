@@ -54,6 +54,7 @@
     },
     booted: false
   };
+  CS.app = API;   // exposed before boot so modules loaded after this file can register hooks; boot() fills in the rest of the API
 
   /* ---------------- game-layer helpers ---------------- */
   function plantValue(key) { const U = PLANT_UPGRADES[key]; return U.levels[Math.min(S.plant[key], U.levels.length - 1)]; }
@@ -175,7 +176,7 @@
     if (contract()) return 0;   // toll processing: the client supplies the feed
     if (S.feedPrepaid) return 0; // a lot bought at auction (modules set and clear this flag)
     const p = FEEDS[S.feedPreset];
-    if (p && sameComp(p.comp, S.comp)) return p.cost;
+    if (p && sameComp(p.comp, S.comp)) { const q = { id: S.feedPreset, cost: p.cost }; API.emit('feedCost', q); return q.cost; }   // modules may scale a preset's price (feed market)
     let tot = 0, c = 0, n = 0;
     for (const m in S.comp) if (S.comp[m] > 0) { tot += S.comp[m]; c += S.comp[m] * MATERIALS[m].buy; n++; }
     if (tot <= 0) return 0;

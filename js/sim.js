@@ -268,6 +268,16 @@
         const rho = D.state === 'liquid' ? 1.0 : D.density;
         return 1 / (1 + Math.exp((rho - s.sg) / (0.05 * s.sg + 0.03)));
       }
+      case 'sensor': {
+        // XRT / LIBS belt sorters classify every piece and eject the targets with air jets. Real units run at
+        // 90-98% on 10-150 mm pieces; below ~5 mm the sensor cannot resolve a piece and a jet cannot hit it,
+        // above ~200 mm pieces shadow each other and some are missed. Mis-fires carry 2-3% of the rest along.
+        if (D.state === 'liquid') return 0;                    // a puddle on the belt is never ejected
+        if (D.id !== s.target) return 0.025;                   // false positives on every other material
+        const szF = 1 / (1 + Math.exp(-(Math.log(x) - Math.log(3.7)) / 0.29));   // sigmoid on log size: 0.33 at 3 mm, 0.97 at 10 mm
+        const big = x > 200 ? 0.76 : (x > 150 ? 1 - 0.24 * (x - 150) / 50 : 1);  // 92% on 10-150 mm, 70% above 200 mm
+        return 0.92 * szF * big;
+      }
     }
     return 0;
   }
@@ -308,6 +318,12 @@
       let nm = 0; for (const mat in info.perMat) if (!MATERIALS[mat].magnetic) nm += info.perMat[mat].extract;
       const ex = sum(exAgg);
       if (ex > 0 && nm / ex > 0.1) warn(info, 'warn', Math.round(100 * nm / ex) + '% of the magnetic fraction is non-ferrous pieces dragged along.');
+    }
+    if (M.id === 'sensor') {
+      const T = MATERIALS[s.target], tm = info.perMat[s.target] ? info.perMat[s.target].mass : 0;
+      if (T && tm / Math.max(info.inKg, 1) < 0.005) warn(info, 'warn', 'Almost no ' + T.name + ' in the feed: the sorter is scanning for something that is not there.');
+      const fine = (function () { let f = 0; for (let i = 0; i < NB; i++) if (MID[i] < 10) f += inAgg[i]; return f / Math.max(sum(inAgg), 1); })();
+      if (fine > 0.3) warn(info, 'warn', 'Over ' + Math.round(fine * 100) + '% of the feed is under 10 mm. The sensor cannot resolve pieces that small and the air jets miss them. Screen the fines off first.');
     }
     return { outs: { extract: ext, residue: res }, info };
   }

@@ -10,7 +10,7 @@ Feed a mix of materials into a line of real industrial machines, run a batch, an
 
 - **Start small.** You own a jaw crusher, a twin-shaft shredder, a magnetic drum and a vibrating screen, plus $25,000. The starter line tears end-of-life vehicles, pulls the steel and screens the rest.
 - **Run batches.** Each batch buys feed, pays for power and consumables, and sells the product bins. The net lands in your bank on a score card at the end of the run.
-- **Buy and upgrade.** Eighteen more machines can be bought from the flowsheet panel. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Supplier contracts unlock richer feeds such as tires, zorba and quarry rubble.
+- **Buy and upgrade.** Nineteen more machines can be bought from the flowsheet panel. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Supplier contracts unlock richer feeds such as tires, zorba and quarry rubble.
 - **Take contracts.** Clients post jobs with a spec sheet: target material, purity, recovery, a size window and an energy cap. They supply the feed. Bins that meet the spec ship, stars decide the fee, and every job hides a machine that looks right but is wrong for that material.
 - **Rank up.** Net worth is bank plus everything you own. It moves you from Scrapyard through Recycler, Processor, Plant operator and Industrial group to Mega-plant.
 
@@ -20,7 +20,7 @@ Preset lines act as blueprints: loading one you cannot afford shows what to buy.
 
 **Materials:** steel, cast iron, aluminum, copper, brass, pot metal (zinc die-cast), wood, rubber, plastic, glass, granite, limestone, hydrogel and water. Each has density, a Bond work index (published values for the rocks, calibrated for the rest), ductility, conductivity, magnetism, abrasiveness and a response profile to each breaking mechanism at ambient, freezer and cryogenic temperature.
 
-**Machines (22):**
+**Machines (23):**
 
 | Family | Machines |
 | --- | --- |
@@ -28,14 +28,14 @@ Preset lines act as blueprints: loading one you cannot afford shows what to buy.
 | Impact and shredding | Vertical shaft impactor, hammermill shredder, tub grinder, twin-shaft shear shredder, single-shaft shredder, granulator, drum chipper |
 | Fine and cold | Ball mill, cryogenic mill, blast freezer |
 | Hydraulic shear | Colloid mill, high-pressure homogenizer, high-pressure atomizer |
-| Separation | Magnetic drum, eddy current separator, zig-zag air classifier, vibrating screen, sink-float tank |
+| Separation | Magnetic drum, eddy current separator, zig-zag air classifier, vibrating screen, sink-float tank, sensor sorter (XRT / LIBS) |
 
 **Physics in the numbers:**
 
 - Particle size distributions are Rosin-Rammler curves over 24 log-spaced size bins from 1 µm to 1 m.
 - Comminution energy follows Bond's law, `E = 10 · Wi · (1/√P80 − 1/√F80)` kWh/t, divided by machine efficiency and by how well the machine's mechanism mix (compression, impact, shear, attrition, cutting, hydraulic shear) breaks that material.
 - Brittle solids fracture under compression and impact. Ductile metals bend and need shear or cutting. Wood is cut or hammered. Rubber bounces unless chilled below its glass transition. Gel is sheared through micron gaps. Water cannot be crushed: freeze it and crush the ice, or atomize it.
-- Separators apply partition curves: magnetic recovery, eddy-current force from conductivity over density, terminal velocity in air, screen aperture, and float-sink by density.
+- Separators apply partition curves: magnetic recovery, eddy-current force from conductivity over density, terminal velocity in air, screen aperture, float-sink by density, and a sensor sorter that recognises one chosen material on 10 to 150 mm pieces.
 - Each machine has capacity and rated power, so the slowest or most power-limited node sets the head feed rate. Wear accrues with abrasiveness, and worn machines lose efficiency until serviced.
 
 ## Play
@@ -75,6 +75,10 @@ node tests/lines.js
 
 ```bash
 node tests/contracts.js
+```
+
+```bash
+node tests/sensor.js
 ```
 
 ## Sources

@@ -433,6 +433,78 @@
     }
   };
 
+  /* ======================= SENSOR SORTER (XRT / LIBS) ======================= */
+  // belt from x0 to the head pulley at x1; the scanner arch sits over `scan`, the air-jet bar just past the pulley
+  const SNS = { x0: 50, x1: 600, y: 232, scan: 330, jet: 608, split: 735 };
+  S.sensor = {
+    omega: () => 4,
+    init(cam) { cam.scan = 0; cam.scanHit = 0; },
+    update(cam, dt, st) {
+      decay(cam, dt);
+      cam.scan = Math.max(0, (cam.scan || 0) - dt * 5); cam.scanHit = Math.max(0, (cam.scanHit || 0) - dt * 4);
+      const n = cam.spawnCount(dt, 3 + 10 * st.load);
+      for (let i = 0; i < n; i++) { const p = sepPiece(cam, st, SNS.x0, 0); if (!p) break; p.r = Math.min(p.r, 15); p.y = SNS.y - p.r; p.mode = 'belt'; p.vx = 130; p.tagged = false; cam.push(p); }
+      const arr = cam.parts;
+      for (let i = 0; i < arr.length; i++) {
+        const p = arr[i]; if (p.state !== 'free') continue;
+        if (p.mode === 'belt') {
+          const was = p.x; p.x += 130 * dt; p.ang *= 0.9;
+          if (was < SNS.scan && p.x >= SNS.scan) { if (p.fate) { p.tagged = true; cam.scanHit = 1; } else cam.scan = 1; }   // the scanner decides here
+          if (p.x >= SNS.x1) {
+            p.mode = 'air';
+            if (p.tagged) {   // air jet fires: the piece is kicked up and over the splitter
+              p.vx = 250 + rnd(-15, 25); p.vy = -rnd(120, 160);
+              for (let k = 0; k < 4; k++) cam.fx.push({ x: SNS.jet + rnd(-4, 4), y: SNS.y + 8, vx: rnd(-10, 40), vy: -rnd(120, 220), g: 0, life: 0.22, max: 0.22, size: rnd(2, 4), grow: 14, col: '#ffffff', soft: true });
+            } else { p.vx = 130 + rnd(-10, 10); p.vy = 0; }
+          }
+        } else {
+          p.vy += 520 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.ang += p.spin * dt;
+          if (p.y > 318) { count(cam, p.fate ? 'a' : 'b'); p.state = 'gone'; }
+        }
+      }
+    },
+    drawParticlesExtra(cam, ctx) {
+      // pieces the scanner recognised carry a green ring until the jets take them
+      for (let i = 0; i < cam.parts.length; i++) {
+        const p = cam.parts[i]; if (p.mode !== 'belt' || !p.tagged) continue;
+        ctx.strokeStyle = 'rgba(92,255,177,0.85)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 4, 0, TAU); ctx.stroke();
+      }
+    },
+    draw(cam, ctx, st, pass) {
+      const T = CS.MATERIALS[st.s.target], hit = cam.scanHit || 0, seen = cam.scan || 0;
+      if (pass === 0) {
+        // belt and head pulley
+        ctx.fillStyle = '#20252d'; ctx.fillRect(SNS.x0 - 30, SNS.y, SNS.x1 - SNS.x0 + 30, 9); ctx.fillStyle = '#2d343e'; ctx.fillRect(SNS.x0 - 30, SNS.y, SNS.x1 - SNS.x0 + 30, 3);
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 2; ctx.beginPath();
+        for (let x = SNS.x0 - 30 + (cam.belt * 2 % 18); x < SNS.x1; x += 18) { ctx.moveTo(x, SNS.y + 3); ctx.lineTo(x, SNS.y + 9); } ctx.stroke();
+        ctx.fillStyle = '#2d343e'; ctx.beginPath(); ctx.arc(SNS.x1, SNS.y + 4.5, 7, 0, TAU); ctx.fill();
+        // scanner gantry: X-ray tube above the belt, line detector under it
+        ctx.fillStyle = '#2d3846'; ctx.fillRect(SNS.scan - 46, 118, 6, 127); ctx.fillRect(SNS.scan + 40, 118, 6, 127);
+        ctx.fillStyle = '#18212b'; ctx.fillRect(SNS.scan - 46, 112, 92, 46); ctx.strokeStyle = '#33414f'; ctx.lineWidth = 3; ctx.strokeRect(SNS.scan - 46, 112, 92, 46);
+        ctx.fillStyle = '#6a7685'; ctx.fillRect(SNS.scan - 8, 158, 16, 8);                     // tube window
+        ctx.fillStyle = '#3b4756'; ctx.fillRect(SNS.scan - 34, SNS.y + 10, 68, 8);             // detector line
+        // fan beam: cyan at rest, bright when any piece is read, green when it is the target
+        const g = ctx.createLinearGradient(0, 166, 0, SNS.y + 10);
+        const col = hit > 0.05 ? '92,255,177' : '127,227,255', a = 0.12 + 0.5 * hit + 0.2 * seen;
+        g.addColorStop(0, 'rgba(' + col + ',' + a + ')'); g.addColorStop(1, 'rgba(' + col + ',' + (a * 0.25) + ')');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(SNS.scan - 6, 166); ctx.lineTo(SNS.scan + 6, 166); ctx.lineTo(SNS.scan + 34, SNS.y + 10); ctx.lineTo(SNS.scan - 34, SNS.y + 10); ctx.closePath(); ctx.fill();
+        // decision lamp on the gantry
+        ctx.fillStyle = hit > 0.05 ? 'rgba(92,255,177,' + (0.4 + 0.6 * hit) + ')' : '#263038'; ctx.beginPath(); ctx.arc(SNS.scan + 32, 124, 5, 0, TAU); ctx.fill();
+        // air-jet valve bar past the head pulley, fed from a receiver tank
+        ctx.fillStyle = '#6a7685'; ctx.fillRect(SNS.jet - 7, SNS.y + 12, 14, 28);
+        ctx.fillStyle = '#10151c'; for (let k = 0; k < 3; k++) ctx.fillRect(SNS.jet - 2, SNS.y + 15 + k * 8, 4, 3);
+        ctx.strokeStyle = '#4f6a82'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(SNS.jet, SNS.y + 40); ctx.lineTo(SNS.jet, 300); ctx.lineTo(540, 300); ctx.stroke();
+        ctx.fillStyle = '#273240'; ctx.fillRect(470, 286, 70, 28); ctx.strokeStyle = '#33414f'; ctx.lineWidth = 2; ctx.strokeRect(470, 286, 70, 28);
+        label(ctx, 'AIR', 505, 304, '#9fb3c8', 'center');
+        // splitter blade between the two chutes
+        ctx.fillStyle = '#6a7685'; ctx.beginPath(); ctx.moveTo(SNS.split, 262); ctx.lineTo(SNS.split + 10, 330); ctx.lineTo(SNS.split - 10, 330); ctx.closePath(); ctx.fill();
+      } else {
+        bins(cam, ctx, [760, 300, 130, 72], [610, 300, 110, 72], st.M.outs.extract, st.M.outs.residue);
+        tag(ctx, 'TARGET ' + (T ? T.name : String(st.s.target)).toUpperCase(), SNS.scan, 100, 'center');
+      }
+    }
+  };
+
   S.fallback = { omega: () => 1, update() {}, draw(cam, ctx) { label(ctx, 'NO VIEW FOR THIS MACHINE', 450, 190, '#7fe3ff', 'center'); } };
   CS.Scenes.sampleMm = sampleMm;
 })(typeof window !== 'undefined' ? window : globalThis);

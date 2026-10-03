@@ -34,8 +34,8 @@
     (function () {
       const CS = window.CS, MACHINES = CS.MACHINES, GROUPS = CS.MACHINE_GROUPS, FEEDS = CS.FEEDS, Sim = CS.Sim;
       // representative feed per machine, and the stages that pre-reduce it so the machine accepts it
-      const FEED = { jaw: 'quarry', cone: 'quarry', roll: 'quarry', hpgr: 'quarry', vsi: 'quarry', hammer: 'elv', tub: 'pallets', twin: 'tires', single: 'tires', granulator: { plastic: 1 }, chipper: 'pallets', ball: 'quarry', cryo: 'tires', freezer: 'lab', colloid: 'gel', homog: 'gel', atomizer: 'water', magnet: 'elv', eddy: 'zorba', air: 'elv', screen: 'quarry', sinkfloat: 'zorba' };
-      const PRE = { cone: ['jaw'], roll: ['jaw'], hpgr: ['jaw', 'cone'], vsi: ['jaw', 'cone'], single: ['twin'], granulator: ['twin', 'single'], ball: ['jaw', 'cone'], cryo: ['twin', 'single'], colloid: ['single', 'granulator'], homog: ['single', 'granulator', 'colloid'], magnet: ['hammer'], eddy: ['hammer'], air: ['hammer'], screen: ['jaw', 'cone'], sinkfloat: ['hammer'] };
+      const FEED = { jaw: 'quarry', cone: 'quarry', roll: 'quarry', hpgr: 'quarry', vsi: 'quarry', hammer: 'elv', tub: 'pallets', twin: 'tires', single: 'tires', granulator: { plastic: 1 }, chipper: 'pallets', ball: 'quarry', cryo: 'tires', freezer: 'lab', colloid: 'gel', homog: 'gel', atomizer: 'water', magnet: 'elv', eddy: 'zorba', air: 'elv', screen: 'quarry', sinkfloat: 'zorba', sensor: 'zorba' };
+      const PRE = { cone: ['jaw'], roll: ['jaw'], hpgr: ['jaw', 'cone'], vsi: ['jaw', 'cone'], single: ['twin'], granulator: ['twin', 'single'], ball: ['jaw', 'cone'], cryo: ['twin', 'single'], colloid: ['single', 'granulator'], homog: ['single', 'granulator', 'colloid'], magnet: ['hammer'], eddy: ['hammer'], air: ['hammer'], screen: ['jaw', 'cone'], sinkfloat: ['hammer'], sensor: ['twin', 'sinkfloat'] };
       const root = document.getElementById('root'), cams = [];
       for (const [grp, ids] of GROUPS) {
         const h = document.createElement('div'); h.className = 'group'; h.textContent = grp; root.appendChild(h);
@@ -44,8 +44,10 @@
           const M = MACHINES[id];
           const comp = typeof FEED[id] === 'string' ? FEEDS[FEED[id]].comp : FEED[id];
           const line = (PRE[id] || []).map(function (m) { return Sim.makeNode(m, {}, 'feed'); });
-          line.forEach(function (n, i) { if (i > 0) n.src = { uid: line[i - 1].uid, port: 'product' }; });
-          line.push(Sim.makeNode(id, {}, line.length ? { uid: line[line.length - 1].uid, port: 'product' } : 'feed'));
+          // after a separator the next stage takes what it rejected (the sinks of a 2.9 g/cc float carry the copper)
+          const outPort = function (n) { return MACHINES[n.m].kind === 'separator' ? 'residue' : 'product'; };
+          line.forEach(function (n, i) { if (i > 0) n.src = { uid: line[i - 1].uid, port: outPort(line[i - 1]) }; });
+          line.push(Sim.makeNode(id, {}, line.length ? { uid: line[line.length - 1].uid, port: outPort(line[line.length - 1]) } : 'feed'));
           const ev = Sim.evalLine(line, comp), inf = ev.nodes[ev.nodes.length - 1];
           const compList = []; for (const m in inf.inStream.m) { const k = Sim.sum(inf.inStream.m[m]); if (k > 0) compList.push([m, k]); }
           const st = { M: M, s: line[line.length - 1].settings, running: true, load: 0.6, comp: compList, perMat: inf.perMat, F80: inf.F80, P80: inf.P80, topMm: inf.topMm || inf.P80 * 1.5, temp: Math.max(inf.inStream.temp, M.coldLevel ? 1 : 0), kind: inf.kind };

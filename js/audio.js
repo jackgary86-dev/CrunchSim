@@ -68,7 +68,8 @@
     vsi: { f: 140, type: 'sawtooth', lp: 900, n: 0.2 }, hammer: { f: 90, type: 'sawtooth', lp: 600, n: 0.25 }, tub: { f: 70, type: 'sawtooth', lp: 500, n: 0.2 }, cryo: { f: 110, type: 'sawtooth', lp: 700, n: 0.3 },
     twin: { f: 30, type: 'sawtooth', lp: 150, n: 0.1 }, single: { f: 55, type: 'sawtooth', lp: 300, n: 0.12 }, granulator: { f: 160, type: 'sawtooth', lp: 1200, n: 0.15 }, chipper: { f: 120, type: 'sawtooth', lp: 900, n: 0.18 },
     ball: { f: 28, type: 'triangle', lp: 160, n: 0.3 }, colloid: { f: 220, type: 'sawtooth', lp: 1800, n: 0.08 }, homog: { f: 75, type: 'square', lp: 400, n: 0.1 }, atomizer: { f: 0, type: 'sine', lp: 3000, n: 0.35 },
-    freezer: { f: 0, type: 'sine', lp: 1200, n: 0.3 }, magnet: { f: 50, type: 'sine', lp: 120, n: 0.03 }, eddy: { f: 180, type: 'triangle', lp: 500, n: 0.05 }, air: { f: 0, type: 'sine', lp: 1500, n: 0.3 }, screen: { f: 16, type: 'square', lp: 120, n: 0.1 }, sinkfloat: { f: 0, type: 'sine', lp: 500, n: 0.12 }
+    freezer: { f: 0, type: 'sine', lp: 1200, n: 0.3 }, magnet: { f: 50, type: 'sine', lp: 120, n: 0.03 }, eddy: { f: 180, type: 'triangle', lp: 500, n: 0.05 }, air: { f: 0, type: 'sine', lp: 1500, n: 0.3 }, screen: { f: 16, type: 'square', lp: 120, n: 0.1 }, sinkfloat: { f: 0, type: 'sine', lp: 500, n: 0.12 },
+    sensor: { f: 0, type: 'sine', lp: 2500, n: 0.18 }   // belt whine and compressed-air hiss
   };
   function setHum(scene, level) {
     if (!init()) return;

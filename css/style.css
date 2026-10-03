@@ -244,3 +244,10 @@ button.bad { border-color: var(--red); color: var(--red); }
 .card .reason { font-size: 12px; margin-bottom: 8px; }
 .card .lesson { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--cyan); background: var(--panel-2); font-size: 12px; line-height: 1.4; }
 .card .loss { margin-top: 8px; font-size: 11px; color: var(--amber); }
+
+/* ---------- blueprints ---------- */
+.bp-name { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 4px 6px; font-family: var(--mono); font-size: 12px; }
+.bp-name:focus { outline: none; border-color: var(--cyan); }
+.urow.fit { border-color: var(--green); }
+.urow .btns { display: flex; gap: 4px; }
+.tag.fit { color: var(--green); border-color: var(--green); margin-left: 6px; }

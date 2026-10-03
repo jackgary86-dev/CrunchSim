@@ -245,6 +245,29 @@ button.bad { border-color: var(--red); color: var(--red); }
 .card .lesson { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--cyan); background: var(--panel-2); font-size: 12px; line-height: 1.4; }
 .card .loss { margin-top: 8px; font-size: 11px; color: var(--amber); }
 
+/* ---------- run economics (#18 to #22) ---------- */
+#btn-run .proj { font-size: 10px; letter-spacing: 0; margin-left: 6px; color: var(--green); }
+#btn-run.neg { border-color: var(--amber); color: var(--amber); background: #33230e; }
+#btn-run.neg .proj { color: var(--amber); }
+#run-net.reason { color: var(--amber); font-size: 10px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bin .d.price { color: var(--text); }
+.bin .d.price b { font-family: var(--mono); color: var(--amber); font-weight: 400; }
+.chk-auto { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: 1px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.chk-auto input { margin: 0; accent-color: var(--green); }
+.card { max-height: 94%; overflow-y: auto; }
+.card dd.warn { color: var(--amber); }
+.card .sec { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); margin: 10px 0 4px; }
+.card .ptable { display: grid; grid-template-columns: 1fr 60px 72px 64px; gap: 2px 8px; font-family: var(--mono); font-size: 11px; }
+.card .ptable span:nth-child(4n+2), .card .ptable span:nth-child(4n+3), .card .ptable span:nth-child(4n+4) { text-align: right; }
+.card .ptable .h { color: var(--muted); font-size: 10px; letter-spacing: 1px; }
+.card .ptable .tot { border-top: 1px solid var(--line-2); color: var(--cyan); padding-top: 2px; }
+.card .loss b { color: var(--amber); font-weight: 400; }
+.card .loss > b { letter-spacing: 2px; font-family: var(--mono); font-size: 10px; }
+.card .loss div { margin: 3px 0; color: var(--text); }
+.card .loss .cause { color: var(--muted); }
+.card .bynode { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: 4px; }
+.card .hint { margin-top: 8px; font-size: 11px; color: var(--green); }
+
 /* ---------- blueprints ---------- */
 .bp-name { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 4px 6px; font-family: var(--mono); font-size: 12px; }
 .bp-name:focus { outline: none; border-color: var(--cyan); }

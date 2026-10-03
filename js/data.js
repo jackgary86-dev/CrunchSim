@@ -317,7 +317,10 @@
       how: 'Air at about -30 C freezes everything on the belt. Water turns into brittle ice and gel into a brittle frozen block, so they can finally be crushed. The catch is the latent heat of fusion: about 334 kJ per kg of water, roughly 60 kWh per tonne of electricity.',
       best: 'Water and hydrogel ahead of a crusher.', avoid: 'Dry metals and rock: freezing them only wastes power.'
     },
-    /* ---- separators ---- */
+    /* ---- separators ----
+     * Purchase prices climb in the order a hammermill-only yard should buy them: sink-float, magnet, air classifier,
+     * eddy current, screen. The first three are the cheap, high-yield sorters for mixed shred; the screen only pays on rock and wood.
+     */
     magnet: {
       name: 'Magnetic drum', short: 'MAG', cat: 'Separation', kind: 'separator', scene: 'magnet',
       eSpec: 0.15, cap: 80, capRef: 1, capExp: 0, pidle: 4, prated: 20, life: 1e9, price: 22000, service: 1300, wearInfo: 'n/a',
@@ -344,7 +347,8 @@
     },
     screen: {
       name: 'Vibrating screen', short: 'SCRN', cat: 'Separation', kind: 'separator', scene: 'screen',
-      eSpec: 0.4, cap: 120, capRef: 1, capExp: 0, pidle: 5, prated: 30, life: 1e9, price: 18000, service: 1100, wearInfo: 'n/a',
+      // price: a 6 x 16 ft double-deck scalping screen for shredder output, with feeder, support tower, chutes and dust enclosure, is about $115k installed.
+      eSpec: 0.4, cap: 120, capRef: 1, capExp: 0, pidle: 5, prated: 30, life: 1e9, price: 115000, service: 1100, wearInfo: 'n/a',
       settings: [S('aperture', 'Aperture', 'mm', 1, 150, 1, 25, true)],
       outs: { extract: 'Undersize', residue: 'Oversize' },
       how: 'A vibrating inclined deck with square openings: pieces smaller than the aperture fall through, bigger ones ride down the deck. It does not change particle size, it sorts by it. Real plants return the oversize to the crusher.',
@@ -352,7 +356,8 @@
     },
     sinkfloat: {
       name: 'Sink-float tank', short: 'SINK', cat: 'Separation', kind: 'separator', scene: 'sinkfloat',
-      eSpec: 2.0, cap: 15, capRef: 1, capExp: 0, pidle: 10, prated: 40, life: 1e9, price: 65000, service: 3900, wearInfo: 'n/a', mediaCost: 1.2,
+      // price: a small skid-mounted float-sink tank with drag-out conveyors (plastics-washing-line class) is about $18k new; the heavy medium is bought per tonne as mediaCost.
+      eSpec: 2.0, cap: 15, capRef: 1, capExp: 0, pidle: 10, prated: 40, life: 1e9, price: 18000, service: 3900, wearInfo: 'n/a', mediaCost: 1.2,
       settings: [S('sg', 'Medium density', 'g/cc', 1.0, 4.0, 0.05, 2.9)],
       outs: { extract: 'Floats (lighter)', residue: 'Sinks (heavier)' },
       how: 'Pieces are dropped into a liquid whose density is tuned between the materials you want to split. Anything lighter floats, anything heavier sinks. A medium at about 2.9 g/cc floats aluminum at 2.7 and sinks zinc, brass and copper: it is how mixed "zorba" is split into valuable fractions.',
@@ -479,11 +484,9 @@
   const LINES = {
     starter: {
       name: 'Starter yard', feed: 'elv', tons: 15,
-      blurb: 'What you own on day one: tear, pull the steel, screen the rest.',
+      blurb: 'Day one: a hammermill and nothing else. Mixed shred sells at a discount until you buy a sorter.',
       nodes: [
-        { m: 'twin', s: { width: 60 }, src: 'feed' },
-        { m: 'magnet', s: { field: 250 }, src: '1:product' },
-        { m: 'screen', s: { aperture: 40 }, src: '2:residue' }
+        { m: 'hammer', s: { grate: 100, rpm: 100 }, src: 'feed' }
       ]
     },
     car: {
@@ -585,8 +588,11 @@
   // Purchase prices are scaled from real-world figures so a session of play buys a plant.
   const PRICE_SCALE = 0.2;
   Object.keys(MACHINES).forEach(function (id) { const M = MACHINES[id]; M.price = Math.max(500, Math.round(M.price * PRICE_SCALE / 500) * 500); });
-  const STARTER_MACHINES = ['jaw', 'twin', 'magnet', 'screen'];
-  const START_BANK = 25000;
+  // Day one is a hammermill alone: unsorted shred sells at a discount, and the sorters are unlocked one purchase at a time.
+  const STARTER_MACHINES = ['hammer'];
+  // $2,800 pays for one 15 t batch of ELV feed (110 $/t) with a little spare. A hammermill-only batch nets about $400, so the
+  // first sorter (the $3,500 sink-float tank) is reachable after two batches; tests/progression.js checks this stays true.
+  const START_BANK = 2800;
   const LEVEL_MAX = 5;
   const LEVEL_FX = { cap: 0.20, eta: 0.06, life: 0.30, power: 0.10 };   // per level, multiplicative on base
   function levelCost(M, lvl) { return Math.round(M.price * 0.45 * Math.pow(1.7, lvl) / 100) * 100; }

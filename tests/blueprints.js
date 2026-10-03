@@ -47,7 +47,7 @@ check(Sim.evalLine(BP.deserialise(junk), FEEDS.elv.comp).terminals.length > 0, '
 
 console.log('=== per-contract best');
 const C = Score.CONTRACTS.find((c) => c.id === 'ferrous');
-const starter = Sim.buildLine(LINES.starter);
+const starter = Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }, { m: 'screen', s: { aperture: 40 }, src: '2:residue' }] });   // the old starter yard: TWIN>MAG>SCRN
 const best = {};
 check(BP.recordBest(best, { C, stars: 0, kwhT: 5 }, starter, 'elv') === false && !best.ferrous, 'zero stars is not kept');
 check(BP.recordBest(best, { C, stars: 2, kwhT: 5.2, fee: 700 }, starter, 'elv') === true && best.ferrous.stars === 2 && best.ferrous.sig === 'TWIN>MAG>SCRN', 'two stars stored with signature');

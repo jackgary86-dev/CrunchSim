@@ -442,7 +442,9 @@
     eddy: [4, 2],         // eddy current separator with splitter and feed vibrator
     air: [3, 3],          // zig-zag column with fan and cyclone
     screen: [5, 2],       // 5x1.5 m inclined vibrating screen deck
-    sinkfloat: [6, 3]     // heavy-media drum with media pumps and drain screens
+    sinkfloat: [6, 3],
+    // sensor sorter: 2 m wide belt unit with a 6 m acceleration conveyor; furnaces: 5 t induction cell, 10 t arc furnace with transformer bay, 20 t reverberatory
+    sensor: [6, 2], induction: [5, 4], arc: [8, 6], kiln: [10, 4]     // heavy-media drum with media pumps and drain screens
   };
   Object.keys(MACHINES).forEach(function (id) { const f = FOOTPRINT[id]; if (f) MACHINES[id].foot = { w: f[0], d: f[1] }; });
 

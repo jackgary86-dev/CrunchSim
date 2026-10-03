@@ -28,7 +28,7 @@
   const MAX_W = SIZE.comminution[0];
 
   function primaryPort(M) { return M.kind === 'separator' ? 'extract' : 'product'; }
-  function portsOf(M) { return M.kind === 'separator' ? ['extract', 'residue'] : (M.kind === 'conditioner' ? ['product'] : ['product', 'rejects']); }
+  function portsOf(M) { return M.kind === 'separator' ? ['extract', 'residue'] : (M.kind === 'conditioner' ? ['product'] : (M.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects'])); }
   function srcKey(src) { return !src || src === 'feed' ? 'feed' : src.uid + ':' + src.port; }
 
   function layout(line) {
@@ -551,6 +551,7 @@
     function routeAt(k, f) {
       const node = V.line[k], M = MACHINES[node.m], inf = V.ev.nodes[k], D = MATERIALS[f.mat];
       if (M.kind === 'separator') return Math.random() < Sim.pExtract(M, node.settings, D, f.mm) ? 'extract' : 'residue';
+      if (M.kind === 'furnace') { const pmf = inf && inf.perMat && inf.perMat[f.mat]; return (pmf && Math.random() < (pmf.meltFrac || 0)) ? 'product' : 'dross'; }
       if (M.kind === 'conditioner') { f.frozen = true; if (D.state === 'liquid' && D.feed.blockP80) f.mm = D.feed.blockP80 * (0.6 + 0.8 * Math.random()); return 'product'; }
       const pm = inf.perMat[f.mat];
       if (pm && pm.mass > 0 && Math.random() < pm.rejMass / pm.mass) return 'rejects';

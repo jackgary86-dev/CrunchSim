@@ -106,7 +106,7 @@ if (!LINES.universal) {
 for (const id in LINES) { if (id === 'car' || id === 'universal') continue; audit(LINES[id].name, LINES[id], LINES[id].feed); }
 
 /* ---- a line with a bad source reference falls back to the head feed ---- */
-const broken = Sim.buildLine(LINES.starter); broken[2].src = { uid: 999999, port: 'product' };
+const broken = Sim.buildLine(LINES.car); broken[2].src = { uid: 999999, port: 'product' };
 const bl = layout(broken);
 check(bl.nodes[2].src === 'feed' && bl.belts.some((b) => b.from === 'feed' && b.to.uid === broken[2].uid), 'an unknown source is treated as head feed');
 

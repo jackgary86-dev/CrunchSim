@@ -795,6 +795,7 @@
   function setMuted(m) { S.muted = m; Audio.setMuted(m); $('#btn-mute').innerHTML = m ? '&#128263;' : '&#128266;'; }
 
   function boot() {
+    API.S = S;   // modules may need the state during boot (veto and load hooks run before the full API is assigned)
     const had = load();
     if (!S.ext) S.ext = {};
     API.emit('load', S.ext);

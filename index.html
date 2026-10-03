@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrunchSim</title>
+  <meta name="description" content="CrunchSim: a scientific simulator of how industry crushes, shreds, mills and sorts materials into bits. Jaw crushers to cryogenic mills, aluminum to water.">
+  <meta name="theme-color" content="#070a0f">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23070a0f'/><path d='M22 30h56v12H22zM30 58h40v12H30z' fill='%237fe3ff'/><path d='M46 44l8 12-8 2z' fill='%23ffb25c'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brand"><span class="logo">CRUNCH<b>SIM</b></span><span class="sub">COMMINUTION &amp; RECYCLING SIMULATOR</span></div>
+    <div class="tele clock"><span class="lbl">MISSION CLOCK</span><span id="clock" class="val">T+00:00:00</span></div>
+    <div class="tele"><span class="lbl">BANK</span><span id="money" class="val amber">$0</span></div>
+    <div class="tele"><span class="lbl">NET WORTH &middot; SCORE</span><span id="worth" class="val">$0</span></div>
+    <div class="tele"><span class="lbl">RANK</span><span id="rank" class="val cyan">Scrapyard</span></div>
+    <div class="tele hide-narrow"><span class="lbl">PROCESSED</span><span id="tonnes" class="val">0 t</span></div>
+    <div class="runbox">
+      <button id="btn-run" class="primary" type="button">&#9654; RUN BATCH</button>
+      <button id="btn-stop" type="button" disabled>&#9632; STOP</button>
+      <div class="speed"><span class="lbl">SIM SPEED</span>
+        <button type="button" class="spd on" data-speed="1">1&times;</button>
+        <button type="button" class="spd" data-speed="10">10&times;</button>
+        <button type="button" class="spd" data-speed="60">60&times;</button>
+      </div>
+      <div class="progress" title="Batch progress"><div id="prog"></div></div>
+      <span id="run-net" class="num small"></span>
+    </div>
+    <div class="spacer"></div>
+    <button id="btn-mute" class="icon" type="button" title="Sound on/off (M)">&#128266;</button>
+    <button id="btn-help" class="icon" type="button" title="How to play">?</button>
+  </header>
+
+  <aside id="left">
+    <section class="panel" id="feed-panel">
+      <h2>Feed</h2>
+      <div class="row"><label for="feed-preset">Preset</label><select id="feed-preset"></select></div>
+      <div id="feed-comp"></div>
+      <div class="row">
+        <label for="feed-tons">Batch</label>
+        <input type="range" id="feed-tons" min="1" max="100" step="1" value="15">
+        <span id="feed-tons-v" class="num">15 t</span>
+      </div>
+      <div id="feed-lock" class="small hidden">CONTRACT FEED &middot; supplied by the client, free of charge. Release the contract to change it.</div>
+      <div id="feed-info" class="small"></div>
+      <div id="mat-info" class="matinfo"></div>
+    </section>
+    <section class="panel" id="line-panel">
+      <h2>Flowsheet</h2>
+      <div class="row"><label for="line-preset">Preset line</label><select id="line-preset"></select></div>
+      <div id="line-nodes"></div>
+      <div class="row addrow">
+        <select id="add-machine"></select>
+        <button id="btn-add" type="button">+ ADD</button>
+      </div>
+    </section>
+    <section class="panel" id="contract-panel">
+      <h2>Contracts <span id="contract-active" class="tag"></span></h2>
+      <div id="contracts"></div>
+    </section>
+    <section class="panel" id="bank-panel">
+      <h2>Bank &amp; upgrades</h2>
+      <div class="readouts two" id="bank-readouts"></div>
+      <div class="rankbar"><span id="rank-from"></span><div class="track"><i id="rank-fill"></i></div><span id="rank-to"></span></div>
+      <h3>Plant upgrades</h3>
+      <div id="plant-upgrades"></div>
+      <h3>Supplier contracts</h3>
+      <div id="suppliers"></div>
+      <button id="btn-newgame" type="button" class="danger">NEW GAME</button>
+    </section>
+  </aside>
+
+  <main id="center">
+    <div id="cam-wrap">
+      <canvas id="cam"></canvas>
+      <div id="cam-title"><span id="cam-name">NO MACHINE</span><span id="cam-cat"></span></div>
+      <div id="cam-status" class="hidden"></div>
+      <div id="cam-hint" class="small">MACHINE CAM &middot; click a flowsheet node to view it</div>
+      <div id="scorecard" class="hidden"></div>
+    </div>
+    <section class="panel" id="machine-panel">
+      <div class="mhead">
+        <h2 id="m-name">Machine</h2>
+        <div class="mbtns">
+          <span id="m-wear" class="small"></span>
+          <button id="btn-buy" type="button" class="buy hidden">BUY</button>
+          <button id="btn-upgrade" type="button" class="buy" title="Raise this machine type one level: +20% capacity, +6% efficiency, +30% liner life, +10% power">UPGRADE</button>
+          <button id="btn-service" type="button" title="Replace wear parts">SERVICE</button>
+          <button id="btn-remove" type="button" class="danger">REMOVE</button>
+        </div>
+      </div>
+      <div class="row"><label for="m-src">Input</label><select id="m-src"></select></div>
+      <div id="m-settings"></div>
+      <div id="m-mech" class="mech"></div>
+      <p id="m-how" class="how"></p>
+      <div class="bestavoid">
+        <div><b class="ok">BEST FOR</b> <span id="m-best"></span></div>
+        <div><b class="bad">AVOID</b> <span id="m-avoid"></span></div>
+      </div>
+    </section>
+  </main>
+
+  <aside id="right">
+    <section class="panel" id="tele-panel">
+      <h2>Telemetry <span id="tele-node" class="tag"></span></h2>
+      <div class="readouts" id="readouts"></div>
+      <div class="chart-wrap">
+        <canvas id="psd"></canvas>
+        <div class="legend"><span class="k in">FEED</span><span class="k out">PRODUCT</span><span class="k p80">P80</span></div>
+      </div>
+      <div id="mat-table"></div>
+      <div id="warnings"></div>
+    </section>
+    <section class="panel" id="plant-panel">
+      <h2>Plant</h2>
+      <div class="readouts" id="plant-readouts"></div>
+      <div id="spec" class="hidden"></div>
+      <h3>Product bins <span class="small">per tonne of feed</span></h3>
+      <div id="bins"></div>
+    </section>
+    <section class="panel" id="log-panel">
+      <h2>Event log</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</div>
+
+<div id="help" class="modal hidden">
+  <div class="modal-box">
+    <button class="close" id="btn-help-close" type="button">&times;</button>
+    <h2>CrunchSim</h2>
+    <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
+    <ol>
+      <li><b>Feed.</b> Choose a preset or dial in your own mix of steel, cast iron, aluminum, copper, brass, pot metal, wood, rubber, plastic, glass, granite, limestone, hydrogel and water. Click a material name for its properties.</li>
+      <li><b>Flowsheet.</b> Add machines in order. Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports. Click a node to see it in the cam and edit its settings.</li>
+      <li><b>Run.</b> The batch is processed at the rate the slowest machine allows. The mission clock, power, nitrogen, wear and product value are tracked live. What the products sell for, minus feed, power and consumables, lands in your bank when the batch completes.</li>
+      <li><b>Contracts.</b> Clients post jobs with a spec sheet: purity, recovery, a size window and an energy cap. They supply the feed. Bins that meet the spec ship; stars decide the fee. Every contract has an obvious machine that is the wrong one.</li>
+      <li><b>Upgrade.</b> You start with a jaw crusher, a twin-shaft shredder, a magnet and a screen. Buy new machines from the flowsheet panel, raise a machine type's level for more capacity and efficiency, buy plant upgrades for bigger batches and cheaper power, and sign supplier contracts to unlock richer feeds. Net worth is bank plus everything you own, and it sets your rank.</li>
+    </ol>
+    <h3>The science in the numbers</h3>
+    <ul>
+      <li><b>P80</b> is the size that 80 % of the mass passes. The <b>reduction ratio</b> is feed P80 over product P80.</li>
+      <li><b>Specific energy</b> follows Bond's law: E = 10 &middot; Wi &middot; (1/&radic;P80 &minus; 1/&radic;F80) kWh/t with sizes in micrometres, divided by machine efficiency and by how well the machine's mechanism (compression, impact, shear, attrition, cutting, hydraulic shear) actually breaks that material.</li>
+      <li><b>Brittle</b> things (rock, glass, cast iron, zinc) fracture under compression and impact. <b>Ductile</b> metals bend and ball up: they need shear or cutting. <b>Fibrous</b> wood is cut or hammered. <b>Elastomers</b> bounce unless cooled below their glass transition. <b>Gels</b> are sheared through micron gaps. <b>Liquids</b> cannot be crushed at all: freeze them, or atomize them.</li>
+      <li><b>Separators</b> sort instead of breaking: magnets take ferrous, eddy currents fling conductors, air lifts light fluff, screens size, and a heavy liquid floats aluminum off zinc, brass and copper.</li>
+    </ul>
+    <p class="small">Keys: <b>Space</b> run/stop &middot; <b>1 2 3</b> speed &middot; <b>M</b> sound. Progress is saved in your browser.</p>
+    <h3>Sources</h3>
+    <ul id="sources" class="small"></ul>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/cam.js"></script>
+<script src="js/scenes-a.js"></script>
+<script src="js/scenes-b.js"></script>
+<script src="js/score.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrunchSim gallery</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { overflow: auto; padding: 16px 20px; }
+    h1 { font-family: var(--mono); letter-spacing: 3px; color: var(--cyan); font-size: 20px; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 14px; }
+    .group { font-family: var(--mono); letter-spacing: 3px; color: var(--muted); font-size: 12px; text-transform: uppercase; margin: 18px 0 8px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 14px; }
+    .tile { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 8px 10px 10px; }
+    .tile canvas { width: 100%; aspect-ratio: 900 / 380; display: block; background: #0b1018; border: 1px solid var(--line); border-radius: 3px; }
+    .tile h3 { margin: 2px 0 6px; font-family: var(--mono); color: var(--cyan); font-size: 13px; letter-spacing: 2px; display: flex; justify-content: space-between; }
+    .tile h3 span { color: var(--muted); font-size: 11px; }
+    .tile .meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .tile .meta b { color: var(--text); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <h1>CRUNCHSIM MACHINE GALLERY</h1>
+  <p class="lead">Every machine view running live on a representative feed. Developer page, not part of the game. <a href="index.html" style="color:var(--cyan)">Back to the game</a>.</p>
+  <div id="root"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/cam.js"></script>
+  <script src="js/scenes-a.js"></script>
+  <script src="js/scenes-b.js"></script>
+  <script>
+    (function () {
+      const CS = window.CS, MACHINES = CS.MACHINES, GROUPS = CS.MACHINE_GROUPS, FEEDS = CS.FEEDS, Sim = CS.Sim;
+      // representative feed per machine, and the stages that pre-reduce it so the machine accepts it
+      const FEED = { jaw: 'quarry', cone: 'quarry', roll: 'quarry', hpgr: 'quarry', vsi: 'quarry', hammer: 'elv', tub: 'pallets', twin: 'tires', single: 'tires', granulator: { plastic: 1 }, chipper: 'pallets', ball: 'quarry', cryo: 'tires', freezer: 'lab', colloid: 'gel', homog: 'gel', atomizer: 'water', magnet: 'elv', eddy: 'zorba', air: 'elv', screen: 'quarry', sinkfloat: 'zorba' };
+      const PRE = { cone: ['jaw'], roll: ['jaw'], hpgr: ['jaw', 'cone'], vsi: ['jaw', 'cone'], single: ['twin'], granulator: ['twin', 'single'], ball: ['jaw', 'cone'], cryo: ['twin', 'single'], colloid: ['single', 'granulator'], homog: ['single', 'granulator', 'colloid'], magnet: ['hammer'], eddy: ['hammer'], air: ['hammer'], screen: ['jaw', 'cone'], sinkfloat: ['hammer'] };
+      const root = document.getElementById('root'), cams = [];
+      for (const [grp, ids] of GROUPS) {
+        const h = document.createElement('div'); h.className = 'group'; h.textContent = grp; root.appendChild(h);
+        const grid = document.createElement('div'); grid.className = 'grid'; root.appendChild(grid);
+        for (const id of ids) {
+          const M = MACHINES[id];
+          const comp = typeof FEED[id] === 'string' ? FEEDS[FEED[id]].comp : FEED[id];
+          const line = (PRE[id] || []).map(function (m) { return Sim.makeNode(m, {}, 'feed'); });
+          line.forEach(function (n, i) { if (i > 0) n.src = { uid: line[i - 1].uid, port: 'product' }; });
+          line.push(Sim.makeNode(id, {}, line.length ? { uid: line[line.length - 1].uid, port: 'product' } : 'feed'));
+          const ev = Sim.evalLine(line, comp), inf = ev.nodes[ev.nodes.length - 1];
+          const compList = []; for (const m in inf.inStream.m) { const k = Sim.sum(inf.inStream.m[m]); if (k > 0) compList.push([m, k]); }
+          const st = { M: M, s: line[line.length - 1].settings, running: true, load: 0.6, comp: compList, perMat: inf.perMat, F80: inf.F80, P80: inf.P80, topMm: inf.topMm || inf.P80 * 1.5, temp: Math.max(inf.inStream.temp, M.coldLevel ? 1 : 0), kind: inf.kind };
+          const tile = document.createElement('div'); tile.className = 'tile';
+          const feedName = typeof FEED[id] === 'string' ? FEEDS[FEED[id]].name : 'Plastic';
+          const sizes = inf.kind === 'comminution' ? 'F80 ' + fmt(inf.F80) + ' → P80 ' + fmt(inf.P80) + ', ' + inf.eT.toFixed(1) + ' kWh/t' : (inf.kind === 'separator' ? 'splits ' + fmt(inf.F80) + ' feed' : 'chills to -30 C');
+          tile.innerHTML = '<h3>' + M.name.toUpperCase() + '<span>' + M.cat.toUpperCase() + '</span></h3><canvas></canvas><div class="meta">Feed: <b>' + feedName + '</b>' + (line.length > 1 ? ' after ' + (line.length - 1) + ' stage' + (line.length > 2 ? 's' : '') : '') + ' · ' + sizes + '</div>';
+          grid.appendChild(tile);
+          const cam = new CS.Cam(tile.querySelector('canvas')); cam.setState(st); cams.push(cam);
+        }
+      }
+      function fmt(mm) { return mm >= 1 ? (mm >= 100 ? mm.toFixed(0) : mm.toFixed(1)) + ' mm' : (mm * 1000).toFixed(0) + ' µm'; }
+      let last = performance.now();
+      function tick(now) { const dt = Math.min(0.05, (now - last) / 1000); last = now; for (let i = 0; i < cams.length; i++) cams[i].frame(dt); requestAnimationFrame(tick); }
+      requestAnimationFrame(tick);
+      window.addEventListener('resize', function () { cams.forEach(function (c) { c.resize(); }); });
+    })();
+  </script>
+</body>
+</html>

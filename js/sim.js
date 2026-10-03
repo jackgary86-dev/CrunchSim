@@ -74,7 +74,7 @@
     return a;
   }
   function scaleStream(st, k) {
-    const o = newStream(st.temp);
+    const o = newStream(st.temp); if (st.form) o.form = st.form;
     for (const mat in st.m) addArr(o, mat, st.m[mat], k);
     return o;
   }
@@ -352,9 +352,96 @@
     return { outs: { product: out }, info };
   }
 
+  /* ======================= furnaces ======================= */
+  /* A furnace melts the metals it is built for (M.melts) whose melting point lies below the tap temperature. They leave
+   * through the 'product' port as one alloy bath cast into ingots (stream.form = 'ingot'); the ingot grade is the purity of
+   * that bath. Non-metals, metals the furnace cannot take, metals the tap is too cold for, oversize charge and the metal
+   * oxidised off the bath surface leave through 'dross' (stream.form = 'dross'), keeping their mass.
+   * Energy per tonne = (melt enthalpy + liquid superheat) / thermal efficiency, from the SMELT data in data.js. */
+  const INGOT_BIN = 21;                                     // 178-316 mm: the length of a standard 7-10 kg sow or ingot
+  const INGOT_PSD = new Float64Array(NB); INGOT_PSD[INGOT_BIN] = 1;
+  function procFurnace(node, M, stream) {
+    const s = node.settings, wear = node.wear || 0, lvl = levelOf(node), tap = s.tap;
+    const eta = Math.min(0.97, M.eta * (1 + FX.eta * lvl)) * (1 - 0.3 * wear);   // a worn lining leaks heat
+    const life = M.life * (1 + FX.life * lvl);
+    const melt = newStream(0), dross = newStream(0);
+    melt.form = 'ingot'; dross.form = 'dross';
+    const info = { kind: 'furnace', perMat: {}, warnings: [], inKg: 0, rejKg: 0, chargeKg: 0, meltKg: 0, drossKg: 0, tap };
+    const groups = {};
+    let eKWh = 0, oxKg = 0, meltableKg = 0, domMat = null, domMelt = 0;
+    for (const mat in stream.m) {
+      const D = MATERIALS[mat], arr = stream.m[mat], mass = sum(arr);
+      if (mass <= 1e-9) continue;
+      info.inKg += mass;
+      // scalp what will not go through the charge door
+      const acc = new Float64Array(NB), big = new Float64Array(NB);
+      for (let i = 0; i < NB; i++) { if (MID[i] <= M.maxFeed) acc[i] = arr[i]; else big[i] = arr[i]; }
+      const accMass = sum(acc), bigMass = mass - accMass;
+      if (bigMass > 1e-9) addArr(dross, mat, big);
+      info.rejKg += bigMass; info.chargeKg += accMass;
+      const metal = D.melt != null, canMelt = M.melts.indexOf(mat) >= 0;
+      const fate = !metal ? 'nonmetal' : (!canMelt ? 'wrong' : (tap < D.melt + 10 ? 'cold' : 'melt'));
+      const pm = { mass, accMass, fate, melt: 0, dross: bigMass, meltFrac: 0, E: 0, psd: arr };
+      info.perMat[mat] = pm;
+      if (accMass <= 1e-9) { info.drossKg += pm.dross; continue; }
+      let E = 0;
+      if (fate === 'melt') {
+        meltableKg += accMass;
+        const dT = tap - D.melt;
+        E = (D.meltKWh + D.cpL * dT / 3.6) / eta;             // superheat: cp (kJ/kg K) x K / 3.6 = kWh/t
+        const tempF = 0.6 + dT / 150;                          // oxidation rate: 1.0 at 60 C superheat, about 2x at 200 C
+        const ox = new Float64Array(NB), liq = new Float64Array(NB);
+        for (let i = 0; i < NB; i++) {
+          const x = MID[i], sizeF = x < 1 ? 4 : (x < 5 ? 2.2 : (x < 20 ? 1.3 : 1));   // surface per kg: swarf and fines lose 10-25%, chunky scrap 2-5%
+          const fr = Math.min(0.6, D.drossK * M.drossF * tempF * sizeF);
+          ox[i] = acc[i] * fr; liq[i] = acc[i] - ox[i];
+        }
+        const liqMass = sum(liq), oxMass = sum(ox);
+        addArr(melt, mat, INGOT_PSD, liqMass); if (oxMass > 1e-9) addArr(dross, mat, ox);
+        pm.melt = liqMass; pm.dross += oxMass; pm.meltFrac = liqMass / mass; oxKg += oxMass; info.meltKg += liqMass;
+        const g = GROUP[mat] || mat; groups[g] = (groups[g] || 0) + liqMass;
+        if (liqMass > domMelt) { domMelt = liqMass; domMat = mat; }
+      } else {
+        addArr(dross, mat, acc); pm.dross += accMass;
+        // a lump that never melts still soaks sensible heat up to the bath temperature; non-metal charge heats like slag
+        E = (metal ? D.meltKWh * 0.5 * Math.min(1, (tap - 25) / (D.melt - 25)) : M.slagKWh) / eta;
+      }
+      pm.E = E; eKWh += E * accMass / 1000;
+      info.drossKg += pm.dross;
+    }
+    let dom = 0, domG = null; for (const g in groups) if (groups[g] > dom) { dom = groups[g]; domG = g; }
+    info.purity = info.meltKg > 0 ? dom / info.meltKg : 0; info.domGroup = domG; info.domMat = domMat;
+    info.drossFrac = info.inKg > 0 ? info.drossKg / info.inKg : 0;
+    info.meltLoss = meltableKg > 0 ? oxKg / meltableKg : 0;   // share of the meltable metal burnt to oxide
+    const chargeT = info.chargeKg / 1000;
+    Object.assign(info, {
+      flowAcc: chargeT, flowRej: info.rejKg / 1000, flowIn: info.inKg / 1000, ePerHead: eKWh, eT: chargeT > 0 ? eKWh / chargeT : 0,
+      capTph: M.cap * (1 + FX.cap * lvl), wearPerHeadT: chargeT / life * 0.12,   // refractory erodes per tonne melted, same scale as liner wear
+      ln2PerHeadT: 0, extraCostPerHeadT: (M.consumable || 0) * chargeT,
+      F80: percentile(aggregate(stream)), P80: info.meltKg > 0 ? MID[INGOT_BIN] : percentile(aggregate(dross)), ratio: 1, rAvg: 1
+    });
+    // diagnostics
+    const share = (kg) => kg / Math.max(info.inKg, 1e-9);
+    for (const mat in info.perMat) {
+      const pm = info.perMat[mat], D = MATERIALS[mat]; if (share(pm.accMass) < 0.03) continue;
+      if (pm.fate === 'wrong') warn(info, 'bad', D.name + ' cannot be melted in this furnace: ' + Math.round(100 * share(pm.accMass)) + '% of the charge goes to the dross bin unmelted. ' + (D.magnetic ? 'Pull it with a magnet first.' : 'Sort it out first.'));
+      else if (pm.fate === 'cold') warn(info, 'bad', D.name + ' melts at ' + D.melt + ' \u00b0C but the tap is ' + tap + ' \u00b0C: it sits in the bath as unmelted lumps and goes to dross. Raise the tap temperature.');
+      else if (pm.fate === 'nonmetal') warn(info, 'warn', Math.round(100 * share(pm.accMass)) + '% of the charge is ' + D.name.toLowerCase() + '. It burns off or ends up in the dross, and the furnace still has to heat it.');
+    }
+    if (info.rejKg > 0.02 * info.inKg) warn(info, 'warn', Math.round(100 * info.rejKg / info.inKg) + '% of the feed is too big for the ' + M.maxFeed + ' mm charge door and is rejected to dross. Shred it first.');
+    if (info.meltKg > 0 && info.purity < 0.9) {
+      const nm = MATERIALS[domG] ? MATERIALS[domG].name.toLowerCase() : domG;
+      warn(info, info.purity < 0.8 ? 'bad' : 'warn', 'The melt is only ' + Math.round(info.purity * 100) + '% ' + nm + '. Everything that melts alloys together, so a mixed ingot sells for a fraction of a clean one. Sort before you smelt.');
+    }
+    if (info.meltLoss > 0.08) warn(info, 'warn', Math.round(info.meltLoss * 100) + '% of the metal burns to dross: fines oxidise fast and a hot bath makes it worse.');
+    if (domMat) { const D = MATERIALS[domMat]; warn(info, 'info', 'Tap ' + tap + ' \u00b0C is ' + (tap - D.melt) + ' \u00b0C above the ' + D.name.toLowerCase() + ' melting point (' + D.melt + ' \u00b0C). Each extra 100 \u00b0C costs about ' + Math.round(D.cpL * 100 / 3.6 / eta) + ' kWh/t and oxidises more metal.'); }
+    return { outs: { product: melt, dross }, info };
+  }
+
   function procNode(node, stream) {
     const M = MACHINES[node.m];
     if (M.kind === 'separator') return procSeparator(node, M, stream);
+    if (M.kind === 'furnace') return procFurnace(node, M, stream);
     if (M.kind === 'conditioner') return procFreezer(node, M, stream);
     return procComminution(node, M, stream);
   }
@@ -383,7 +470,7 @@
     const terminals = [];
     for (const key in ports) if (!consumed[key]) {
       const p = key.split(':');
-      terminals.push({ key, uid: Number(p[0]), port: p[1], stream: ports[key] });
+      terminals.push({ key, uid: Number(p[0]), port: p[1], stream: ports[key], form: ports[key].form || null });
     }
     return { head, nodes, ports, terminals };
   }
@@ -406,7 +493,12 @@
 
   /* ======================= product value ======================= */
   const GROUP = { steel: 'ferrous', castiron: 'ferrous', granite: 'aggregate', limestone: 'aggregate' };
-  function binStats(mats) {
+  // A cast ingot sells on the purity of the melt: secondary alloy specs tolerate a few percent of tramp metal, and below
+  // about 80% it is "alloy soup" a refiner must re-melt, worth little more than the scrap in it (floor 12% of ingot price).
+  function ingotGrade(share) { return Math.max(0.12, Math.pow(Math.min(1, Math.max(0, (share - 0.8) / 0.19)), 1.5)); }
+  const DROSS_VALUE = 0.15;   // dross processors pay roughly 10-20% of metal value for the metal locked in it
+  /* mats: {materialId: psd}. form (optional): 'ingot' or 'dross' from a furnace; anything else is priced as loose scrap. */
+  function binStats(mats, form) {
     let total = 0; const groups = {}, perMat = {};
     for (const mat in mats) {
       const m = sum(mats[mat]); if (m <= 0) continue;
@@ -416,17 +508,20 @@
     let dom = 0, domG = null;
     for (const g in groups) if (groups[g] > dom) { dom = groups[g]; domG = g; }
     const share = total > 0 ? dom / total : 0;
-    const grade = Math.pow(Math.min(1, Math.max(0.15, (share - 0.5) / 0.45)), 1.2);
+    const ingot = form === 'ingot';
+    const grade = ingot ? ingotGrade(share) : Math.pow(Math.min(1, Math.max(0.15, (share - 0.5) / 0.45)), 1.2);
     let value = 0;
     for (const mat in perMat) {
       const D = MATERIALS[mat], p = perMat[mat].p80, lo = D.range[0], hi = D.range[1];
       let sf = 1;
-      if (p > hi) sf = Math.max(0.2, 1 - 0.6 * Math.log10(p / hi));
+      if (ingot) { /* an ingot is a fixed form: size does not matter */ }
+      else if (p > hi) sf = Math.max(0.2, 1 - 0.6 * Math.log10(p / hi));
       else if (p < lo) sf = Math.max(0.2, 1 - 0.7 * Math.log10(lo / p));
       perMat[mat].sizeFactor = sf;
-      value += perMat[mat].mass / 1000 * D.sell * prices.market * sf * grade;
+      const v = perMat[mat].mass / 1000 * (ingot ? (D.ingot || D.sell) : D.sell) * prices.market * sf * grade * (form === 'dross' ? DROSS_VALUE : 1);
+      perMat[mat].value = v; value += v;
     }
-    return { total, share, domGroup: domG, grade, value, perMat, p80: percentile(aggregateMap(mats)) };
+    return { total, share, domGroup: domG, grade, value, perMat, p80: percentile(aggregateMap(mats)), form: form || null };
   }
   function aggregateMap(mats) {
     const a = new Float64Array(NB);
@@ -461,7 +556,7 @@
   G.CS.Sim = {
     makeNode, buildLine, nextUid,
     NB, LOW, EDGE, MID, makePSD, percentile, sum, newStream, addArr, streamMass, aggregate, aggregateMap, makeFeed,
-    profileFor, mixResp, procNode, evalLine, maxRate, binStats, cumCurve, pExtract,
+    profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, ingotGrade, cumCurve, pExtract,
     prices, levelOf
   };
 })(typeof window !== 'undefined' ? window : globalThis);

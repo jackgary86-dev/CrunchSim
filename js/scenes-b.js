@@ -505,6 +505,124 @@
     }
   };
 
+  /* ======================= FURNACE (induction, arc, reverberatory) ======================= */
+  const FUR = { x0: 300, x1: 600, top: 150, bath: 212, bot: 300 };
+  /* incandescence colour of the bath: dull red at 450 C, orange around 1000 C, yellow-white at 1750 C */
+  function bathColor(tap) {
+    const t = clamp((tap - 450) / 1300, 0, 1);
+    return [(200 + 55 * t) | 0, (40 + 190 * t) | 0, (10 + 150 * t * t) | 0];
+  }
+  S.furnace = {
+    omega: () => 4,
+    init(cam) { cam.ingots = []; cam.melted = []; cam.pourAcc = 0; },
+    update(cam, dt, st) {
+      decay(cam, dt);
+      if (!cam.ingots) S.furnace.init(cam);
+      const [cr, cg, cb] = bathColor(st.s.tap), hot = 'rgb(' + cr + ',' + cg + ',' + cb + ')';
+      const n = cam.spawnCount(dt, 2 + 8 * st.load);
+      for (let i = 0; i < n; i++) {
+        const mat = pickMat(st); if (!mat) break;
+        const m = st.perMat && st.perMat[mat];
+        const mm = (m && m.psd && sampleMm(m.psd)) || sizeIn(st, mat);
+        const p = newPiece(mat, mm, 360 + rnd(-22, 22), 14); p.r = Math.min(p.r, 14); p.vy = 40; p.mode = 'charge';
+        p.fate = Math.random() < (m ? m.meltFrac : 0);   // true = melts into the bath, false = skimmed to dross
+        cam.push(p);
+      }
+      const arr = cam.parts;
+      for (let i = 0; i < arr.length; i++) {
+        const p = arr[i]; if (p.state !== 'free') continue;
+        if (p.mode === 'charge') {
+          p.vy += 520 * dt; p.y += p.vy * dt; p.ang += p.spin * dt;
+          if (p.y > FUR.bath - p.r * 0.5) {
+            p.y = FUR.bath - p.r * 0.5; p.vy = 0;
+            if (p.fate) { p.mode = 'melting'; p.t = 0; cam.mist(p.x, FUR.bath - 6, 3, hot, 16); cam.crunch(p, 0.2); }
+            else { p.mode = 'float'; p.vx = -rnd(40, 70); }
+          }
+        } else if (p.mode === 'melting') {   // sinks into the bath, glowing, and shrinks away
+          p.t += dt; p.r = Math.max(1, p.r * (1 - dt * 2.2)); p.col = hot; p.y += 12 * dt;
+          if (p.t > 0.7 || p.r <= 1.2) { count(cam, 'a'); if (cam.melted.length < 16) cam.melted.push(p.mat); p.state = 'gone'; }
+        } else if (p.mode === 'float') {     // unmelted: rides the surface to the skimmer on the left
+          p.x += p.vx * dt; p.y = FUR.bath - p.r * 0.4 + Math.sin(cam.t * 3 + p.seed * 9) * 1.2;
+          if (p.x < FUR.x0 + 10) { p.mode = 'skim'; p.vx = -70; p.vy = -50; }
+        } else if (p.mode === 'skim') {
+          p.vy += 520 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.ang += p.spin * dt;
+          if (p.y > 326) { count(cam, 'b'); p.state = 'gone'; }
+        }
+      }
+      // reverberatory stack smoke
+      if (st.M.id === 'kiln' && st.running && Math.random() < dt * 8) cam.fx.push({ x: FUR.x1 + 17 + rnd(-4, 4), y: 4, vx: rnd(-6, 6), vy: -30, g: -8, life: 0.7, max: 0.7, size: 5, grow: 12, col: '#55606c', soft: true });
+      // pour: ingots cast at the spout and carried off on the belt, coloured by what melted
+      const pouring = !!(cam.cnt && cam.cnt.a > 0.5);
+      cam.pourAcc += pouring ? dt * (0.3 + 1.4 * st.load) : 0;
+      while (cam.pourAcc >= 1) {
+        cam.pourAcc -= 1;
+        const mat = cam.melted.length ? cam.melted[Math.floor(Math.random() * cam.melted.length)] : pickMat(st);
+        if (!mat) break;
+        cam.ingots.push({ x: FUR.x1 + 54, y: 316, vy: 0, w: 46, h: 15, col: CS.MATERIALS[mat].color, heat: 1, state: 'drop' });
+        cam.mist(FUR.x1 + 54, 330, 2, hot, 10);
+      }
+      const ing = cam.ingots;
+      for (let i = ing.length - 1; i >= 0; i--) {
+        const g = ing[i];
+        if (g.state === 'drop') { g.vy += 520 * dt; g.y += g.vy * dt; if (g.y >= 346 - g.h / 2) { g.y = 346 - g.h / 2; g.state = 'belt'; } }
+        else { g.x += 55 * dt; g.heat = Math.max(0, g.heat - dt * 0.35); if (g.x > 940) { ing[i] = ing[ing.length - 1]; ing.pop(); } }
+      }
+    },
+    draw(cam, ctx, st, pass) {
+      const [cr, cg, cb] = bathColor(st.s.tap), hot = 'rgb(' + cr + ',' + cg + ',' + cb + ')', id = st.M.id;
+      const fl = 0.9 + 0.1 * Math.sin(cam.t * 11) * Math.sin(cam.t * 7.3);
+      if (pass === 0) {
+        // charge chute
+        ctx.fillStyle = '#18212b'; ctx.beginPath(); ctx.moveTo(310, 10); ctx.lineTo(410, 10); ctx.lineTo(392, 60); ctx.lineTo(328, 60); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#33414f'; ctx.lineWidth = 3; ctx.stroke();
+        // steel shell, firebrick lining, empty freeboard
+        ctx.fillStyle = '#2b3340'; ctx.fillRect(FUR.x0 - 30, FUR.top - 10, FUR.x1 - FUR.x0 + 60, FUR.bot - FUR.top + 36);
+        ctx.fillStyle = '#6b4a3a'; ctx.fillRect(FUR.x0 - 16, FUR.top, FUR.x1 - FUR.x0 + 32, FUR.bot - FUR.top + 22);
+        ctx.fillStyle = '#10151c'; ctx.fillRect(FUR.x0, FUR.top, FUR.x1 - FUR.x0, FUR.bot - FUR.top);
+        // glow in the freeboard, then the incandescent bath with a rippling surface
+        const gl = ctx.createLinearGradient(0, FUR.top, 0, FUR.bath);
+        gl.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ',0)'); gl.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.3 * fl) + ')');
+        ctx.fillStyle = gl; ctx.fillRect(FUR.x0, FUR.top, FUR.x1 - FUR.x0, FUR.bath - FUR.top);
+        const g = ctx.createLinearGradient(0, FUR.bath, 0, FUR.bot);
+        g.addColorStop(0, 'rgba(' + Math.min(255, cr + 40) + ',' + Math.min(255, cg + 50) + ',' + Math.min(255, cb + 60) + ',' + fl + ')');
+        g.addColorStop(1, 'rgb(' + ((cr * 0.55) | 0) + ',' + ((cg * 0.4) | 0) + ',' + ((cb * 0.3) | 0) + ')');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(FUR.x0, FUR.bath);
+        for (let x = FUR.x0; x <= FUR.x1; x += 10) ctx.lineTo(x, FUR.bath + Math.sin(x * 0.06 + cam.t * 2.5) * 1.5);
+        ctx.lineTo(FUR.x1, FUR.bot); ctx.lineTo(FUR.x0, FUR.bot); ctx.closePath(); ctx.fill();
+        if (id === 'induction') {   // water-cooled copper coil turns on both walls, pulsing with the field
+          ctx.strokeStyle = '#c47a4a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+          for (let y = FUR.top + 18; y < FUR.bot; y += 18) { ctx.globalAlpha = 0.65 + 0.35 * (0.5 + 0.5 * Math.sin(cam.t * 9 + y * 0.3)); ctx.beginPath(); ctx.moveTo(FUR.x0 - 26, y); ctx.lineTo(FUR.x0 - 8, y); ctx.moveTo(FUR.x1 + 8, y); ctx.lineTo(FUR.x1 + 26, y); ctx.stroke(); }
+          ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+        } else if (id === 'arc') {   // three graphite electrodes with arcs to the bath
+          for (let k = 0; k < 3; k++) {
+            const x = 400 + k * 50, yT = FUR.bath - 36 + 6 * Math.sin(cam.phase + k);
+            ctx.fillStyle = '#20242a'; ctx.fillRect(x - 9, 0, 18, yT); ctx.fillStyle = '#3a4350'; ctx.fillRect(x - 14, 0, 28, 14);
+            if (st.running && Math.random() < 0.7) { ctx.strokeStyle = 'rgba(190,230,255,' + rnd(0.5, 1) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, yT); ctx.lineTo(x + rnd(-8, 8), yT + 14); ctx.lineTo(x + rnd(-6, 6), FUR.bath); ctx.stroke(); if (Math.random() < 0.12) cam.spark(x, FUR.bath - 4, 3, '#dff4ff'); }
+          }
+        } else {   // reverberatory: burner on the left wall, flame licking over the bath, stack on the right
+          ctx.fillStyle = '#3a4350'; ctx.fillRect(FUR.x0 - 48, FUR.top + 24, 34, 24);
+          for (let k = 0; k < 7; k++) { const t = k / 7; ctx.fillStyle = 'rgba(255,' + ((120 + 100 * t) | 0) + ',40,' + (0.36 - 0.04 * k) + ')'; ctx.beginPath(); ctx.ellipse(FUR.x0 + 20 + 240 * t, FUR.top + 36 + 16 * t * Math.sin(cam.t * 6 + k * 1.7), 30 - 2 * k, 10 + 2 * k, 0, 0, TAU); ctx.fill(); }
+          ctx.fillStyle = '#2b3340'; ctx.fillRect(FUR.x1 + 4, 0, 26, FUR.top);
+        }
+        // tap spout and launder to the casting belt
+        ctx.fillStyle = '#6b4a3a'; ctx.beginPath(); ctx.moveTo(FUR.x1 + 16, FUR.bath - 8); ctx.lineTo(FUR.x1 + 62, FUR.bath + 4); ctx.lineTo(FUR.x1 + 62, FUR.bath + 18); ctx.lineTo(FUR.x1 + 16, FUR.bath + 6); ctx.closePath(); ctx.fill();
+        if (cam.cnt && cam.cnt.a > 0.5 && st.running) { ctx.fillStyle = hot; ctx.globalAlpha = 0.8 * fl; ctx.fillRect(FUR.x1 + 54, FUR.bath + 10, 5 + 2 * Math.sin(cam.t * 13), 346 - FUR.bath - 10); ctx.globalAlpha = 1; }
+      } else {
+        drawBelt(ctx, 346, 560, 900, cam.belt, 55);
+        const ing = cam.ingots || [];
+        for (let i = 0; i < ing.length; i++) {   // flat bars, glowing while hot, cooling to the metal colour down the belt
+          const b = ing[i];
+          ctx.fillStyle = b.col; ctx.fillRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
+          ctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.75 * b.heat) + ')'; ctx.fillRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
+          ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(b.x - b.w / 2, b.y - b.h / 2, b.w, b.h);
+          ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.moveTo(b.x - b.w / 2 + 4, b.y - b.h / 2 + 3); ctx.lineTo(b.x + b.w / 2 - 4, b.y - b.h / 2 + 3); ctx.stroke();
+        }
+        bins(cam, ctx, [700, 60, 130, 50], [200, 296, 110, 62], 'INGOTS', 'DROSS');
+        tag(ctx, 'TAP ' + st.s.tap + ' °C', 450, FUR.top - 22, 'center');
+        label(ctx, id === 'induction' ? 'INDUCTION COIL' : id === 'arc' ? 'GRAPHITE ELECTRODES' : 'GAS BURNER', 450, FUR.bot + 44, '#7d8da0', 'center');
+      }
+    }
+  };
+
   S.fallback = { omega: () => 1, update() {}, draw(cam, ctx) { label(ctx, 'NO VIEW FOR THIS MACHINE', 450, 190, '#7fe3ff', 'center'); } };
   CS.Scenes.sampleMm = sampleMm;
 })(typeof window !== 'undefined' ? window : globalThis);

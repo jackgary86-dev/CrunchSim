@@ -17,7 +17,7 @@ for (const [id, L] of Object.entries(LINES)) {
   console.log('  PRODUCT BINS (per tonne of head feed):');
   let massOut = 0;
   for (const t of ev.terminals) {
-    const st = Sim.binStats(t.stream.m); massOut += st.total;
+    const st = Sim.binStats(t.stream.m, t.form); massOut += st.total;
     if (st.total < 0.5) continue;
     const comps = Object.entries(st.perMat).sort((a, b) => b[1].mass - a[1].mass).slice(0, 4).map(([m, v]) => m + ' ' + f(100 * v.mass / st.total, 0) + '%').join(', ');
     const nm = MACHINES[line[ev.nodes.findIndex(n => n.uid === t.uid)].m];

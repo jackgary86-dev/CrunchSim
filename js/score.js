@@ -23,6 +23,12 @@
       purityMin: 0.97, purityGoal: 0.975, recMin: 0.85, recGoal: 0.95, p80: [5, 80], kwhCap: 7, fee: 22,
       lesson: 'Wood is fibrous: cut it or beat it, but never run it past knives with nails still in it. The magnet goes before anything with an edge.',
       hint: 'Pallets are 1.2 m long. Reduce them before any chipper.' },
+    // purityGoal 0.975: the 2% plastic trim is cut and floats with the wood, so 93/95 = 97.9% is the ceiling once the steel is out
+    // (measured in tests/contracts.js). kwhCap 8: shear-magnet-chipper runs at 6.2 kWh/t, a hammermill at 11.9.
+    { id: 'chair', name: 'Office clear-out', client: 'Facilities department', feed: 'chair', tons: 10, targets: ['wood'], label: 'wood chips',
+      purityMin: 0.97, purityGoal: 0.975, recMin: 0.85, recGoal: 0.95, p80: [5, 40], kwhCap: 8, fee: 30,
+      lesson: 'Desks are particleboard full of screws and staples. A knife that meets a screw is finished, so the magnet goes before the chipper, and a slow shear shredder goes first so the drum will even accept the pieces.',
+      hint: 'Tear, magnet, then chips under 40 mm. A hammermill makes the size but not the energy cap.' },
     { id: 'roadbase', name: 'Road base 8/25', client: 'County roads', feed: 'quarry', tons: 30, targets: ['granite', 'limestone'], label: 'aggregate',
       purityMin: 0.99, purityGoal: 0.99, recMin: 0.85, recGoal: 0.95, p80: [8, 25], kwhCap: 4, fee: 9,
       lesson: 'Every kilowatt-hour spent grinding below the size the customer wants is thrown away. Bond\'s law says energy climbs steeply as the product gets finer.',

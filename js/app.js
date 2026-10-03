@@ -34,6 +34,25 @@
   for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
   let cam = null, dirty = true, lastEval = 0, lastRealT = 0, cardTimer = 0;
 
+  /* ---------------- module interface ----------------
+   * Feature modules live in js/modules/*.js, load after this file, and talk to the app only through CS.app.
+   * Events: 'boot' (after first render), 'render' (every full render), 'batchStart' {run}, 'batchComplete' {r, why, net, bins, cs},
+   * 'tick' {dt, dh} every frame (dh = sim hours advanced this frame, 0 when idle), 'save' (return an object to persist), 'load' (object persisted).
+   */
+  const hooks = {};
+  const API = {
+    on(evt, fn) { (hooks[evt] || (hooks[evt] = [])).push(fn); if (evt === 'boot' && API.booted) fn(); },
+    emit(evt, payload) { (hooks[evt] || []).forEach((fn) => { try { fn(payload); } catch (e) { console.error('module hook ' + evt, e); } }); },
+    /* add a panel to a column ('left' | 'right' | 'center'); returns the <section> to fill */
+    addPanel(column, id, title, before) {
+      const col = $('#' + column), sec = el('section', 'panel', '<h2>' + esc(title) + '</h2>'); sec.id = id;
+      const ref = before ? $('#' + before) : null;
+      if (ref && ref.parentElement === col) col.insertBefore(sec, ref); else col.appendChild(sec);
+      return sec;
+    },
+    booted: false
+  };
+
   /* ---------------- game-layer helpers ---------------- */
   function plantValue(key) { const U = PLANT_UPGRADES[key]; return U.levels[Math.min(S.plant[key], U.levels.length - 1)]; }
   function applyPlant() {
@@ -549,7 +568,7 @@
     Audio.init(); Audio.ui('ok'); hideCard();
     log('Batch start: ' + S.tons + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. ' + (C ? 'Contract feed, supplied by ' + C.client + '.' : 'Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.'), 'ok');
     S.ev.nodes.forEach((n, i) => n.warnings.forEach((w) => { if (w.level !== 'info') log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + w.text, w.level); }));
-    renderRunState(); renderBank();
+    renderRunState(); renderBank(); API.emit('batchStart', { run: S.run });
   }
   function stopRun(why) {
     const r = S.run; if (!r) return;
@@ -567,6 +586,7 @@
     } else if (C) log('Contract ' + C.name + ' not scored: the batch did not complete.', 'warn');
     const before = r.rankIdx; checkRank(); const after = rankOf(netWorth());
     showCard(r, why, dt, powerC, net + (cs ? cs.fee : 0), after.idx > before ? after.name : null, cs);
+    API.emit('batchComplete', { r, why, net: net + (cs ? cs.fee : 0), bins: binList(), cs, powerC });
     renderRunState(); save(); renderAll();
   }
   function stepRun(realDt) {
@@ -650,12 +670,14 @@
     const n = node(S.sel);
     $('#cam-name').textContent = n ? MACHINES[n.m].name.toUpperCase() : 'NO MACHINE';
     $('#cam-cat').textContent = n ? MACHINES[n.m].cat.toUpperCase() + (S.owned.has(n.m) ? '' : ' · NOT OWNED') : 'ADD A MACHINE TO THE FLOWSHEET';
+    API.emit('render');
   }
 
   /* ---------------- persistence ---------------- */
+  function collectExt() { const ext = {}; (hooks.save || []).forEach((fn) => { try { Object.assign(ext, fn() || {}); } catch (e) { console.error('module save', e); } }); return ext; }
   function save() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts, ext: collectExt() }));
     } catch (e) { /* storage unavailable */ }
   }
   function load() {
@@ -676,6 +698,7 @@
       S.feedPreset = d.feedPreset || 'custom'; S.linePreset = d.linePreset || 'custom';
       S.contract = d.contract && Score.CONTRACTS.find((c) => c.id === d.contract) ? d.contract : null;
       S.contracts = {}; for (const k in (d.contracts || {})) if (Score.CONTRACTS.find((c) => c.id === k)) S.contracts[k] = clamp(Math.floor(+d.contracts[k] || 0), 0, 3);
+      S.ext = d.ext && typeof d.ext === 'object' ? d.ext : {};
       return true;
     } catch (e) { return false; }
   }
@@ -693,6 +716,8 @@
 
   function boot() {
     const had = load();
+    if (!S.ext) S.ext = {};
+    API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
     if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; setFeedLock(true); }
     if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a twin-shaft shredder, a jaw crusher, a magnet and a screen, and ' + fmtMoney(START_BANK) + '. Grind scrap, bank the margin, buy a better plant.', 'ok'); }
@@ -722,14 +747,19 @@
     window.addEventListener('resize', () => { cam.resize(); drawPSD(node(S.sel) ? info(S.sel) : null); });
     window.addEventListener('beforeunload', save);
     document.addEventListener('pointerdown', () => Audio.init(), { once: true });
-    CS.app = { S, cam, recompute, camState, info, node, netWorth, rankOf };   // debug handle
+    Object.assign(API, { S, cam, Score, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+      setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
+    CS.app = API;
     renderAll(); renderRunState();
+    API.booted = true; API.emit('boot');
     if (!had) $('#help').classList.remove('hidden');
     lastRealT = performance.now();
     let acc = 0;
     function tick(now) {
       const dt = Math.min(0.1, (now - lastRealT) / 1000); lastRealT = now;
+      const clockBefore = S.clock;
       if (S.run) { stepRun(dt); acc += dt; if (acc > 0.25) { acc = 0; renderTelemetry(); renderPlant(); renderLine(); } renderHeader(); }
+      API.emit('tick', { dt, dh: (S.clock - clockBefore) / 3600 });
       if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0) hideCard(); }
       const st = camState(); cam.setState(st); cam.frame(dt);
       if (st) Audio.setHum(st.M.scene, st.running ? 0.5 + 0.5 * st.load : 0); else Audio.setHum('jaw', 0);

@@ -7,6 +7,7 @@ import io, os, re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ['data.js', 'sim.js', 'audio.js', 'cam.js', 'scenes-a.js', 'scenes-b.js', 'score.js', 'app.js']
+MODULES = ['inventory', 'auction', 'missions', 'floor', 'onboarding']   # load order matters: later modules may use earlier ones
 
 def rd(p):
     return io.open(os.path.join(ROOT, p), encoding='utf-8').read()
@@ -17,7 +18,7 @@ def main():
     css = rd('css/style.css').replace(':root {', ':root {\n  color-scheme: dark;', 1)
     fonts = re.search(r'<link href="https://fonts\.googleapis\.com[^"]*" rel="stylesheet">', html).group(0)
     js = ''
-    for f in SCRIPTS:
+    for f in SCRIPTS + ['modules/' + m + '.js' for m in MODULES]:
         src = rd('js/' + f)
         assert '</script' not in src, f + ' contains a script terminator'
         js += '<script>\n' + src + '\n</script>\n'

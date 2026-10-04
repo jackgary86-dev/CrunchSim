@@ -31,10 +31,11 @@ let pr = E.projectBatch(starter.m, 15, starter.ev.nodes);
 check(near(pr.net, starter.m.margin * 15) && pr.perT === starter.m.margin, 'projected net is margin x tonnes (' + f(pr.net, 0) + ' on 15 t of cars)');
 check(!pr.negative && pr.reason === '' && pr.cause === '', 'the starter yard projects positive: no reason');
 // cryogenic mill on zorba: aluminum does not embrittle, a fault-level warning, and the nitrogen bill sinks the batch
-const cryo = run({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'cryo', s: { target: 1.5 }, src: '1:product' }] }, FEEDS.zorba.comp, FEEDS.zorba.cost);
+// cut to under 40 mm first so all of it enters the cryo mill (scalped zorba would sell as tradeable zorba since #35)
+const cryo = run({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'single', s: { screen: 30 }, src: '1:product' }, { m: 'cryo', s: { target: 1.5 }, src: '2:product' }] }, FEEDS.zorba.comp, FEEDS.zorba.cost);
 pr = E.projectBatch(cryo.m, 10, cryo.ev.nodes);
 console.log('  cryo on zorba: margin ' + f(cryo.m.margin, 0) + ' $/t -> ' + pr.reason);
-check(pr.negative && pr.cause === 'machine' && /^Wrong machine: node 2 CRYO/.test(pr.reason) && /embrittle/.test(pr.reason), 'a wrong machine is named first, with the node and the warning');
+check(pr.negative && pr.cause === 'machine' && /^Wrong machine: node 3 CRYO/.test(pr.reason) && /embrittle/.test(pr.reason), 'a wrong machine is named first, with the node and the warning');
 // a feed that costs more than its products: the hammermill on zorba (loose shred of non-ferrous) still pays, so build the case by hand
 pr = E.projectBatch({ rev: 95, feedC: 110, powerC: 8, extra: 0, wearC: 1, margin: -24 }, 15, starter.ev.nodes);
 check(pr.cause === 'feed' && /Feed costs \$110\/t but the products sell for \$95\/t/.test(pr.reason), 'feed dearer than products: ' + pr.reason);

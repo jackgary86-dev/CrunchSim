@@ -53,7 +53,8 @@ const steelRow = starter.fit.mats.find((r) => r.m === 'steel'), cuRow = starter.
 check(steelRow && steelRow.fate === 'mixed' && Math.abs(steelRow.purity - 0.65) < 0.02 && steelRow.recovery > 0.99, 'hammermill alone: steel is mixed at ' + f(steelRow.purity * 100, 0) + '% ferrous purity, 100% recovery');
 check(cuRow && cuRow.fate === 'mixed' && cuRow.purity < 0.05 && cuRow.contaminant === 'steel', 'copper sits in the same bin, contaminant steel');
 check(starter.fit.clean.length === 0 && starter.fit.mixed.length === starter.fit.mats.length, 'every valuable material ends in a mixed bin');
-check(isFinite(starter.fit.kwhT) && starter.fit.kwhT > 5 && starter.fit.valuePerT > 100, 'energy ' + f(starter.fit.kwhT) + ' kWh/t and value $' + f(starter.fit.valuePerT, 0) + '/t reported');
+// unsorted shred is worth about $65/t since the bin valuation fix (#35)
+check(isFinite(starter.fit.kwhT) && starter.fit.kwhT > 5 && starter.fit.valuePerT > 30, 'energy ' + f(starter.fit.kwhT) + ' kWh/t and value $' + f(starter.fit.valuePerT, 0) + '/t reported');
 const car = fitOf(globalThis.CS.LINES.car, FEEDS.elv.comp);
 const carSteel = car.fit.mats.find((r) => r.m === 'steel'), carAl = car.fit.mats.find((r) => r.m === 'aluminum');
 check(carSteel.fate === 'clean' && carSteel.bin.short === 'MAG' && carSteel.bin.port === 'extract', 'car line: steel clean in MAG/extract (' + f(carSteel.purity * 100, 0) + '%)');

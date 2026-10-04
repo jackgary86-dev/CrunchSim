@@ -147,7 +147,7 @@ const L = PLANT_UPGRADES.logistics;
 check(L.levels.length === 8 && L.levels[L.levels.length - 1] === 10000 && L.costs.length === 7, 'Feed logistics runs to 10,000 t per batch over 8 levels and 7 purchases');
 check(L.levels.every((v, i) => i === 0 || v > L.levels[i - 1]) && L.costs.every((c, i) => i === 0 || c > L.costs[i - 1]), 'levels and costs both grow');
 check(L.levels.slice(0, 5).join() === '30,60,120,250,500' && L.costs.slice(0, 4).join() === '3000,9000,30000,110000', 'the first five levels are unchanged');
-check(L.costs[6] > L.costs[5] * 2 && L.costs[6] < 5e6, 'the last step (rail loop) costs more than twice the siding but stays inside the Industrial group rank band');
+check(L.costs[6] > L.costs[5] * 2 && L.costs[6] < CS.RANKS[5][0], 'the last step (rail loop) costs more than twice the siding but less than the top rank (balance pass #12)');
 
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' intake checks pass'));
 process.exit(fails ? 1 : 0);

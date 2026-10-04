@@ -625,7 +625,7 @@
     // Batch size is what the yard can receive and weigh in one go. Up to 500 t it is trucks and a loader. 1,000 t needs a pit
     // weighbridge and another hectare of paved yard (~$1.75M real, so $350k at PRICE_SCALE); 3,000 t a rail siding with a
     // turnout (~1 km of industrial track, $5-6M real); 10,000 t a loop track for unit trains and a stacker-reclaimer (~$17M real).
-    logistics: { name: 'Feed logistics', icon: '🚚', desc: 'Bigger batches per run', unit: 't per batch', levels: [30, 60, 120, 250, 500, 1000, 3000, 10000], costs: [3000, 9000, 30000, 110000, 350000, 1200000, 3500000] },
+    logistics: { name: 'Feed logistics', icon: '🚚', desc: 'Bigger batches per run', unit: 't per batch', levels: [30, 60, 120, 250, 500, 1000, 3000, 10000], costs: [3000, 9000, 30000, 110000, 500000, 2500000, 12000000] },   // big tiers: rail siding, second weighbridge, barge berth; priced to pay back over ~10 batches
     power: { name: 'Power contract', icon: '⚡', desc: 'Cheaper electricity', unit: '$/kWh', levels: [0.12, 0.10, 0.085, 0.07, 0.055], costs: [4000, 12000, 40000, 150000] },
     market: { name: 'Offtake deals', icon: '📈', desc: 'Better prices for every product', unit: '× price', levels: [1.0, 1.08, 1.16, 1.25, 1.35], costs: [15000, 45000, 160000, 550000] },
     nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] },
@@ -675,7 +675,7 @@
   const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000 };
   Object.keys(FEEDS).forEach(function (id) { FEEDS[id].unlock = FEED_UNLOCK[id] || 0; });
   // Rank is read from net worth: bank plus what the plant would sell for.
-  const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [400000, 'Processor'], [1200000, 'Plant operator'], [4000000, 'Industrial group'], [15000000, 'Mega-plant']];
+  const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [500000, 'Processor'], [2500000, 'Plant operator'], [12000000, 'Industrial group'], [60000000, 'Mega-plant']];   // balance pass #12: roughly 10 / 25 / 45 / 80 / 140 batches
 
   /* ---------------- SOURCES ---------------- */
   const SOURCES = [

@@ -26,7 +26,7 @@
   const S = {
     comp: {}, tons: 15, line: [], sel: null,
     money: START_BANK, tonnes: 0, kwh: 0, batches: 0, lifetime: 0,
-    owned: new Set(STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0 }, suppliers: new Set(),
+    owned: new Set(STARTER_MACHINES), units: unitsFrom(STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0 }, suppliers: new Set(),
     speed: 1, muted: false, clock: 0, run: null,
     feedPreset: 'elv', linePreset: 'starter', ev: null, mr: null,
     contract: null, contracts: {}, lastSpec: null
@@ -67,11 +67,16 @@
     Sim.prices.power = plantValue('power'); Sim.prices.ln2 = plantValue('nitrogen'); Sim.prices.market = plantValue('market');
     const max = plantValue('logistics'); const r = $('#feed-tons'); r.max = max; if (S.tons > max) { S.tons = max; r.value = max; $('#feed-tons-v').textContent = S.tons + ' t'; }
   }
+  /* Machines are bought per unit: each copy on the line needs its own unit (S.units[m]); S.owned keeps the types ever bought. */
+  function unitsFrom(list) { const u = {}; list.forEach((m) => { u[m] = (u[m] || 0) + 1; }); return u; }
+  function unitsOf(m) { return S.units && S.units[m] || 0; }
+  /* is this node covered by a bought unit? the first units[m] nodes of type m on the line are */
+  function nodeOwned(n) { let k = 0; for (const x of S.line) { if (x.m === n.m) { if (x === n) return k < unitsOf(n.m); k++; } } return false; }
   function syncLevels() { S.line.forEach((n) => { n.level = S.levels[n.m] || 0; }); }
   function levelOf(m) { return S.levels[m] || 0; }
   function assetValue() {
     let v = 0;
-    S.owned.forEach((m) => { if (MACHINES[m]) { v += MACHINES[m].price; for (let l = 0; l < levelOf(m); l++) v += levelCost(MACHINES[m], l); } });
+    S.owned.forEach((m) => { if (MACHINES[m]) { v += MACHINES[m].price * Math.max(1, unitsOf(m)); for (let l = 0; l < levelOf(m); l++) v += levelCost(MACHINES[m], l); } });
     for (const k in PLANT_UPGRADES) for (let l = 0; l < S.plant[k]; l++) v += PLANT_UPGRADES[k].costs[l];
     S.suppliers.forEach((f) => { if (FEEDS[f]) v += FEEDS[f].unlock; });
     const q = { value: v }; API.emit('assetValue', q);   // modules add what they sold the player (facility and office upgrades)
@@ -79,16 +84,17 @@
   }
   function netWorth() { return S.money + assetValue(); }
   function rankOf(nw) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (nw >= RANKS[k][0]) i = k; return { idx: i, name: RANKS[i][1], floor: RANKS[i][0], next: RANKS[i + 1] ? RANKS[i + 1][0] : null, nextName: RANKS[i + 1] ? RANKS[i + 1][1] : null }; }
-  function unownedIn(line) { const miss = {}; line.forEach((n) => { if (!S.owned.has(n.m)) miss[n.m] = MACHINES[n.m].price; }); return miss; }
+  function unownedIn(line) { const cnt = {}, miss = {}; line.forEach((n) => { cnt[n.m] = (cnt[n.m] || 0) + 1; }); for (const m in cnt) { const short = cnt[m] - unitsOf(m); if (short > 0) miss[m] = short * MACHINES[m].price; } return miss; }
   function unownedCost(line) { let c = 0; const m = unownedIn(line); for (const k in m) c += m[k]; return c; }
   function spend(cost, what) {
     if (S.money < cost) { Audio.ui('deny'); log('Not enough in the bank for ' + what + ' (' + fmtMoney(cost) + ', bank ' + fmtMoney(S.money) + ').', 'bad'); return false; }
     S.money -= cost; return true;
   }
   function buyMachine(id) {
-    const M = MACHINES[id]; if (S.owned.has(id)) return true;
+    const M = MACHINES[id];
     if (!spend(M.price, M.name)) return false;
-    S.owned.add(id); Audio.ui('ok'); log('Bought ' + M.name + ' for ' + fmtMoney(M.price) + '.', 'ok'); checkRank(); return true;
+    S.owned.add(id); S.units[id] = unitsOf(id) + 1; Audio.ui('ok');
+    log('Bought ' + M.name + ' for ' + fmtMoney(M.price) + (S.units[id] > 1 ? ' (unit ' + S.units[id] + ')' : '') + '.', 'ok'); checkRank(); return true;
   }
   function upgradeMachine(id) {
     const M = MACHINES[id], lvl = levelOf(id);
@@ -280,7 +286,7 @@
     $('#btn-add').addEventListener('click', () => {
       const m = add.value, last = S.line[S.line.length - 1];
       const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; }
-      if (!S.owned.has(m) && !buyMachine(m)) { renderBank(); return; }
+      if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }
       const src = last ? { uid: last.uid, port: primaryPort(last) } : 'feed';
       const n = Sim.makeNode(m, {}, src); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom'; sel.value = 'custom';
       Audio.ui('click'); log('Added ' + MACHINES[m].name + ' as node ' + S.line.length + '.'); markDirty(true);
@@ -324,7 +330,7 @@
     const add = $('#add-machine'); const curAdd = add.value; add.innerHTML = '';
     for (const [grp, ids] of MACHINE_GROUPS) {
       const og = document.createElement('optgroup'); og.label = grp;
-      ids.forEach((id) => { const M = MACHINES[id]; og.appendChild(new Option(M.name + (S.owned.has(id) ? (levelOf(id) ? ' · owned, Lv ' + levelOf(id) : ' · owned') : ' · ' + fmtMoney(M.price)), id)); });
+      ids.forEach((id) => { const M = MACHINES[id]; og.appendChild(new Option(M.name + (S.owned.has(id) ? (unitsOf(id) > 1 ? ' · ' + unitsOf(id) + ' owned' : '') + (levelOf(id) ? ' · owned, Lv ' + levelOf(id) : ' · owned') : ' · ' + fmtMoney(M.price)), id)); });
       add.appendChild(og);
     }
     if (curAdd && MACHINES[curAdd]) add.value = curAdd;
@@ -332,9 +338,10 @@
   }
   function renderAddButton() {
     const m = $('#add-machine').value, b = $('#btn-add');
-    if (!m || S.owned.has(m)) { b.textContent = '+ ADD'; b.className = ''; }
-    else { b.textContent = 'BUY ' + fmtMoney(MACHINES[m].price); b.className = 'buy' + (S.money < MACHINES[m].price ? ' poor' : ''); }
+    if (!m || freeUnit(m)) { b.textContent = '+ ADD'; b.className = ''; }
+    else { b.textContent = (unitsOf(m) ? 'BUY ANOTHER ' : 'BUY ') + fmtMoney(MACHINES[m].price); b.className = 'buy' + (S.money < MACHINES[m].price ? ' poor' : ''); }
   }
+  function freeUnit(m) { return S.line.filter((x) => x.m === m).length < unitsOf(m); }
   function primaryPort(n) {
     const M = MACHINES[n.m];
     if (M.omni) { let best = 'rejects', bm = -1; MAT_ORDER.forEach((m) => { const p = S.ev && S.ev.ports[n.uid + ':' + m], k = p ? Sim.streamMass(p) : 0; if (k > bm) { bm = k; best = m; } }); return best; }   // #15: one port per material, the heaviest one
@@ -361,7 +368,7 @@
     const box = $('#line-nodes'); box.innerHTML = '';
     if (!S.line.length) { box.appendChild(el('div', 'empty', 'No machines. Add one below or pick a preset line.')); return; }
     S.line.forEach((n, i) => {
-      const M = MACHINES[n.m], inf = info(n.uid), owned = S.owned.has(n.m);
+      const M = MACHINES[n.m], inf = info(n.uid), owned = nodeOwned(n);
       const lim = S.mr && S.mr.limiter && S.mr.limiter.uid === n.uid;
       let st = '', stc = '';
       if (!owned) { st = 'BUY ' + fmtMoney(M.price); stc = 'bad'; }
@@ -388,13 +395,13 @@
   function renderMachine() {
     const n = node(S.sel);
     if (!n) { $('#m-name').textContent = 'No machine selected'; $('#m-settings').innerHTML = ''; $('#m-mech').innerHTML = ''; $('#m-how').textContent = 'Add a machine to the flowsheet or pick a preset line.'; $('#m-best').textContent = ''; $('#m-avoid').textContent = ''; $('#m-src').innerHTML = ''; $('#m-wear').textContent = ''; $('#btn-buy').classList.add('hidden'); $('#btn-upgrade').classList.add('hidden'); $('#m-autosvc-wrap').classList.add('hidden'); return; }
-    const M = MACHINES[n.m], k = S.line.indexOf(n), owned = S.owned.has(n.m), lvl = levelOf(n.m);
+    const M = MACHINES[n.m], k = S.line.indexOf(n), owned = nodeOwned(n), lvl = levelOf(n.m);
     $('#m-name').textContent = (k + 1) + '. ' + M.name + (lvl ? ' · LV ' + lvl : '');
     const wears = owned && M.life < 1e8, fc = wears && Eco() ? Eco().wearForecast(n, info(n.uid)) : null;   // #20: head tonnes until the wear parts are gone
     $('#m-wear').innerHTML = !owned ? '<b class="bad">NOT OWNED</b>' : (wears ? 'WEAR <b class="' + (n.wear > 0.8 ? 'bad' : n.wear > 0.5 ? 'warn' : 'ok') + '">' + Math.round(n.wear * 100) + '%</b> · ' + esc(M.wearInfo) + (fc ? ' · about <b class="num">' + fmtNum(fc.toWorn, 0) + ' t</b> until worn out' : '') : '');
     $('#m-autosvc-wrap').classList.toggle('hidden', !wears); $('#m-autosvc').checked = !!n.autoService;
     $('#btn-service').disabled = !(owned && M.life < 1e8 && n.wear > 0.02);
-    const bb = $('#btn-buy'); bb.textContent = 'BUY ' + fmtMoney(M.price); bb.className = 'buy' + (owned ? ' hidden' : '') + (S.money < M.price ? ' poor' : '');
+    const bb = $('#btn-buy'); bb.textContent = (unitsOf(n.m) ? 'BUY ANOTHER ' : 'BUY ') + fmtMoney(M.price); bb.className = 'buy' + (owned ? ' hidden' : '') + (S.money < M.price ? ' poor' : '');
     const bu = $('#btn-upgrade');
     if (!owned) bu.className = 'buy hidden';
     else if (lvl >= LEVEL_MAX) { bu.textContent = 'MAX LEVEL'; bu.className = 'buy max'; bu.disabled = true; }
@@ -487,7 +494,7 @@
     const ports = MACHINES[last.m].kind === 'separator' ? ['extract', 'residue'] : ['product'];
     const out = [];
     TRIAL_MACHINES.forEach((m) => {
-      if (S.owned.has(m)) return;
+      if (freeUnit(m)) return;   // a spare unit is free to add; this block ranks purchases
       let best = null;
       ports.forEach((port) => {
         const n = Sim.makeNode(m, {}, { uid: last.uid, port }); n.level = levelOf(m);
@@ -505,7 +512,7 @@
     if (Object.keys(unownedIn(S.line)).length) { note('Buy the machines already on the line first.'); return; }
     const picks = nextPurchases();
     if (!picks) { note('The line cannot run on this feed, so nothing can be ranked.'); return; }
-    if (!picks.length) { note('No unowned sorter or crusher adds margin at the end of this line. Try another output port or feed.'); return; }
+    if (!picks.length) { note('No new sorter or crusher adds margin at the end of this line. Try another output port or feed.'); return; }
     const last = S.line[S.line.length - 1];
     picks.forEach((p) => {
       const M = MACHINES[p.m];
@@ -517,7 +524,7 @@
   }
   function buyAndAppend(m, port) {
     const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; }
-    if (!S.owned.has(m) && !buyMachine(m)) { renderBank(); return; }
+    if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }
     const last = S.line[S.line.length - 1];
     const n = Sim.makeNode(m, {}, last ? { uid: last.uid, port } : 'feed'); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom';
     Audio.ui('click'); log('Added ' + MACHINES[m].name + ' as node ' + S.line.length + '.'); markDirty(true);
@@ -808,7 +815,7 @@
     renderLineSelects(); renderLine(); renderMachine(); renderTelemetry(); renderPlant(); renderBank(); renderContracts(); updateFeedInfo(); renderHeader();
     const n = node(S.sel);
     $('#cam-name').textContent = n ? MACHINES[n.m].name.toUpperCase() : 'NO MACHINE';
-    $('#cam-cat').textContent = n ? MACHINES[n.m].cat.toUpperCase() + (S.owned.has(n.m) ? '' : ' · NOT OWNED') : 'ADD A MACHINE TO THE FLOWSHEET';
+    $('#cam-cat').textContent = n ? MACHINES[n.m].cat.toUpperCase() + (nodeOwned(n) ? '' : ' · NOT OWNED') : 'ADD A MACHINE TO THE FLOWSHEET';
     API.emit('render');
   }
 
@@ -816,7 +823,7 @@
   function collectExt() { const ext = {}; (hooks.save || []).forEach((fn) => { try { Object.assign(ext, fn() || {}); } catch (e) { console.error('module save', e); } }); return ext; }
   function save() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts, ext: collectExt() }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts, ext: collectExt() }));
     } catch (e) { /* storage unavailable */ }
   }
   function load() {
@@ -830,6 +837,9 @@
       S.sel = uids.has(d.sel) ? d.sel : (S.line[0] ? S.line[0].uid : null);
       S.money = isFinite(+d.money) ? +d.money : START_BANK; S.tonnes = +d.tonnes || 0; S.kwh = +d.kwh || 0; S.batches = +d.batches || 0; S.lifetime = +d.lifetime || 0;
       S.owned = new Set(STARTER_MACHINES.concat((d.owned || []).filter((m) => MACHINES[m])));
+      // units: saved counts, or (older saves) as many as the saved line already uses, and at least one per type owned
+      S.units = {}; S.owned.forEach((m) => { S.units[m] = 1; }); S.line.forEach((n) => { if (S.owned.has(n.m)) S.units[n.m] = Math.max(S.units[n.m], S.line.filter((x) => x.m === n.m).length); });
+      if (d.units && typeof d.units === 'object') for (const m in d.units) if (S.owned.has(m)) S.units[m] = clamp(Math.floor(+d.units[m] || 1), 1, 99);
       S.levels = {}; for (const k in (d.levels || {})) if (MACHINES[k]) S.levels[k] = clamp(Math.floor(+d.levels[k] || 0), 0, LEVEL_MAX);
       S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 }; for (const k in PLANT_UPGRADES) if (d.plant && isFinite(+d.plant[k])) S.plant[k] = clamp(Math.floor(+d.plant[k]), 0, PLANT_UPGRADES[k].costs.length);
       S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id); (d.suppliers || []).forEach((f) => { if (FEEDS[f]) S.suppliers.add(f); });
@@ -857,7 +867,7 @@
     hideCard();
     S.comp = {}; S.tons = 15; S.line = []; S.sel = null;
     S.money = START_BANK; S.tonnes = 0; S.kwh = 0; S.batches = 0; S.lifetime = 0;
-    S.owned = new Set(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
+    S.owned = new Set(STARTER_MACHINES); S.units = unitsFrom(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
     S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
     S.clock = 0; S.contract = null; S.contracts = {}; S.lastSpec = null; S.feedPrepaid = false; S.ext = {};
     Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
@@ -878,7 +888,7 @@
 
   function boot() {
     API.S = S;
-    Object.assign(API, { S, Score, softReset, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

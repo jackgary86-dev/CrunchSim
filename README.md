@@ -95,6 +95,7 @@ node tests/furnace.js
 node tests/plant3d-layout.js
 node tests/facility.js
 node tests/rivals.js
+node tests/playtest.js
 node tests/endgame.js
 ```
 

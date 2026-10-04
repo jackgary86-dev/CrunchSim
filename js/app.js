@@ -754,7 +754,8 @@
     const loss = biggestLoss(), hint = earnHint(r);
     /* #18 projected versus actual, #20 wear, #21 power and consumables by machine */
     const projNet = r.projPerT != null ? r.projPerT * r.done : null;
-    const projRow = projNet != null ? '<dt>Projected net (' + fmtMoney(r.projPerT) + '/t before the run)</dt><dd class="' + (projNet >= 0 ? 'ok' : 'bad') + '">' + fmtMoney(projNet) + '</dd><dt>Actual versus projected (the projection charges wear)</dt><dd class="' + (net - projNet >= -1 ? 'ok' : 'bad') + '">' + (net - projNet >= 0 ? '+' : '') + fmtMoney(net - projNet) + '</dd>' : '';
+    const result = net + (r.held ? r.rev : 0);   // product held in stock is part of what the batch earned
+    const projRow = projNet != null ? '<dt>Projected net (' + fmtMoney(r.projPerT) + '/t before the run)</dt><dd class="' + (projNet >= 0 ? 'ok' : 'bad') + '">' + fmtMoney(projNet) + '</dd><dt>Actual versus projected (the projection charges wear)</dt><dd class="' + (result - projNet >= -1 ? 'ok' : 'bad') + '">' + (result - projNet >= 0 ? '+' : '') + fmtMoney(result - projNet) + '</dd>' : '';
     const wearRow = r.wearC > 0 ? '<dt>Wear accrued (' + fmtMoney(r.done > 0 ? r.wearC / r.done : 0) + '/t, paid at service)</dt><dd class="warn">' + fmtMoney(-r.wearC) + '</dd>' : '';
     const svcRow = r.serviceC > 0 ? '<dt>Auto-service</dt><dd>' + fmtMoney(-r.serviceC) + '</dd>' : '';
     let power = '';
@@ -769,7 +770,9 @@
     if (cs) head = '<h2>CONTRACT \u00b7 ' + esc(cs.C.name.toUpperCase()) + '<span>' + fmtNum(r.done, 1) + ' t \u00b7 ' + fmtClock(dt).slice(2) + '</span></h2><div class="stars">' + starsText(cs.stars) + (cs.newBest && cs.stars ? ' <small class="ok">NEW BEST</small>' : '') + '</div><div class="reason">' + esc(cs.reason) + '</div>' +
       '<div class="checks">' + cs.checks.map((c) => '<div class="chk ' + (c.ok ? (c.great ? 'great' : 'ok') : 'bad') + '"><span>' + c.label + '</span><span>' + esc(c.text) + '</span><span>' + esc(c.need) + '</span></div>').join('') + '</div>';
     card.innerHTML = '<div class="card">' + head +
-      '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>' +
+      (r.held
+        ? '<div class="net ' + (result >= 0 ? 'ok' : 'bad') + '"><small>BATCH RESULT · CASH PLUS STOCK</small>' + (result >= 0 ? '+' : '') + fmtMoney(result) + '</div><div class="small" style="margin:-6px 0 8px">Bank ' + (net >= 0 ? '+' : '') + fmtMoney(net) + ' now · ' + fmtMoney(r.rev) + ' of product in ' + esc(r.held) + ', sell it from the inventory panel</div>'
+        : '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>') +
       (cs ? '<dl><dt>Contract fee (' + fmtNum(cs.deliveredT, 1) + ' t of ' + esc(cs.C.label) + ' shipped)</dt><dd class="ok">' + fmtMoney(cs.fee) + '</dd></dl>' : '') +
       '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') + svcRow + wearRow + projRow +
       (best ? '<dt>Best product</dt><dd>' + esc(best.M ? best.M.short + ' / ' + (best.M.outs ? best.M.outs[best.port] : best.port) : '') + ' · ' + fmtMoney(best.st.value) + '/t</dd>' : '') +

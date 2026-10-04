@@ -12,6 +12,7 @@ Feed a mix of materials into a line of real industrial machines, run a batch, an
 - **Run batches.** Each batch buys feed, pays for power and consumables, and sells the product bins. The net lands in your bank on a score card at the end of the run. Feed can also be bought ahead by the thousand tonnes into an intake stockpile, one pile per source, and run down batch by batch; the Feed logistics upgrade takes batches up to 10,000 t.
 - **Buy and upgrade.** Twenty-five more machines can be bought from the flowsheet panel. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Supplier contracts unlock richer feeds such as tires, zorba and quarry rubble. The Facility & office panel sells a trading desk, a sampling lab, a control room, a weighbridge, a maintenance bay, a power substation, dust and water treatment and a nitrogen tank farm; the site drawing fills in as you buy them.
 - **Take contracts.** Clients post jobs with a spec sheet: target material, purity, recovery, a size window and an energy cap. They supply the feed. Bins that meet the spec ship, stars decide the fee, and every job hides a machine that looks right but is wrong for that material.
+- **Beat the rival yards.** Up to four named yards compete with you: a volume buyer, a bargain hunter, a copper specialist and a late sniper, entering over the first days of plant time with credit that grows as the game goes on. They bid on auction lots from the seller's declaration through their own bias and chase the market's HOT material, so you BID in 5% steps or BUY NOW at a 15% premium, and the high bid at the timer takes the lot. A contract or job you leave untaken for a shift of plant time goes to tender: rivals whose own flowsheets meet the spec quote, the client weighs fee, reputation and delivery time, and the winner holds the work until it delivers. The Rivals panel keeps a league table (tonnes delivered, average stars, reputation) with your rank; lose one contract three times to the same rival and the log tells you what their plant has. A sandbox switch turns rivals off.
 - **Rank up.** Net worth is bank plus everything you own. It moves you from Scrapyard through Recycler, Processor, Plant operator and Industrial group to Mega-plant.
 
 Preset lines act as blueprints: loading one you cannot afford shows what to buy. Progress is saved in your browser; New Game in the bank panel wipes it.
@@ -91,6 +92,7 @@ node tests/sensor.js
 node tests/furnace.js
 node tests/plant3d-layout.js
 node tests/facility.js
+node tests/rivals.js
 ```
 
 ## Sources

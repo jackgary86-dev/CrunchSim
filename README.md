@@ -32,6 +32,8 @@ Preset lines act as blueprints: loading one you cannot afford shows what to buy.
 | Separation | Magnetic drum, eddy current separator, zig-zag air classifier, vibrating screen, sink-float tank, sensor sorter (XRT / LIBS) |
 | Smelting | Induction furnace, electric arc furnace, reverberatory kiln |
 
+**End game:** the Omniprocessor is the one fantasy machine. It unlocks at Mega-plant rank or once every contract has three stars, takes any feed down to a target size and sorts every material into a bin of its own. Its price, power, capacity and footprint are those of a real mega-shredder plant with its separation hall; its first completed batch shows an end-game card with the final score.
+
 **Physics in the numbers:**
 
 - Particle size distributions are Rosin-Rammler curves over 24 log-spaced size bins from 1 µm to 1 m.
@@ -93,6 +95,7 @@ node tests/furnace.js
 node tests/plant3d-layout.js
 node tests/facility.js
 node tests/rivals.js
+node tests/endgame.js
 ```
 
 ## Sources

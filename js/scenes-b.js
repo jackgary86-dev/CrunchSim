@@ -623,6 +623,112 @@
     }
   };
 
+  /* ======================= OMNIPROCESSOR (end game, ticket #15) ======================= */
+  // a long sealed unit: hopper and intake belt at left, rotor cassettes under four scan arches, a fan of chutes at right,
+  // one chute per material in the feed. Pieces shrink arch by arch from their feed size to the product size the sim computed.
+  const OMN = { x0: 150, x1: 640, top: 128, bot: 272, belt: 212, arches: [235, 335, 435, 535], pivot: [664, 212], reach: 150, spread: 0.92 };
+  function omniMats(st) { return (st.comp || []).slice().sort(function (a, b) { return b[1] - a[1]; }).map(function (c) { return c[0]; }); }
+  function omniChute(k, n) {   // end point of chute k of n, fanned over +-spread radians from the pivot
+    const a = n > 1 ? -OMN.spread + 2 * OMN.spread * k / (n - 1) : 0;
+    return [OMN.pivot[0] + OMN.reach * Math.cos(a), OMN.pivot[1] + OMN.reach * Math.sin(a)];
+  }
+  S.omni = {
+    omega: () => 7,
+    init(cam) { cam.arcGlow = [0, 0, 0, 0]; cam.arcCol = ['#7fe3ff', '#7fe3ff', '#7fe3ff', '#7fe3ff']; cam.chuteHit = {}; },
+    update(cam, dt, st) {
+      if (!cam.arcGlow) S.omni.init(cam);
+      const mats = omniMats(st); cam.omniMats = mats;
+      for (let k = 0; k < 4; k++) cam.arcGlow[k] = Math.max(0, cam.arcGlow[k] - dt * 3);
+      for (const m in cam.chuteHit) cam.chuteHit[m] = Math.max(0, cam.chuteHit[m] - dt * 2);
+      const n = cam.spawnCount(dt, 4 + 14 * st.load);
+      for (let i = 0; i < n; i++) {
+        const mat = pickMat(st); if (!mat) break;
+        const p = newPiece(mat, sizeIn(st, mat), 70 + rnd(-14, 14), 12); p.r = Math.min(p.r, 16); p.r0 = p.r; p.vy = 40; p.mode = 'fall';
+        p.rOut = clamp(pxOf(sizeOut(st, mat)), 1.6, p.r0); p.stage = 0; cam.push(p);
+      }
+      const arr = cam.parts;
+      for (let i = 0; i < arr.length; i++) {
+        const p = arr[i]; if (p.state !== 'free') continue;
+        if (p.mode === 'fall') {   // drop out of the hopper onto the intake belt
+          p.vy += 520 * dt; p.y += p.vy * dt; p.ang += p.spin * dt;
+          if (p.y >= OMN.belt - p.r) { p.y = OMN.belt - p.r; p.vy = 0; p.mode = 'belt'; p.vx = 120 + rnd(-10, 10); }
+        } else if (p.mode === 'belt') {   // through the arches: each one breaks the piece a step closer to the product size
+          const was = p.x; p.x += p.vx * dt; p.ang *= 0.92; p.y = OMN.belt - p.r + Math.sin(cam.t * 20 + p.seed * 9) * (p.x > OMN.x0 ? 1.5 : 0);
+          for (let k = p.stage; k < 4; k++) {
+            if (was < OMN.arches[k] && p.x >= OMN.arches[k]) {
+              p.stage = k + 1; p.r = lerp(p.r0, p.rOut, p.stage / 4);
+              cam.arcGlow[k] = 1; cam.arcCol[k] = p.col;
+              if (Math.random() < 0.35) cam.spark(p.x, OMN.belt - p.r, 2, p.col);
+              if (k === 1 && Math.random() < 0.3) cam.crunch(p, clamp(p.r0 / 16, 0.2, 0.8));
+            }
+          }
+          if (p.x >= OMN.pivot[0] - 8) {   // the jet bank fires the piece down the chute of its own material
+            const k = Math.max(0, mats.indexOf(p.mat)), end = omniChute(k, mats.length);
+            p.mode = 'chute'; p.t = 0; p.sx = p.x; p.sy = p.y; p.ex = end[0]; p.ey = end[1];
+          }
+        } else if (p.mode === 'chute') {
+          p.t += dt * 1.6; const t = Math.min(1, p.t);
+          p.x = lerp(p.sx, p.ex, t); p.y = lerp(p.sy, p.ey, t) - Math.sin(t * Math.PI) * 10; p.ang += p.spin * dt;
+          if (t >= 1) { cam.chuteHit[p.mat] = 1; p.state = 'gone'; }
+        }
+      }
+    },
+    drawParticlesExtra(cam, ctx) {
+      // a faint halo in the material colour on every piece inside the enclosure: the scanners have already read it
+      for (let i = 0; i < cam.parts.length; i++) {
+        const p = cam.parts[i]; if (p.mode !== 'belt' || p.x < OMN.x0 || p.stage < 1) continue;
+        ctx.globalAlpha = 0.35; ctx.strokeStyle = p.col; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 3, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    },
+    draw(cam, ctx, st, pass) {
+      const mats = cam.omniMats || omniMats(st), glow = cam.arcGlow || [0, 0, 0, 0], cols = cam.arcCol || [];
+      const pulse = 0.5 + 0.5 * Math.sin(cam.phase * 0.8);
+      if (pass === 0) {
+        // intake hopper
+        ctx.fillStyle = '#18212b'; ctx.beginPath(); ctx.moveTo(20, 8); ctx.lineTo(120, 8); ctx.lineTo(96, 70); ctx.lineTo(44, 70); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#33414f'; ctx.lineWidth = 3; ctx.stroke();
+        // chutes: one per material, coloured by it, brighter while a piece is riding down
+        for (let k = 0; k < mats.length; k++) {
+          const e = omniChute(k, mats.length), D = CS.MATERIALS[mats[k]], h = (cam.chuteHit && cam.chuteHit[mats[k]]) || 0;
+          ctx.strokeStyle = '#1b232d'; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(OMN.pivot[0], OMN.pivot[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
+          ctx.globalAlpha = 0.35 + 0.5 * h; ctx.strokeStyle = D.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(OMN.pivot[0] + 10, OMN.pivot[1]); ctx.lineTo(e[0], e[1]); ctx.stroke(); ctx.globalAlpha = 1;
+        }
+        // the enclosure: dark chamber, intake belt running through it, rotor cassettes under the arches
+        ctx.fillStyle = '#0e141c'; ctx.fillRect(OMN.x0, OMN.top, OMN.x1 - OMN.x0, OMN.bot - OMN.top);
+        ctx.fillStyle = '#20252d'; ctx.fillRect(30, OMN.belt, OMN.pivot[0] - 30, 9); ctx.fillStyle = '#2d343e'; ctx.fillRect(30, OMN.belt, OMN.pivot[0] - 30, 3);
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 2; ctx.beginPath();
+        for (let x = 30 + (cam.belt * 2 % 18); x < OMN.pivot[0]; x += 18) { ctx.moveTo(x, OMN.belt + 3); ctx.lineTo(x, OMN.belt + 9); } ctx.stroke();
+        OMN.arches.forEach(function (x) { gear(ctx, x, OMN.belt + 30, 14, 9, cam.phase * 1.6, '#2a3340', '#56677a'); });
+      } else {
+        // shell over the particles: roof and floor plates round a glazed slot, so the stream stays visible
+        ctx.fillStyle = '#1a222c'; ctx.fillRect(OMN.x0 - 8, OMN.top - 26, OMN.x1 - OMN.x0 + 16, 26); ctx.fillRect(OMN.x0 - 8, OMN.bot, OMN.x1 - OMN.x0 + 16, 22);
+        ctx.strokeStyle = '#33414f'; ctx.lineWidth = 3; ctx.strokeRect(OMN.x0 - 8, OMN.top - 26, OMN.x1 - OMN.x0 + 16, OMN.bot - OMN.top + 48);
+        ctx.strokeStyle = 'rgba(127,227,255,0.18)'; ctx.lineWidth = 1; ctx.strokeRect(OMN.x0, OMN.top, OMN.x1 - OMN.x0, OMN.bot - OMN.top);
+        ctx.fillStyle = 'rgba(127,227,255,' + (0.25 + 0.35 * pulse) + ')';
+        for (let x = OMN.x0 + 10; x < OMN.x1 - 10; x += 22) ctx.fillRect(x, OMN.top - 14, 10, 3);   // status lights along the roof
+        // scan arches: a ring of light round the stream, flaring in the colour of the last piece read
+        OMN.arches.forEach(function (x, k) {
+          const g = glow[k] || 0, col = g > 0.05 && cols[k] ? cols[k] : '#7fe3ff';
+          ctx.save(); ctx.globalAlpha = 0.25 + 0.25 * pulse + 0.5 * g; ctx.strokeStyle = col; ctx.lineWidth = 4 + 3 * g;
+          ctx.beginPath(); ctx.ellipse(x, (OMN.top + OMN.bot) / 2, 14, (OMN.bot - OMN.top) / 2 + 10, 0, 0, TAU); ctx.stroke();
+          ctx.globalAlpha = 0.08 + 0.18 * g; ctx.fillStyle = col; ctx.fillRect(x - 10, OMN.top, 20, OMN.bot - OMN.top); ctx.restore();
+        });
+        // jet bank at the outlet
+        ctx.fillStyle = '#6a7685'; ctx.fillRect(OMN.x1, OMN.belt - 26, 12, 52);
+        ctx.fillStyle = '#10151c'; for (let k = 0; k < 5; k++) ctx.fillRect(OMN.x1 + 4, OMN.belt - 22 + k * 10, 4, 4);
+        // chute end labels: material and its share of the feed
+        let tot = 0; (st.comp || []).forEach(function (c) { tot += c[1]; });
+        const share = {}; (st.comp || []).forEach(function (c) { share[c[0]] = tot > 0 ? c[1] / tot : 0; });
+        for (let k = 0; k < mats.length; k++) {
+          const e = omniChute(k, mats.length), D = CS.MATERIALS[mats[k]];
+          ctx.fillStyle = D.color; ctx.fillRect(e[0] - 4, e[1] - 4, 8, 8);
+          label(ctx, D.name.slice(0, 4).toUpperCase() + ' ' + Math.round(100 * (share[mats[k]] || 0)) + '%', e[0] + 8, e[1] + 4, '#9fb3c8', 'left');
+        }
+        tag(ctx, 'TARGET ' + st.s.target + ' mm · ' + mats.length + ' STREAMS', (OMN.x0 + OMN.x1) / 2, OMN.top - 34, 'center');
+        label(ctx, 'THROUGHPUT ' + st.s.rate + '%', (OMN.x0 + OMN.x1) / 2, OMN.bot + 40, '#7d8da0', 'center');
+      }
+    }
+  };
+
   S.fallback = { omega: () => 1, update() {}, draw(cam, ctx) { label(ctx, 'NO VIEW FOR THIS MACHINE', 450, 190, '#7fe3ff', 'center'); } };
   CS.Scenes.sampleMm = sampleMm;
 })(typeof window !== 'undefined' ? window : globalThis);

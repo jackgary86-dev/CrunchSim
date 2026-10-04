@@ -110,9 +110,15 @@
   function warn(info, level, text) { info.warnings.push({ level, text }); }
 
   /* ======================= comminution machines ======================= */
+  /* The Omniprocessor (M.omni, ticket #15) is the game's one fantasy exception: every solid breaks with the same response,
+   * OMNI_EFF, whatever its mechanism profile, and every material leaves through an output port named by its material id, so
+   * the terminal bins come out one per material. Liquids are not broken; they drain to their own port. Scalped oversize still
+   * goes to 'rejects'. Energy, capacity, wear and power keep the ordinary comminution rules. */
+  const OMNI_EFF = 0.9;   // fantasy: no real machine breaks rock, rubber, steel and gel equally well (real responses run 0.02 to 1.0)
   function procComminution(node, M, stream) {
     const s = node.settings, wear = node.wear || 0, lvl = levelOf(node);
     const out = newStream(stream.temp), rej = newStream(stream.temp);
+    const omniOuts = M.omni ? {} : null;
     const T = Math.max(stream.temp, M.coldLevel || 0);
     const eta = Math.min(0.97, (M.etaFn ? M.etaFn(s) : M.eta) * (1 + FX.eta * lvl)) * (1 - 0.4 * wear);
     const life = M.life * (1 + FX.life * lvl);
@@ -132,6 +138,7 @@
       let r = mixResp(M, prof);
       if (M.liquidOnly && !liquidNow) r = 0;
       if (M.excludeLiquid && liquidNow) r = 0;
+      if (M.omni) r = liquidNow ? 0 : OMNI_EFF;
       const hyd = !!(M.physical || M.eSpec) && (M.mix.hyd || 0) > 0;
 
       // scalp what cannot enter
@@ -163,7 +170,7 @@
         const psd = makePSD(pach, n, Math.min(EDGE[i], top * (pach / p80i)));
         for (let j = 0; j < NB; j++) prod[j] += a * psd[j];
       }
-      addArr(out, mat, prod);
+      addArr(omniOuts ? (omniOuts[mat] || (omniOuts[mat] = newStream(stream.temp))) : out, mat, prod);
       for (let i = 0; i < NB; i++) { accAgg[i] += acc[i]; outAgg[i] += prod[i]; }
 
       // energy
@@ -223,6 +230,7 @@
       if (M.knife && D.hard >= 0.5 && pm.accMass / info.inKg > 0.01) warn(info, 'bad', 'Hard tramp material (' + D.name + ') is chewing the knives.');
     }
     if (M.ln2) warn(info, 'info', 'Liquid nitrogen use: ' + (info.accKg > 0 ? (ln2 / info.accKg).toFixed(2) : '0') + ' kg per kg of feed.');
+    if (omniOuts) { omniOuts.rejects = rej; return { outs: omniOuts, info }; }
     return { outs: { product: out, rejects: rej }, info };
   }
 

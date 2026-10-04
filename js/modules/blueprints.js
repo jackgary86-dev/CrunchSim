@@ -22,6 +22,7 @@
   }
   function portsOf(m) {
     const M = MACHINES[m];
+    if (M.omni && M.outs) return Object.keys(M.outs);   // #15: one port per material plus rejects
     return M.kind === 'separator' ? ['extract', 'residue'] : (M.kind === 'conditioner' ? ['product'] : ['product', 'rejects']);
   }
 

@@ -334,7 +334,11 @@
     if (!m || S.owned.has(m)) { b.textContent = '+ ADD'; b.className = ''; }
     else { b.textContent = 'BUY ' + fmtMoney(MACHINES[m].price); b.className = 'buy' + (S.money < MACHINES[m].price ? ' poor' : ''); }
   }
-  function primaryPort(n) { const M = MACHINES[n.m]; return M.kind === 'separator' ? 'extract' : 'product'; }
+  function primaryPort(n) {
+    const M = MACHINES[n.m];
+    if (M.omni) { let best = 'rejects', bm = -1; MAT_ORDER.forEach((m) => { const p = S.ev && S.ev.ports[n.uid + ':' + m], k = p ? Sim.streamMass(p) : 0; if (k > bm) { bm = k; best = m; } }); return best; }   // #15: one port per material, the heaviest one
+    return M.kind === 'separator' ? 'extract' : 'product';
+  }
   function applyLinePreset(id) {
     const L = LINES[id];
     const why = API.veto('applyLine', { id, nodes: L.nodes }); if (why) { Audio.ui('deny'); log(why, 'bad'); $('#line-preset').value = LINES[S.linePreset] ? S.linePreset : 'custom'; return; }
@@ -397,7 +401,7 @@
     const src = $('#m-src'); src.innerHTML = ''; src.appendChild(new Option('Head feed', 'feed'));
     for (let i = 0; i < k; i++) {
       const o = S.line[i], OM = MACHINES[o.m];
-      const ports = OM.kind === 'separator' ? ['extract', 'residue'] : (OM.kind === 'conditioner' ? ['product'] : (OM.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects']));
+      const ports = OM.omni ? Object.keys(OM.outs) : OM.kind === 'separator' ? ['extract', 'residue'] : (OM.kind === 'conditioner' ? ['product'] : (OM.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects']));
       ports.forEach((p) => src.appendChild(new Option((i + 1) + '. ' + OM.name + ' → ' + (OM.outs ? OM.outs[p] : p), o.uid + ':' + p)));
     }
     src.value = n.src === 'feed' ? 'feed' : n.src.uid + ':' + n.src.port;

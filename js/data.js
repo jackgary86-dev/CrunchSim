@@ -412,6 +412,27 @@
       best: 'Bulk aluminum when capital is tight.', avoid: 'Steel, fines, and anything you want melted efficiently.'
     }
   });
+  /* ---- end game (ticket #15) ----
+   * The Omniprocessor is the one fantasy machine: it liberates every material to the target size and sorts every particle into a
+   * bin of its own (see procComminution in js/sim.js). Its size, power, capacity and price are anchored on a real mega-shredder plant
+   * with its full downstream separation hall, so the economics around it stay grounded. It unlocks at Mega-plant rank or when every
+   * contract has been finished at three stars (js/modules/endgame.js).
+   */
+  const OMNI_OUTS = {}; MAT_ORDER.forEach(function (id) { OMNI_OUTS[id] = MATERIALS[id].name; }); OMNI_OUTS.rejects = 'Oversize rejects';
+  Object.assign(MACHINES, {
+    omni: {
+      name: 'Omniprocessor', short: 'OMNI', cat: 'End game', kind: 'comminution', scene: 'omni', omni: true,
+      mix: { impact: 0.4, shear: 0.3, cut: 0.2, comp: 0.1 },                                        // display only: the sim uses a flat 0.9 response on every material
+      eta: 0.5, cap: 400, capRef: 100, capExp: 1, maxFeed: 2500, screened: true,                     // eta ~2x a hammermill, as bed-breakage HPGR gets over impact; 400 t/h is the rating of the largest mega-shredders; takes a flattened car hulk (~2.5 m)
+      pidle: 400, prated: 9000, life: 5000, price: 30000000, service: 1800000, wearInfo: 'scan arches and rotor cassettes',   // 10,000 hp (7.5 MW) mega-shredder plus 1.5 MW of downstream drives; a complete mega-shredder plant with its separation hall costs $25-40M; service at 6% of price like the rest of the table
+      settings: [S('rate', 'Throughput', '%', 20, 100, 5, 100), S('target', 'Target size', 'mm', 1, 100, 1, 20, true)],
+      product: (s) => ({ p80: s.target, n: 2.4, top: 1.6 * s.target }),
+      outs: OMNI_OUTS,
+      unlock: { rank: 'Mega-plant', stars: 3, text: 'Reach Mega-plant rank, or finish every contract at three stars.' },
+      how: 'A long sealed unit that does in one pass what a whole plant does in twenty machines. Rotor cassettes take the feed down to the target size while a row of scan arches reads every particle (X-ray transmission, laser spectroscopy, induction and colour at once), and a bank of air jets fires each one down a chute of its own. No such machine exists: real plants need a shredder, magnets, eddy currents, air, density and sensor sorters in series because no single sensor and no single breaking mechanism works on every material.',
+      best: 'Anything. One output bin per material.', avoid: 'Nothing, except a small bank balance.'
+    }
+  });
   Object.keys(MACHINES).forEach(function (id) {
     const M = MACHINES[id]; M.id = id;
     // st.def is copied as-is, so an enum setting (a string such as a material id) defaults like a numeric one
@@ -444,7 +465,8 @@
     screen: [5, 2],       // 5x1.5 m inclined vibrating screen deck
     sinkfloat: [6, 3],
     // sensor sorter: 2 m wide belt unit with a 6 m acceleration conveyor; furnaces: 5 t induction cell, 10 t arc furnace with transformer bay, 20 t reverberatory
-    sensor: [6, 2], induction: [5, 4], arc: [8, 6], kiln: [10, 4]     // heavy-media drum with media pumps and drain screens
+    sensor: [6, 2], induction: [5, 4], arc: [8, 6], kiln: [10, 4],    // heavy-media drum with media pumps and drain screens
+    omni: [40, 12]        // the length of a mega-shredder's downstream separation building, folded into one enclosure
   };
   Object.keys(MACHINES).forEach(function (id) { const f = FOOTPRINT[id]; if (f) MACHINES[id].foot = { w: f[0], d: f[1] }; });
 
@@ -454,7 +476,8 @@
     ['Fine and cold', ['ball', 'cryo', 'freezer']],
     ['Hydraulic', ['colloid', 'homog', 'atomizer']],
     ['Separation', ['magnet', 'eddy', 'air', 'screen', 'sinkfloat', 'sensor']],
-    ['Smelting', ['induction', 'arc', 'kiln']]
+    ['Smelting', ['induction', 'arc', 'kiln']],
+    ['End game', ['omni']]
   ];
 
   /* ---------------- PRESET FEEDS ---------------- */

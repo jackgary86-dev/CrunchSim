@@ -599,7 +599,10 @@
   const LEVEL_FX = { cap: 0.20, eta: 0.06, life: 0.30, power: 0.10 };   // per level, multiplicative on base
   function levelCost(M, lvl) { return Math.round(M.price * 0.45 * Math.pow(1.7, lvl) / 100) * 100; }
   const PLANT_UPGRADES = {
-    logistics: { name: 'Feed logistics', icon: '🚚', desc: 'Bigger batches per run', unit: 't per batch', levels: [30, 60, 120, 250, 500], costs: [3000, 9000, 30000, 110000] },
+    // Batch size is what the yard can receive and weigh in one go. Up to 500 t it is trucks and a loader. 1,000 t needs a pit
+    // weighbridge and another hectare of paved yard (~$1.75M real, so $350k at PRICE_SCALE); 3,000 t a rail siding with a
+    // turnout (~1 km of industrial track, $5-6M real); 10,000 t a loop track for unit trains and a stacker-reclaimer (~$17M real).
+    logistics: { name: 'Feed logistics', icon: '🚚', desc: 'Bigger batches per run', unit: 't per batch', levels: [30, 60, 120, 250, 500, 1000, 3000, 10000], costs: [3000, 9000, 30000, 110000, 350000, 1200000, 3500000] },
     power: { name: 'Power contract', icon: '⚡', desc: 'Cheaper electricity', unit: '$/kWh', levels: [0.12, 0.10, 0.085, 0.07, 0.055], costs: [4000, 12000, 40000, 150000] },
     market: { name: 'Offtake deals', icon: '📈', desc: 'Better prices for every product', unit: '× price', levels: [1.0, 1.08, 1.16, 1.25, 1.35], costs: [15000, 45000, 160000, 550000] },
     nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] },

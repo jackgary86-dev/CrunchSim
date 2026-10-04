@@ -33,6 +33,10 @@
   };
   for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
   let cam = null, dirty = true, lastEval = 0, lastRealT = 0, cardTimer = 0;
+  /* run-economics helpers (js/modules/economics.js, loaded after this file; every use is at render or run time) */
+  const Eco = () => CS.Economics || null;
+  function serviceCost(M, wear) { const E = Eco(); return E ? E.serviceCost(M, wear) : Math.round(M.service * Math.max(0.15, wear)); }
+  const AUTO_SERVICE_AT = 0.8;   // the auto-service switch pays for new wear parts at 80% wear, where the 'service soon' warning fires
 
   /* ---------------- module interface ----------------
    * Feature modules live in js/modules/*.js, load after this file, and talk to the app only through CS.app.
@@ -148,28 +152,25 @@
     });
     const C = contract(); $('#contract-active').textContent = C ? 'ACTIVE: ' + C.name.toUpperCase() : '';
   }
-  /* where did the value go: the material with the largest gap between what the feed was worth and what the bins sell for */
+  /* where did the value go (#22): the three materials with the largest gap between what the feed was worth and what the
+   * bins sell for, each with its cause, and the cost each node adds per tonne. Returns an HTML block for the score card. */
   function biggestLoss() {
-    if (!S.ev) return '';
-    const head = S.ev.head; let worst = null;
-    for (const m in head.m) {
-      const hm = Sim.sum(head.m[m]); if (hm < 5) continue; const D = MATERIALS[m];
-      const ideal = hm / 1000 * D.sell * Sim.prices.market; if (ideal < 1) continue;
-      let got = 0, worstBin = null, worstMass = 0;
-      S.ev.terminals.forEach((t) => {
-        const a = t.stream.m[m]; if (!a) return; const mass = Sim.sum(a); if (mass <= 0) return;
-        const st = Sim.binStats(t.stream.m, t.form), pm = st.perMat[m];
-        got += pm && pm.value != null ? pm.value : 0;
-        if (st.grade < 0.6 && mass > worstMass) { worstMass = mass; worstBin = { t, st, share: mass / hm }; }
-      });
-      const loss = ideal - got;
-      if (!worst || loss > worst.loss) worst = { m, loss, bin: worstBin };
-    }
-    if (!worst || worst.loss < 2) return '';
-    const D = MATERIALS[worst.m]; let txt = 'Biggest loss: ' + D.name + ', ' + fmtMoney(worst.loss) + ' per tonne of feed';
-    if (worst.bin) { const n = info(worst.bin.t.uid); txt += ': ' + Math.round(worst.bin.share * 100) + '% of it sits in ' + (n ? n.M.short + '/' + worst.bin.t.port : 'a mixed bin') + ' at ' + Math.round(worst.bin.st.share * 100) + '% purity.'; }
-    else txt += ', sold below its size spec or diluted in mixed bins.';
-    return txt;
+    const E = Eco(); if (!S.ev || !E) return '';
+    const rep = E.lossReport(S.ev, S.line, effRate(), Sim.prices);
+    if (!rep.losses.length) return '';
+    let h = '<div class="loss"><b>WHERE THE VALUE WENT</b> <span class="small">per tonne of feed</span>' +
+      rep.losses.map((l, i) => '<div>' + (i + 1) + '. ' + esc(l.name) + ' <b>' + fmtMoney(l.loss) + '/t</b> <span class="cause">' + esc(l.text) + '</span></div>').join('');
+    const by = rep.perNode.filter((n) => n.total > 0.5).sort((a, b) => b.total - a.total).slice(0, 4);
+    if (by.length) h += '<div class="bynode">COST BY NODE · ' + by.map((n) => (n.idx + 1) + ' ' + esc(n.short) + ' ' + fmtMoney(n.total) + '/t').join(' · ') + '</div>';
+    return h + '</div>';
+  }
+  /* what would have earned (#22): the single best next machine from the NEXT PURCHASE ranking, and its margin on this batch */
+  function earnHint(r) {
+    const E = Eco(); if (!E || !S.line.length || Object.keys(unownedIn(S.line)).length) return '';
+    const picks = nextPurchases(); if (!picks || !picks.length) return '';
+    const b = E.betterLine(picks[0], marginPerT().margin, r.done); if (!b) return '';
+    const M = MACHINES[b.m], last = S.line[S.line.length - 1];
+    return '<div class="hint">WHAT WOULD HAVE EARNED · a ' + esc(M.name) + ' (' + fmtMoney(M.price) + ') after ' + S.line.length + ':' + esc(MACHINES[last.m].short) + '/' + esc(b.port.toUpperCase()) + ' lifts the margin from ' + fmtMoney(b.base / Math.max(r.done, 1e-9)) + '/t to ' + fmtMoney(b.perT) + '/t: about ' + fmtMoney(b.net) + ' on this batch.</div>';
   }
 
   function feedCostPerT() {
@@ -291,12 +292,16 @@
     });
     $('#btn-service').addEventListener('click', () => {
       const n = node(S.sel); if (!n) return; const M = MACHINES[n.m];
-      const cost = Math.round(M.service * Math.max(0.15, n.wear));
+      const cost = serviceCost(M, n.wear);
       if (!spend(cost, 'service on ' + M.name)) return;
       n.wear = 0; Audio.ui('ok'); log('Serviced ' + M.name + ': new ' + M.wearInfo + ' for ' + fmtMoney(cost) + '.', 'ok'); markDirty(true);
     });
     $('#btn-buy').addEventListener('click', () => { const n = node(S.sel); if (n && buyMachine(n.m)) markDirty(true); else renderBank(); });
     $('#btn-upgrade').addEventListener('click', () => { const n = node(S.sel); if (n && upgradeMachine(n.m)) markDirty(true); else renderBank(); });
+    $('#m-autosvc').addEventListener('change', () => {
+      const n = node(S.sel); if (!n) return; n.autoService = $('#m-autosvc').checked;
+      log('Auto-service ' + (n.autoService ? 'on' : 'off') + ' for ' + MACHINES[n.m].name + (n.autoService ? ': new ' + MACHINES[n.m].wearInfo + ' are paid for at ' + Math.round(AUTO_SERVICE_AT * 100) + '% wear.' : '.')); save();
+    });
     $('#m-src').addEventListener('change', () => {
       const n = node(S.sel); if (!n) return; const v = $('#m-src').value;
       n.src = v === 'feed' ? 'feed' : { uid: +v.split(':')[0], port: v.split(':')[1] };
@@ -375,10 +380,12 @@
   /* ---------------- machine panel ---------------- */
   function renderMachine() {
     const n = node(S.sel);
-    if (!n) { $('#m-name').textContent = 'No machine selected'; $('#m-settings').innerHTML = ''; $('#m-mech').innerHTML = ''; $('#m-how').textContent = 'Add a machine to the flowsheet or pick a preset line.'; $('#m-best').textContent = ''; $('#m-avoid').textContent = ''; $('#m-src').innerHTML = ''; $('#m-wear').textContent = ''; $('#btn-buy').classList.add('hidden'); $('#btn-upgrade').classList.add('hidden'); return; }
+    if (!n) { $('#m-name').textContent = 'No machine selected'; $('#m-settings').innerHTML = ''; $('#m-mech').innerHTML = ''; $('#m-how').textContent = 'Add a machine to the flowsheet or pick a preset line.'; $('#m-best').textContent = ''; $('#m-avoid').textContent = ''; $('#m-src').innerHTML = ''; $('#m-wear').textContent = ''; $('#btn-buy').classList.add('hidden'); $('#btn-upgrade').classList.add('hidden'); $('#m-autosvc-wrap').classList.add('hidden'); return; }
     const M = MACHINES[n.m], k = S.line.indexOf(n), owned = S.owned.has(n.m), lvl = levelOf(n.m);
     $('#m-name').textContent = (k + 1) + '. ' + M.name + (lvl ? ' · LV ' + lvl : '');
-    $('#m-wear').innerHTML = !owned ? '<b class="bad">NOT OWNED</b>' : (M.life < 1e8 ? 'WEAR <b class="' + (n.wear > 0.8 ? 'bad' : n.wear > 0.5 ? 'warn' : 'ok') + '">' + Math.round(n.wear * 100) + '%</b> · ' + esc(M.wearInfo) : '');
+    const wears = owned && M.life < 1e8, fc = wears && Eco() ? Eco().wearForecast(n, info(n.uid)) : null;   // #20: head tonnes until the wear parts are gone
+    $('#m-wear').innerHTML = !owned ? '<b class="bad">NOT OWNED</b>' : (wears ? 'WEAR <b class="' + (n.wear > 0.8 ? 'bad' : n.wear > 0.5 ? 'warn' : 'ok') + '">' + Math.round(n.wear * 100) + '%</b> · ' + esc(M.wearInfo) + (fc ? ' · about <b class="num">' + fmtNum(fc.toWorn, 0) + ' t</b> until worn out' : '') : '');
+    $('#m-autosvc-wrap').classList.toggle('hidden', !wears); $('#m-autosvc').checked = !!n.autoService;
     $('#btn-service').disabled = !(owned && M.life < 1e8 && n.wear > 0.02);
     const bb = $('#btn-buy'); bb.textContent = 'BUY ' + fmtMoney(M.price); bb.className = 'buy' + (owned ? ' hidden' : '') + (S.money < M.price ? ' poor' : '');
     const bu = $('#btn-upgrade');
@@ -597,7 +604,9 @@
     const lim = S.mr && S.mr.limiter ? (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' ' + S.mr.limiter.why : 'none';
     $('#plant-readouts').innerHTML = ro('HEAD RATE', fmtNum(m.R, 1), 't/h') + ro('BOTTLENECK', esc(lim).toUpperCase(), '', S.mr && S.mr.limiter && S.mr.limiter.why === 'worn out' ? 'bad' : '') + ro('PLANT POWER', fmtNum(m.P, 0), 'kW') +
       ro('PLANT ENERGY', fmtNum(m.R > 0 ? m.P / m.R : 0, 1), 'kWh/t') + ro('PRODUCT VALUE', fmtMoney(m.rev), '/t', 'good') + ro('MARGIN', fmtMoney(m.margin), '/t', m.margin < 0 ? 'bad' : 'good') +
-      ro('EARNING RATE', fmtMoney(m.margin * m.R), '/h', m.margin < 0 ? 'bad' : 'good') + ro('THIS BATCH', fmtMoney(m.margin * S.tons), 'net', m.margin < 0 ? 'bad' : 'good');
+      ro('EARNING RATE', fmtMoney(m.margin * m.R), '/h', m.margin < 0 ? 'bad' : 'good') + ro('THIS BATCH', fmtMoney(m.margin * S.tons), 'net', m.margin < 0 ? 'bad' : 'good') +
+      ro('WEAR COST', fmtMoney(m.wearC), '/t', m.wearC > 0.1 * Math.max(m.rev, 1) ? 'hi' : '');   // #20: liners and knives consumed per tonne, priced at the service bill
+    renderRunProjection(m);
     const specEl = $('#spec'), C = contract(); let shippedKeys = new Set();
     if (C) {
       const cs = Score.evalContract(C, S.line, S.run ? { kwh: S.run.kwh, done: S.run.done } : null); S.lastSpec = cs;
@@ -611,14 +620,25 @@
     const bins = binList();
     if (!bins.length) box.appendChild(el('div', 'empty', 'Nothing comes out yet.'));
     bins.forEach((b) => {
-      const st = b.st, comps = Object.entries(st.perMat).sort((x, y) => y[1].mass - x[1].mass);
+      const st = b.st, comps = Object.entries(st.perMat).sort((x, y) => y[1].mass - x[1].mass), pr = Eco() ? Eco().binPricing(st, Sim.prices.market) : null;
       const name = b.M ? (b.idx + 1) + ' ' + b.M.short + ' / ' + (b.M.outs ? b.M.outs[b.port] : b.port) : b.key;
       const top = comps.slice(0, 3).map(([mm, v]) => esc(MATERIALS[mm].name) + ' ' + Math.round(100 * v.mass / st.total) + '%').join(', ');
       const d = el('div', 'bin', '<div class="h"><b>' + esc(name.toUpperCase()) + (shippedKeys.has(b.key) ? '<span class="ship">SHIPPED</span>' : '') + '</b><span>' + fmtNum(st.total, 0) + ' kg</span></div>' +
         '<div class="comp">' + comps.map(([mm, v]) => '<i style="width:' + (100 * v.mass / st.total) + '%;background:' + MATERIALS[mm].color + '"></i>').join('') + '</div>' +
-        '<div class="d"><span>' + top + '</span></div><div class="d"><span>P80 ' + fmtSize(st.p80) + ' · purity ' + Math.round(st.share * 100) + '% · price grade ' + Math.round(st.grade * 100) + '%' + (b.temp ? ' · frozen' : '') + (b.form ? ' · ' + esc(b.form) : '') + '</span><span class="val">' + fmtMoney(st.value) + '</span></div>');
+        '<div class="d"><span>' + top + '</span></div><div class="d"><span>P80 ' + fmtSize(st.p80) + ' · purity ' + Math.round(st.share * 100) + '% · price grade ' + Math.round(st.grade * 100) + '%' + (b.temp ? ' · frozen' : '') + (b.form ? ' · ' + esc(b.form) : '') + '</span><span class="val">' + fmtMoney(st.value) + '</span></div>' +
+        (pr ? '<div class="d price"><span><b>' + fmtMoney(pr.perT) + '/t</b> · ' + esc(pr.name) + ' ' + esc(pr.text) + '</span></div>' : ''));   // #19: price per tonne and the two discounts
       box.appendChild(d);
     });
+  }
+  /* #18: the RUN BATCH button carries the projected net of this batch and turns amber, with a one-line reason in the
+   * header, when the projection is negative. While a batch runs the header shows the live net instead. */
+  function renderRunProjection(m) {
+    if (S.run) return;
+    const b = $('#btn-run'), rn = $('#run-net'), E = Eco();
+    const pr = E && m && S.line.length && m.R > 0 ? E.projectBatch(m, S.tons, S.ev.nodes) : null;
+    b.innerHTML = '&#9654; RUN BATCH' + (pr ? '<small class="proj">' + (pr.net >= 0 ? '+' : '') + fmtMoney(pr.net) + '</small>' : '');
+    b.classList.toggle('neg', !!(pr && pr.negative)); b.title = pr && pr.reason ? pr.reason : 'Run a batch (Space)';
+    rn.textContent = pr && pr.reason ? pr.reason : ''; rn.className = 'num small' + (pr && pr.reason ? ' reason' : ''); rn.title = rn.textContent;
   }
 
   /* ---------------- log ---------------- */
@@ -633,6 +653,7 @@
     if (!S.line.length) { Audio.ui('deny'); log('Add at least one machine first.', 'bad'); return; }
     const miss = unownedIn(S.line);
     if (Object.keys(miss).length) { Audio.ui('deny'); log('You do not own ' + Object.keys(miss).map((m) => MACHINES[m].name).join(', ') + ' (' + fmtMoney(unownedCost(S.line)) + '). Buy them or remove them from the line.', 'bad'); return; }
+    let svcC = 0; S.line.forEach((nd, i) => { if (nd.autoService && nd.wear >= AUTO_SERVICE_AT) svcC += autoService(nd, i); });   // #20: nodes already past the auto-service point are serviced before the run
     recompute();
     if (!(effRate() > 0)) { Audio.ui('deny'); log('The line cannot run: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no feed is accepted') + '.', 'bad'); return; }
     let tot = 0; for (const m in S.comp) tot += S.comp[m] > 0 ? S.comp[m] : 0;
@@ -641,7 +662,8 @@
     const feedC = C ? 0 : feedCostPerT() * S.tons;
     if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) return;
     if (feedC <= 0) S.money -= feedC;   // paid to take it
-    S.run = { total: S.tons, done: 0, rate: effRate(), kwh: 0, rev: 0, extra: 0, feedC, t0: S.clock, rankIdx: rankOf(netWorth()).idx };
+    const proj = marginPerT();   // #18: the projection the score card compares the actual net with
+    S.run = { total: S.tons, done: 0, rate: effRate(), kwh: 0, rev: 0, extra: 0, feedC, t0: S.clock, rankIdx: rankOf(netWorth()).idx, projPerT: proj.margin, serviceC: svcC, wearC: 0, perNode: {} };
     Audio.init(); Audio.ui('ok'); hideCard();
     log('Batch start: ' + S.tons + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. ' + (C ? 'Contract feed, supplied by ' + C.client + '.' : 'Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.'), 'ok');
     S.ev.nodes.forEach((n, i) => n.warnings.forEach((w) => { if (w.level !== 'info') log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + w.text, w.level); }));
@@ -653,9 +675,9 @@
     const dt = S.clock - r.t0, powerC = r.kwh * Sim.prices.power;
     // a module may take the products into inventory instead of selling them now (returns a short reason string)
     const held = API.veto('autoSell', { r, bins: binList() }); r.held = held;
-    const sold = held ? 0 : r.rev, net = sold - r.feedC - powerC - r.extra;
+    const sold = held ? 0 : r.rev, net = sold - r.feedC - powerC - r.extra - (r.serviceC || 0);   // auto-service was paid from the bank as it happened
     S.money += sold - powerC - r.extra; S.tonnes += r.done; S.kwh += r.kwh; S.batches++; S.lifetime += Math.max(0, sold - powerC - r.extra);
-    log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + (r.held ? 'to ' + r.held + ' worth ' : '') + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
+    log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + (r.held ? 'to ' + r.held + ' worth ' : '') + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + (r.serviceC > 0 ? ' · auto-service ' + fmtMoney(r.serviceC) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
     Audio.ui(why === 'complete' ? 'done' : 'click');
     let cs = null; const C = contract();
     if (C && why === 'complete') {
@@ -677,21 +699,34 @@
     if (!(r.rate > 0)) { log('Line halted: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no flow') + '.', 'bad'); Audio.ui('alarm'); stopRun('halted'); return; }
     let tons = r.rate * dh; if (r.done + tons > r.total) tons = r.total - r.done;
     r.done += tons;
-    let kwh = 0, extra = 0;
+    let kwh = 0, extra = 0, wearC = 0; const E = Eco();
     S.ev.nodes.forEach((n, i) => {
-      kwh += n.ePerHead * tons + n.M.pidle * dh; extra += n.extraCostPerHeadT * tons;
+      kwh += n.ePerHead * tons + n.M.pidle * dh; extra += n.extraCostPerHeadT * tons; wearC += n.wearPerHeadT * tons * n.M.service;
+      if (E) E.accrue(r.perNode, n, tons, dh);   // #21: per-machine idle / process kWh, nitrogen and consumables for the score card
       const nd = S.line[i]; if (nd && n.M.life < 1e8) {
         const before = nd.wear; nd.wear = Math.min(1, nd.wear + n.wearPerHeadT * tons);
-        if (before < 0.8 && nd.wear >= 0.8) log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + n.M.wearInfo + ' at 80% wear. Service soon.', 'warn');
+        if (before < AUTO_SERVICE_AT && nd.wear >= AUTO_SERVICE_AT) {
+          if (nd.autoService) r.serviceC += autoService(nd, i);   // #20
+          else log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + n.M.wearInfo + ' at 80% wear. Service soon.', 'warn');
+        }
         if (before < 1 && nd.wear >= 1) { log('Node ' + (i + 1) + ' ' + n.M.short + ' has worn out.', 'bad'); dirty = true; }
       }
     });
-    r.kwh += kwh; r.extra += extra; r.rev += revenuePerHeadT() * tons;
+    r.kwh += kwh; r.extra += extra; r.wearC += wearC; r.rev += revenuePerHeadT() * tons;
     if (r.done >= r.total - 1e-9) stopRun('complete');
+  }
+  /* #20: pay for new wear parts on a node whose auto-service switch is on. Returns what was paid (0 when the bank refused). */
+  function autoService(nd, i) {
+    const M = MACHINES[nd.m], cost = serviceCost(M, nd.wear);
+    if (!spend(cost, 'auto-service on ' + M.name)) { log('Node ' + (i + 1) + ' ' + M.short + ' stays at ' + Math.round(nd.wear * 100) + '% wear: auto-service could not be paid.', 'warn'); return 0; }
+    nd.wear = 0; dirty = true;
+    log('Auto-service: node ' + (i + 1) + ' ' + M.short + ' got new ' + M.wearInfo + ' for ' + fmtMoney(cost) + '.', 'ok');
+    return cost;
   }
   function renderRunState() {
     const on = !!S.run;
-    $('#btn-run').innerHTML = on ? '&#9632; STOP' : '&#9654; RUN BATCH'; $('#btn-run').classList.toggle('running', on);
+    $('#btn-run').innerHTML = on ? '&#9632; STOP' : '&#9654; RUN BATCH'; $('#btn-run').classList.toggle('running', on); if (on) $('#btn-run').classList.remove('neg');
+    if (!on && S.ev) renderRunProjection(marginPerT());
     $('#btn-stop').disabled = !on;
     const cs = $('#cam-status'); cs.classList.remove('hidden'); cs.textContent = on ? 'RUNNING' : 'STANDBY'; cs.classList.toggle('on', on); cs.classList.toggle('idle', !on);
   }
@@ -702,7 +737,8 @@
     $('#tonnes').textContent = fmtNum(S.tonnes + (S.run ? S.run.done : 0), S.tonnes > 100 ? 0 : 1) + ' t';
     $('#prog').style.width = S.run ? (100 * S.run.done / S.run.total) + '%' : '0%';
     const rn = $('#run-net');
-    if (S.run) { const r = S.run, net = r.rev - r.kwh * Sim.prices.power - r.extra - r.feedC; rn.textContent = (net >= 0 ? '+' : '') + fmtMoney(net); rn.className = 'num small ' + (net >= 0 ? 'ok' : 'bad'); } else rn.textContent = '';
+    if (S.run) { const r = S.run, net = r.rev - r.kwh * Sim.prices.power - r.extra - r.feedC - (r.serviceC || 0); rn.textContent = (net >= 0 ? '+' : '') + fmtMoney(net); rn.className = 'num small ' + (net >= 0 ? 'ok' : 'bad'); }
+    /* idle: renderRunProjection owns the field (the projection's reason, or nothing) */
   }
 
   /* ---------------- score card ---------------- */
@@ -713,19 +749,32 @@
     const tip = net < 0 ? 'Negative batches usually mean the wrong machine for the material, or a feed that costs more than its products sell for. Check the warnings on each node.' :
       (r.done > 0 && r.kwh / r.done > 40 ? 'Energy is eating your margin. Fine grinding and cryogenics are expensive; make sure they are earning their keep.' :
         (lim && lim.why === 'capacity' ? 'Node ' + (S.line.findIndex((n) => n.uid === lim.uid) + 1) + ' is the bottleneck. Upgrading it raises the whole line\'s throughput.' : 'Bigger batches earn more per run. Feed logistics raises the batch limit.'));
-    const loss = biggestLoss();
+    const loss = biggestLoss(), hint = earnHint(r);
+    /* #18 projected versus actual, #20 wear, #21 power and consumables by machine */
+    const projNet = r.projPerT != null ? r.projPerT * r.done : null;
+    const projRow = projNet != null ? '<dt>Projected net (' + fmtMoney(r.projPerT) + '/t before the run)</dt><dd class="' + (projNet >= 0 ? 'ok' : 'bad') + '">' + fmtMoney(projNet) + '</dd><dt>Actual versus projected (the projection charges wear)</dt><dd class="' + (net - projNet >= -1 ? 'ok' : 'bad') + '">' + (net - projNet >= 0 ? '+' : '') + fmtMoney(net - projNet) + '</dd>' : '';
+    const wearRow = r.wearC > 0 ? '<dt>Wear accrued (' + fmtMoney(r.done > 0 ? r.wearC / r.done : 0) + '/t, paid at service)</dt><dd class="warn">' + fmtMoney(-r.wearC) + '</dd>' : '';
+    const svcRow = r.serviceC > 0 ? '<dt>Auto-service</dt><dd>' + fmtMoney(-r.serviceC) + '</dd>' : '';
+    let power = '';
+    if (Eco() && r.perNode && Object.keys(r.perNode).length) {
+      const pt = Eco().powerTable(r.perNode, S.ev.nodes, Sim.prices);
+      power = '<div class="sec">POWER &amp; CONSUMABLES BY MACHINE</div><div class="ptable"><span class="h">MACHINE</span><span class="h">IDLE kWh</span><span class="h">PROCESS kWh</span><span class="h">COST</span>' +
+        pt.rows.map((x) => '<span>' + (x.idx + 1) + ' ' + esc(x.short) + '</span><span>' + fmtNum(x.idle, 0) + '</span><span>' + fmtNum(x.proc, 0) + '</span><span>' + fmtMoney(x.cost) + '</span>').join('') +
+        '<span class="tot">power</span><span class="tot">' + fmtNum(pt.totals.idle, 0) + '</span><span class="tot">' + fmtNum(pt.totals.proc, 0) + '</span><span class="tot">' + fmtMoney(pt.totals.cost) + '</span>' +
+        pt.extras.map((x) => '<span>' + (x.idx + 1) + ' ' + esc(x.short) + ' ' + esc(x.what) + '</span><span></span><span>' + (x.qty > 0 ? fmtNum(x.qty, 0) + ' ' + esc(x.unit) : '') + '</span><span>' + fmtMoney(x.cost) + '</span>').join('') + '</div>';
+    }
     let head = '<h2>BATCH ' + esc(why.toUpperCase()) + '<span>' + fmtNum(r.done, 1) + ' t \u00b7 ' + fmtClock(dt).slice(2) + '</span></h2>';
     if (cs) head = '<h2>CONTRACT \u00b7 ' + esc(cs.C.name.toUpperCase()) + '<span>' + fmtNum(r.done, 1) + ' t \u00b7 ' + fmtClock(dt).slice(2) + '</span></h2><div class="stars">' + starsText(cs.stars) + (cs.newBest && cs.stars ? ' <small class="ok">NEW BEST</small>' : '') + '</div><div class="reason">' + esc(cs.reason) + '</div>' +
       '<div class="checks">' + cs.checks.map((c) => '<div class="chk ' + (c.ok ? (c.great ? 'great' : 'ok') : 'bad') + '"><span>' + c.label + '</span><span>' + esc(c.text) + '</span><span>' + esc(c.need) + '</span></div>').join('') + '</div>';
     card.innerHTML = '<div class="card">' + head +
       '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>' +
       (cs ? '<dl><dt>Contract fee (' + fmtNum(cs.deliveredT, 1) + ' t of ' + esc(cs.C.label) + ' shipped)</dt><dd class="ok">' + fmtMoney(cs.fee) + '</dd></dl>' : '') +
-      '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') +
+      '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') + svcRow + wearRow + projRow +
       (best ? '<dt>Best product</dt><dd>' + esc(best.M ? best.M.short + ' / ' + (best.M.outs ? best.M.outs[best.port] : best.port) : '') + ' · ' + fmtMoney(best.st.value) + '/t</dd>' : '') +
-      '<dt>Bank</dt><dd>' + fmtMoney(S.money) + '</dd><dt>Net worth (score)</dt><dd>' + fmtMoney(netWorth()) + '</dd></dl>' +
+      '<dt>Bank</dt><dd>' + fmtMoney(S.money) + '</dd><dt>Net worth (score)</dt><dd>' + fmtMoney(netWorth()) + '</dd></dl>' + power +
       (rankUp ? '<div class="rankup">RANK UP \u00b7 ' + esc(rankUp.toUpperCase()) + '</div>' : '') +
       (cs ? '<div class="lesson">' + esc(cs.C.lesson) + '</div>' : '') +
-      (loss ? '<div class="loss">' + esc(loss) + '</div>' : '') +
+      loss + hint +
       '<div class="tip">' + esc(cs ? 'Retry for more stars or release the contract.' : tip) + ' Click to dismiss.</div></div>';
     card.classList.remove('hidden'); cardTimer = 12;
   }
@@ -764,7 +813,7 @@
     try {
       const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (!d || !Array.isArray(d.line)) return false;
       S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, 500);
-      S.line = d.line.filter((n) => MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed' }));
+      S.line = d.line.filter((n) => MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed', autoService: !!n.autoService }));
       const uids = new Set(S.line.map((n) => n.uid));
       S.line.forEach((n, i) => { if (n.src !== 'feed' && !(uids.has(n.src.uid) && S.line.findIndex((x) => x.uid === n.src.uid) < i)) n.src = 'feed'; });
       let maxUid = 0; S.line.forEach((n) => { maxUid = Math.max(maxUid, n.uid); }); while (Sim.nextUid() < maxUid) { /* advance */ }
@@ -819,7 +868,7 @@
 
   function boot() {
     API.S = S;
-    Object.assign(API, { S, Score, softReset, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

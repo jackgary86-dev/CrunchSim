@@ -324,6 +324,8 @@
     API.on('load', restore);
     if (API.S && API.S.ext) restore(API.S.ext);   // registered after boot: the 'load' event has already fired
     API.on('save', function () { return { missions: serialize(st, rng.getState()) }; });
+    /* rival yards (ticket #32, js/modules/rivals.js) read the live reputation and job board, and may take an offered job off the board */
+    CS.Missions.live = { rep: function () { return st.rep; }, jobs: function () { return st.jobs; }, render: function () { render(); } };
 
     /* ---- the mission follows S.contract: accepting starts the clock, releasing ends it ---- */
     function sync() {

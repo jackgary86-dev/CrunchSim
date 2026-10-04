@@ -130,6 +130,7 @@
   function acceptContract(id) {
     const C = Score.CONTRACTS.find((c) => c.id === id); if (!C) return;
     if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch before changing contracts.', 'warn'); return; }
+    const why = API.veto('acceptContract', { id, C }); if (why) { Audio.ui('deny'); log(why, 'warn'); return; }   // rivals module: a contract a rival yard holds
     S.contract = id; S.feedPreset = C.feed; S.comp = Object.assign({}, FEEDS[C.feed].comp); S.tons = C.tons;
     const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons;
     setFeedLock(true); renderFeedSelect(); syncFeedRows();

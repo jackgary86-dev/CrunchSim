@@ -42,6 +42,7 @@
    * Feature modules live in js/modules/*.js, load after this file, and talk to the app only through CS.app.
    * Events: 'boot' (after first render), 'render' (every full render), 'batchStart' {run}, 'batchComplete' {r, why, net, bins, cs},
    * 'tick' {dt, dh} every frame (dh = sim hours advanced this frame, 0 when idle), 'save' (return an object to persist), 'load' (object persisted).
+   * Queries (modules edit the payload): 'feedCost' {id, cost}, 'plantValue' {key, value} (add to a plant upgrade value), 'assetValue' {value} (add owned assets to net worth).
    */
   const hooks = {};
   const API = {
@@ -61,7 +62,7 @@
   CS.app = API;   // exposed before boot so modules loaded after this file can register hooks; boot() fills in the rest of the API
 
   /* ---------------- game-layer helpers ---------------- */
-  function plantValue(key) { const U = PLANT_UPGRADES[key]; return U.levels[Math.min(S.plant[key], U.levels.length - 1)]; }
+  function plantValue(key) { const U = PLANT_UPGRADES[key]; const q = { key, value: U.levels[Math.min(S.plant[key], U.levels.length - 1)] }; API.emit('plantValue', q); return q.value; }   // modules may add to a value (facility: the weighbridge adds batch tonnes)
   function applyPlant() {
     Sim.prices.power = plantValue('power'); Sim.prices.ln2 = plantValue('nitrogen'); Sim.prices.market = plantValue('market');
     const max = plantValue('logistics'); const r = $('#feed-tons'); r.max = max; if (S.tons > max) { S.tons = max; r.value = max; $('#feed-tons-v').textContent = S.tons + ' t'; }
@@ -73,7 +74,8 @@
     S.owned.forEach((m) => { if (MACHINES[m]) { v += MACHINES[m].price; for (let l = 0; l < levelOf(m); l++) v += levelCost(MACHINES[m], l); } });
     for (const k in PLANT_UPGRADES) for (let l = 0; l < S.plant[k]; l++) v += PLANT_UPGRADES[k].costs[l];
     S.suppliers.forEach((f) => { if (FEEDS[f]) v += FEEDS[f].unlock; });
-    return v;
+    const q = { value: v }; API.emit('assetValue', q);   // modules add what they sold the player (facility and office upgrades)
+    return q.value;
   }
   function netWorth() { return S.money + assetValue(); }
   function rankOf(nw) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (nw >= RANKS[k][0]) i = k; return { idx: i, name: RANKS[i][1], floor: RANKS[i][0], next: RANKS[i + 1] ? RANKS[i + 1][0] : null, nextName: RANKS[i + 1] ? RANKS[i + 1][1] : null }; }

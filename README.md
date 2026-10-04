@@ -10,7 +10,7 @@ Feed a mix of materials into a line of real industrial machines, run a batch, an
 
 - **Start small.** You own a hammermill shredder and $2,800. The starter line shreds end-of-life vehicles into mixed shred, which sells at a discount because nothing is sorted. Two or three batches pay for your first sorter. The bank panel's NEXT PURCHASE block ranks the unowned sorters by the margin each would add to the end of your line, and you unlock them one at a time: sink-float tank, magnetic drum, air classifier, eddy current separator, then the screen.
 - **Run batches.** Each batch buys feed, pays for power and consumables, and sells the product bins. The net lands in your bank on a score card at the end of the run. Feed can also be bought ahead by the thousand tonnes into an intake stockpile, one pile per source, and run down batch by batch; the Feed logistics upgrade takes batches up to 10,000 t.
-- **Buy and upgrade.** Twenty-five more machines can be bought from the flowsheet panel. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Supplier contracts unlock richer feeds such as tires, zorba and quarry rubble.
+- **Buy and upgrade.** Twenty-five more machines can be bought from the flowsheet panel. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Supplier contracts unlock richer feeds such as tires, zorba and quarry rubble. The Facility & office panel sells a trading desk, a sampling lab, a control room, a weighbridge, a maintenance bay, a power substation, dust and water treatment and a nitrogen tank farm; the site drawing fills in as you buy them.
 - **Take contracts.** Clients post jobs with a spec sheet: target material, purity, recovery, a size window and an energy cap. They supply the feed. Bins that meet the spec ship, stars decide the fee, and every job hides a machine that looks right but is wrong for that material.
 - **Rank up.** Net worth is bank plus everything you own. It moves you from Scrapyard through Recycler, Processor, Plant operator and Industrial group to Mega-plant.
 
@@ -90,6 +90,7 @@ node tests/contracts.js
 node tests/sensor.js
 node tests/furnace.js
 node tests/plant3d-layout.js
+node tests/facility.js
 ```
 
 ## Sources

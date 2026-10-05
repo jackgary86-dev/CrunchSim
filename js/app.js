@@ -216,7 +216,7 @@
     return S.ev.terminals.map((t) => {
       const st = Sim.binStats(t.stream.m, t.form); const n = info(t.uid);
       return { key: t.key, uid: t.uid, port: t.port, M: n ? n.M : null, idx: n ? n.index : -1, st, temp: t.stream.temp, form: t.form || null };
-    }).filter((b) => b.st.total > 0.5).sort((a, b) => b.st.total - a.st.total);
+    }).filter((b) => Sim.binMatters(b.st)).sort((a, b) => b.st.total - a.st.total);
   }
   function revenuePerHeadT() { let v = 0; for (const b of binList()) v += b.st.value; return v; }
 
@@ -485,7 +485,7 @@
     if (!(R > 0)) return -Infinity;
     let P = 0, extra = 0, wearC = 0, rev = 0;
     ev.nodes.forEach((n) => { P += Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
-    ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m); if (st.total > 0.5) rev += st.value; });
+    ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m, t.form); if (Sim.binMatters(st)) rev += st.value; });
     return rev - P / R * Sim.prices.power - extra - wearC;
   }
   /* null when the line cannot run on this feed; otherwise up to three {m, port, gain} sorted by gain */

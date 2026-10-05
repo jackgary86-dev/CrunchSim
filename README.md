@@ -99,6 +99,7 @@ node tests/rivals.js
 node tests/playtest.js
 node tests/endgame.js
 node tests/layout.js
+node tests/precious.js
 ```
 
 ## Sources

@@ -154,7 +154,7 @@
   }
   function headRate() { return V.mr ? V.mr.R : 0; }
   function plantPower(R) { let P = 0; V.ev.nodes.forEach(function (n) { P += Math.min(n.M.prated, n.M.pidle + R * n.ePerHead); }); return P; }
-  function revenuePerT() { let v = 0; V.binsInfo.forEach(function (b) { if (b.st.total > 0.5) v += b.st.value; }); return v; }
+  function revenuePerT() { let v = 0; V.binsInfo.forEach(function (b) { if (Sim.binMatters(b.st)) v += b.st.value; }); return v; }
   function nodeIndex(uid) { for (let k = 0; k < V.line.length; k++) if (V.line[k].uid === uid) return k; return -1; }
 
   function readSave() {
@@ -299,7 +299,7 @@
     }
     function renderBins() {
       const box = $('#bins'); box.innerHTML = '';
-      const list = V.binsInfo.filter(function (b) { return b.st.total > 0.5; }).sort(function (a, b) { return b.st.total - a.st.total; });
+      const list = V.binsInfo.filter(function (b) { return Sim.binMatters(b.st); }).sort(function (a, b) { return b.st.total - a.st.total; });
       if (!list.length) box.appendChild(el('div', 'empty', 'Nothing comes out yet.'));
       list.forEach(function (b) {
         const st = b.st, k = nodeIndex(b.uid), M = k >= 0 ? MACHINES[V.line[k].m] : null;
@@ -328,7 +328,7 @@
       if (V.feedId === 'zorba') return 'chunks';
       if (V.feedId === 'water' || V.feedId === 'lab' || V.feedId === 'gel') return 'barrel';
       let dom = null, dm = 0; for (const m in V.comp) if (V.comp[m] > dm) { dm = V.comp[m]; dom = m; }
-      return { steel: 'car', castiron: 'car', wood: 'chair', rubber: 'tire', granite: 'rock', limestone: 'rock', glass: 'rock', aluminum: 'chunks', copper: 'chunks', brass: 'chunks', potmetal: 'chunks', gel: 'barrel', water: 'barrel', plastic: 'crate' }[dom] || 'crate';
+      return { steel: 'car', castiron: 'car', wood: 'chair', rubber: 'tire', granite: 'rock', limestone: 'rock', glass: 'rock', aluminum: 'chunks', copper: 'chunks', brass: 'chunks', potmetal: 'chunks', silver: 'chunks', gold: 'chunks', gel: 'barrel', water: 'barrel', plastic: 'crate' }[dom] || 'crate';
     }
 
     /* ---- batch progress and the frame loop ---- */

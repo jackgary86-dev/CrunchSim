@@ -524,6 +524,14 @@
     if (share < 0.95) return 0.85 + 3 * (share - PURE_MIN);   // 0.85 at 90%, 1.0 at 95%
     return Math.min(1.25, 1 + 6.25 * (share - 0.95));        // 1.25 at 99%
   }
+  /* Is a bin worth showing and counting? Dust is not; but a few grams of gold per tonne are (#53), so a bin counts when it
+   * weighs over half a kilo per head-tonne, is worth over 50 cents, or carries any precious metal. */
+  const PRECIOUS = ['gold', 'silver'];
+  function binMatters(st) {
+    if (!st) return false;
+    if (st.total > 0.5 || st.value > 0.5) return true;
+    return PRECIOUS.some(function (m) { return st.perMat && st.perMat[m] && st.perMat[m].mass > 1e-6; });
+  }
   /* mats: {materialId: psd}. form (optional): 'ingot' or 'dross' from a furnace; anything else is priced as loose scrap. */
   function binStats(mats, form) {
     let total = 0; const groups = {}, perMat = {};
@@ -598,7 +606,7 @@
   G.CS.Sim = {
     makeNode, buildLine, nextUid,
     NB, LOW, EDGE, MID, makePSD, percentile, sum, newStream, addArr, streamMass, aggregate, aggregateMap, makeFeed,
-    profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, ingotGrade, pureGrade, PURE_MIN, cumCurve, pExtract,
+    profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, binMatters, PRECIOUS, ingotGrade, pureGrade, PURE_MIN, cumCurve, pExtract,
     prices, levelOf
   };
 })(typeof window !== 'undefined' ? window : globalThis);

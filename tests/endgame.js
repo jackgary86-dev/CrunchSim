@@ -23,7 +23,7 @@ console.log('\n=== omni on the everything feed');
 const line = [Sim.makeNode('omni', {}, 'feed')];
 const ev = Sim.evalLine(line, FEEDS.everything.comp), mr = Sim.maxRate(ev.nodes, line), inf = ev.nodes[0];
 const present = Object.keys(FEEDS.everything.comp).filter((m) => FEEDS.everything.comp[m] > 0);
-const bins = ev.terminals.map((t) => ({ t, st: Sim.binStats(t.stream.m, t.form) })).filter((b) => b.st.total > 0.5);
+const bins = ev.terminals.map((t) => ({ t, st: Sim.binStats(t.stream.m, t.form) })).filter((b) => Sim.binMatters(b.st));   // grams of gold count (#53)
 console.log('  head rate ' + f(mr.R) + ' t/h (' + (mr.limiter && mr.limiter.why) + '), ' + f(inf.eT, 2) + ' kWh/t, P80 ' + f(inf.P80, 1) + ' mm');
 bins.forEach((b) => console.log('  ' + b.t.port.padEnd(10) + f(b.st.total, 1).padStart(7) + ' kg  purity ' + f(b.st.share * 100, 1).padStart(5) + '%  P80 ' + f(b.st.p80, 1).padStart(6) + ' mm  $' + f(b.st.value, 1)));
 check(bins.length === present.length, 'one bin per material: ' + bins.length + ' bins for ' + present.length + ' materials');

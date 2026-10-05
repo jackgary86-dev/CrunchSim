@@ -69,6 +69,26 @@
       resp: [R(0.75, 0.90, 0.55, 0.55, 0.35, 0), null, R(0.92, 1.00, 0.50, 0.65, 0.25, 0)],
       note: 'Zinc die-cast alloy (zamak). Weak, brittle and low-melting. It shatters in a hammermill, ends up in the non-ferrous "zorba" stream, and has to be split from aluminum by density because it sinks while aluminum floats.'
     },
+    // Precious metals (#53). Prices: gold about $2,650 per troy ounce = $85,000/kg; silver about $31/oz = $1,000/kg. A loose
+    // bucket of sorted gold or silver pieces sells to a refiner at about 90% of the metal price (sell); a refined bar (SMELT
+    // ingot) at the full price. They arrive in electronics as plating, pins, bonding wire, contacts and solder paste: grams
+    // per tonne, so a sensor sorter has to concentrate them pass by pass (each pass also ejects 2.5% of everything else).
+    silver: {
+      name: 'Silver', color: '#e4e8ee', density: 10.49, Wi: 38, ductility: 0.95, magnetic: false, sigma: 63.0,
+      abrasion: 0.06, hard: 0, state: 'solid', kind: 'plate', thick: 0,
+      feed: { p80: 15, n: 1.6, top: 45, form: 'contacts, plated pins and solder paste' },
+      sell: 900000, buy: 700000, range: [0.1, 60], coolKJ: 28, chillKJ: 12, tags: ['ductile', 'non-magnetic', 'conductor', 'dense', 'precious'],
+      resp: [R(0.14, 0.26, 0.90, 0.12, 0.78, 0)],
+      note: 'The best electrical conductor of all, soft and very ductile. In scrap it is a thin layer on contacts and a powder in solder paste: grams per tonne of circuit board. It never cracks, it smears and tears like copper, and it sinks with the heavy metals. A sensor sorter set to silver finds the pieces that carry it.'
+    },
+    gold: {
+      name: 'Gold', color: '#f2c94c', density: 19.32, Wi: 36, ductility: 1.0, magnetic: false, sigma: 45.2,
+      abrasion: 0.04, hard: 0, state: 'solid', kind: 'plate', thick: 0,
+      feed: { p80: 12, n: 1.6, top: 40, form: 'plated edge fingers, pins and bonding wire' },
+      sell: 76000000, buy: 60000000, range: [0.1, 60], coolKJ: 15, chillKJ: 6, tags: ['ductile', 'non-magnetic', 'conductor', 'dense', 'precious'],
+      resp: [R(0.12, 0.24, 0.92, 0.12, 0.80, 0)],
+      note: 'The most ductile metal there is: a gram draws into kilometres of wire. On circuit boards it is a micron-thin plating on edge fingers and pins and the hair-fine bonding wire inside chips, about a quarter of a kilo per tonne of good boards. Dense (19.3) and conductive but never magnetic. Only a sensor sorter can find it, pass after pass, and a refiner pays for every gram.'
+    },
     wood: {
       name: 'Wood', color: '#b98a54', density: 0.50, Wi: 16, ductility: 0.5, magnetic: false, sigma: 0,
       abrasion: 0.05, hard: 0, state: 'solid', kind: 'wood', thick: 12,
@@ -135,7 +155,7 @@
     }
   };
   Object.keys(MATERIALS).forEach(function (id) { MATERIALS[id].id = id; });
-  const MAT_ORDER = ['steel', 'castiron', 'aluminum', 'copper', 'brass', 'potmetal', 'wood', 'rubber', 'plastic', 'glass', 'granite', 'limestone', 'gel', 'water'];
+  const MAT_ORDER = ['steel', 'castiron', 'aluminum', 'copper', 'brass', 'potmetal', 'silver', 'gold', 'wood', 'rubber', 'plastic', 'glass', 'granite', 'limestone', 'gel', 'water'];
 
   /* ---------------- SMELTING DATA ----------------
    * melt: melting point (C). meltKWh: theoretical energy to heat 1 t from 25 C and melt it (sensible + latent heat,
@@ -148,7 +168,9 @@
     brass: { melt: 920, meltKWh: 141, cpL: 0.45, drossK: 0.030, ingot: 6200 },      // 0.38 x 895 + 168 latent = 508 kJ/kg; zinc fumes off a hot brass melt; brass ingot ~$6,200/t
     potmetal: { melt: 385, meltKWh: 70, cpL: 0.48, drossK: 0.025, ingot: 2600 },    // zinc: 0.39 x 360 + 112 latent = 252 kJ/kg; zamak ingot ~$2,600/t
     steel: { melt: 1510, meltKWh: 364, cpL: 0.82, drossK: 0.020, ingot: 550 },      // ~0.70 x 1485 + 270 latent = 1310 kJ/kg; EAF metallic yield 90-95%; billet ~$550/t
-    castiron: { melt: 1180, meltKWh: 259, cpL: 0.90, drossK: 0.030, ingot: 450 }     // 0.60 x 1155 + 240 latent = 933 kJ/kg; pig iron ~$450/t
+    castiron: { melt: 1180, meltKWh: 259, cpL: 0.90, drossK: 0.030, ingot: 450 },    // 0.60 x 1155 + 240 latent = 933 kJ/kg; pig iron ~$450/t
+    silver: { melt: 962, meltKWh: 90, cpL: 0.31, drossK: 0.002, ingot: 1000000 },    // 0.235 x 937 + 105 latent = 325 kJ/kg; a 1,000 oz good-delivery bar at ~$31/oz = $1,000/kg
+    gold: { melt: 1064, meltKWh: 55, cpL: 0.15, drossK: 0.001, ingot: 85000000 }     // 0.129 x 1039 + 64 latent = 198 kJ/kg; gold does not oxidise; ~$2,650/oz = $85,000/kg
   };
   Object.keys(SMELT).forEach(function (id) { Object.assign(MATERIALS[id], SMELT[id]); });
 
@@ -501,7 +523,15 @@
     // A mixed C&D skip topped up with yard scrap, so every material is present. Weights follow C&D waste surveys
     // (concrete and masonry dominate the non-metal, wood ~15%, plastics 1-3%, glass a few percent) plus a scrap-metal
     // fraction; the metal content makes it worth paying $40/t for, the rubble keeps that price low.
-    everything: { name: 'Everything', blurb: 'A mixed skip: all fourteen materials at once. The universal plant was built for it.', cost: 40, comp: { steel: 0.28, castiron: 0.03, aluminum: 0.08, copper: 0.02, brass: 0.015, potmetal: 0.025, wood: 0.16, rubber: 0.05, plastic: 0.025, glass: 0.04, granite: 0.09, limestone: 0.155, gel: 0.015, water: 0.015 } }
+    // electronics (#53): high-grade circuit boards and devices. Per tonne about 200 kg copper, 300 kg epoxy and plastic, 290 kg
+    // glass fibre and ceramics, 70 kg steel, 50 kg aluminum, 40 kg brass connectors, 40 kg solder and zinc, 1 kg silver and a
+    // quarter of a kilo of gold (published PCB assays run 150-400 g/t Au, 600-1,500 g/t Ag). Buyers pay about 60% of the
+    // contained metal: the rest is the sorting and refining it still needs.
+    ewaste: { name: 'Electronics (circuit boards)', blurb: 'Boards, connectors and devices: copper, plastic, glass fibre, and grams of silver and gold.', cost: 9000, comp: { plastic: 0.30875, glass: 0.29, copper: 0.20, steel: 0.07, aluminum: 0.05, brass: 0.04, potmetal: 0.04, silver: 0.001, gold: 0.00025 } },
+    // plated pins and contacts: connector strip, relay contacts and edge fingers, 2 kg gold and 20 kg silver per tonne on brass
+    // and copper. Sold to refiners by assay, around 60% of contained value.
+    pins: { name: 'Gold-plated pins and contacts', blurb: 'Connector strip and relay contacts: brass and copper with real gold and silver on them.', cost: 115000, comp: { brass: 0.45, copper: 0.38, plastic: 0.10, steel: 0.048, silver: 0.02, gold: 0.002 } },
+    everything: { name: 'Everything', blurb: 'A mixed skip: every material at once, down to an old phone or two. The universal plant was built for it.', cost: 40, comp: { steel: 0.28, castiron: 0.03, aluminum: 0.08, copper: 0.02, brass: 0.015, potmetal: 0.025, silver: 0.00002, gold: 0.000002, wood: 0.16, rubber: 0.05, plastic: 0.025, glass: 0.04, granite: 0.09, limestone: 0.154978, gel: 0.015, water: 0.015 } }
   };
 
   /* ---------------- PRESET FLOWSHEETS ---------------- */
@@ -675,7 +705,7 @@
     ln2farm: { name: 'Nitrogen tank farm', icon: '🧊', desc: 'Bulk liquid nitrogen deliveries', unit: '× LN2 price', levels: [1.0, 0.85, 0.70], costs: [10000, 35000] }
   };
   // Supplier contracts: some feeds must be unlocked before they can be bought.
-  const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000 };
+  const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000, ewaste: 20000, pins: 60000 };
   Object.keys(FEEDS).forEach(function (id) { FEEDS[id].unlock = FEED_UNLOCK[id] || 0; });
   // Rank is read from net worth: bank plus what the plant would sell for.
   const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [500000, 'Processor'], [2500000, 'Plant operator'], [12000000, 'Industrial group'], [60000000, 'Mega-plant']];   // balance pass #12: roughly 10 / 25 / 45 / 80 / 140 batches

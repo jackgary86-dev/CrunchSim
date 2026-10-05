@@ -191,7 +191,7 @@
     const D = RLINES[lid], line = builtLine(lid), Sim = CS.Sim;
     if (!D || !line || !FEEDS[D.feed]) return (binCache[lid] = null);
     const ev = Sim.evalLine(line, FEEDS[D.feed].comp), R = Sim.maxRate(ev.nodes, line).R;
-    const bins = ev.terminals.map((t) => ({ st: Sim.binStats(t.stream.m, t.form), form: t.form || null })).filter((b) => b.st.total > 0.5);
+    const bins = ev.terminals.map((t) => ({ st: Sim.binStats(t.stream.m, t.form), form: t.form || null })).filter((b) => Sim.binMatters(b.st));
     return (binCache[lid] = { R, bins });
   }
   /* kg of mat per head-tonne in bins at or above the purity (dross never ships), as js/modules/missions.js counts a job */

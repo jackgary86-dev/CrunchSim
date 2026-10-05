@@ -47,15 +47,15 @@
     const bins = [], next = [];
     ev.terminals.forEach((t) => {
       if (t.uid !== uid) return;
-      const st = Sim.binStats(t.stream.m, t.form); if (st.total < 0.5) return;
+      const st = Sim.binStats(t.stream.m, t.form); if (!Sim.binMatters(st)) return;
       bins.push({ st, port: t.port, kg: st.total, tons: st.total / 1000 * tons });
     });
     for (const key in ev.ports) {
       const parts = key.split(':'), port = parts[1]; if (Number(parts[0]) !== uid) continue;
       const users = line.filter((x) => x.src && x.src !== 'feed' && x.src.uid === uid && x.src.port === port);
       if (!users.length) continue;
-      const kg = Sim.streamMass(ev.ports[key]); if (kg < 0.5) continue;
-      const st = Sim.binStats(ev.ports[key].m);
+      const kg = Sim.streamMass(ev.ports[key]);
+      const st = Sim.binStats(ev.ports[key].m); if (!Sim.binMatters(st)) continue;
       next.push({ port, kg, tons: kg / 1000 * tons, to: users.map((x) => line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()) });
     }
     bins.sort((a, b) => b.tons - a.tons);
@@ -81,6 +81,8 @@
   const $ = (s) => document.querySelector(s);
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  /* tonnes, kilograms or grams: a batch's gold is a few hundred grams (#53) */
+  function fmtW(t) { return t >= 0.95 ? t.toFixed(1) + ' t' : t >= 0.001 ? Math.round(t * 1000) + ' kg' : Math.max(0, Math.round(t * 1e6)) + ' g'; }
   function fmtSz(mm) { return mm >= 1 ? mm.toFixed(mm >= 100 ? 0 : 1) + ' mm' : Math.round(mm * 1000) + ' µm'; }
 
   /* ---------------- frame ---------------- */
@@ -188,7 +190,7 @@
     const pure = st.sellable != null ? st.sellable : st.share >= CLEAN;
     return '<div class="fbin' + (pure ? ' pure' : '') + '" title="' + esc((PORT_NAME[port] || port) + ': ' + tops.map((m) => MATERIALS[m].name + ' ' + Math.round(100 * st.perMat[m].mass / st.total) + '%').join(', ')) + '">' +
       '<div class="fbin-box"><div class="fbin-fill">' + bands + '</div></div>' +
-      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span>' + (verdict || (pure ? '<em class="ship ok">SELLS</em>' : '<em class="ship bad" title="Mixed: under 90% of one material. It cannot be sold; it goes to the MISC bucket to re-run.">TO MISC</em>')) + '</div></div>';
+      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + fmtW(tons) + '</span>' + (verdict || (pure ? '<em class="ship ok">SELLS</em>' : '<em class="ship bad" title="Mixed: under 90% of one material. It cannot be sold; it goes to the MISC bucket to re-run.">TO MISC</em>')) + '</div></div>';
   }
   /* ---------------- contract on the plant screen (#47) ---------------- */
   let spec = null;   // Score.evalContract for the active contract, refreshed each plant render
@@ -261,7 +263,7 @@
     col.appendChild(binsBox);
     f.next.forEach((x) => {
       const nx = el('div', 'fnext');
-      nx.innerHTML = '<span class="fnext-a">&#10140;</span><span><b>' + x.tons.toFixed(1) + ' t</b> ' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
+      nx.innerHTML = '<span class="fnext-a">&#10140;</span><span><b>' + fmtW(x.tons) + '</b> ' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
       col.appendChild(nx);
     });
     const open = () => showStation(n.uid);
@@ -375,15 +377,15 @@
     b.clean.forEach((x) => {
       const D = MATERIALS[x.m], row = el('div', 'bk');
       const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
-      row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + x.t.toFixed(1) + ' t · ' + Math.round(x.purity * 100) + '% pure</span></span>';
-      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + x.t.toFixed(1) + ' t now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
+      row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span></span>';
+      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re); list.appendChild(row);
     });
     if (b.misc.t > 0) {
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
-      row.innerHTML = '<span class="bk-sw misc"></span><span class="bk-t"><b>MISC</b><span class="small">' + b.misc.t.toFixed(1) + ' t not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
+      row.innerHTML = '<span class="bk-sw misc"></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
       const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re); list.appendChild(row);
     }

@@ -49,7 +49,9 @@
     granite: { name: 'bin', kg: 15000, fine: { below: 1, name: 'big bag', kg: 1000 } }, // aggregate at 1.5 t/m3 fills a 10 m3 bin; rock flour in 1 t FIBCs
     limestone: { name: 'bin', kg: 15000, fine: { below: 1, name: 'big bag', kg: 1000 } }, // as granite
     gel: { name: 'drum', kg: 204 },                                               // 200 L steel drum x 1.02 g/cc
-    water: { name: 'drum', kg: 200 }                                              // 200 L (55 US gal) drum
+    water: { name: 'drum', kg: 200 },                                             // 200 L (55 US gal) drum
+    silver: { name: 'bar', kg: 31 },                                              // a 1,000 troy ounce good-delivery bar is 31.1 kg
+    gold: { name: 'kilo bar', kg: 1 }                                             // gold trades in kilo bars (and 12.4 kg good-delivery bars)
   };
   const DEFAULT_UNIT = { name: 'bale', kg: 1000 };
   function unitFor(mat, p80) {

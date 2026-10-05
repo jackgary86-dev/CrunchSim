@@ -286,7 +286,7 @@
     if (CS.Score && CS.Score.plantKwhT) out.kwhT = CS.Score.plantKwhT(ev, R, line);
     const bins = ev.terminals.map(function (t) {
       const st = Sim.binStats(t.stream.m, t.form), k = line.findIndex(function (n) { return n.uid === t.uid; });
-      out.valuePerT += st.total > 0.5 ? st.value : 0;
+      out.valuePerT += Sim.binMatters(st) ? st.value : 0;
       const M = k >= 0 ? MACHINES[line[k].m] : null;
       return { t: t, st: st, index: k, short: M ? M.short : '?', label: M && M.outs ? M.outs[t.port] : t.port, port: t.port };
     });
@@ -376,7 +376,7 @@
     if (!(R > 0)) return { margin: -Infinity, R: 0, kwhT: Infinity, rev: 0, ev: ev, mr: mr };
     let P = 0, extra = 0, wearC = 0, rev = 0;
     ev.nodes.forEach(function (n, i) { P += Math.min(n.M.prated * (1 + FX.power * Sim.levelOf(line[i])), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
-    ev.terminals.forEach(function (t) { const st = Sim.binStats(t.stream.m, t.form); if (st.total > 0.5) rev += st.value; });
+    ev.terminals.forEach(function (t) { const st = Sim.binStats(t.stream.m, t.form); if (Sim.binMatters(st)) rev += st.value; });
     return { margin: rev - P / R * Sim.prices.power - extra - wearC, R: R, kwhT: P / R, rev: rev, ev: ev, mr: mr };
   }
   /* Every playbook on a feed, best projected margin first. A card is relevant when its bucket is one of the lot's valuable

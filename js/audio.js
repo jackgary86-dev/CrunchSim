@@ -48,7 +48,7 @@
     glass(t, k) { burst(t, { dur: 0.08, freq: 4000, freqEnd: 2500, q: 1.2, gain: 0.3 * k }); for (let i = 0; i < 4; i++) tone(t + rnd(0, 0.09), { freq: rnd(3000, 7000), dur: 0.12, gain: 0.08 * k, type: 'sine' }); },
     ice(t, k) { VOICE.glass(t, k * 0.8); VOICE.rock(t, k * 0.4); }
   };
-  const MAT_VOICE = { granite: 'rock', limestone: 'rock', castiron: 'iron', potmetal: 'iron', steel: 'metal', aluminum: 'metal', copper: 'metal', brass: 'metal', wood: 'wood', rubber: 'rubber', plastic: 'plastic', gel: 'gel', water: 'water', glass: 'glass' };
+  const MAT_VOICE = { granite: 'rock', limestone: 'rock', castiron: 'iron', potmetal: 'iron', steel: 'metal', aluminum: 'metal', copper: 'metal', brass: 'metal', silver: 'metal', gold: 'metal', wood: 'wood', rubber: 'rubber', plastic: 'plastic', gel: 'gel', water: 'water', glass: 'glass' };
 
   /* crunch(mat, strength, frozen). Rate-limited to keep dense particle storms from clipping. */
   function crunch(mat, k, frozen) {

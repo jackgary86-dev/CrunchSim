@@ -482,7 +482,7 @@
 
   /* ---------------- PRESET FEEDS ---------------- */
   const FEEDS = {
-    elv: { name: 'End-of-life vehicles', blurb: 'What a car shredder eats.', cost: 36, comp: { steel: 0.58, castiron: 0.07, aluminum: 0.07, copper: 0.015, brass: 0.01, potmetal: 0.025, rubber: 0.07, plastic: 0.08, glass: 0.03, wood: 0.01, gel: 0.02, water: 0.02 } },
+    elv: { name: 'End-of-life vehicles', blurb: 'What a car shredder eats.', cost: 150, comp: { steel: 0.58, castiron: 0.07, aluminum: 0.07, copper: 0.015, brass: 0.01, potmetal: 0.025, rubber: 0.07, plastic: 0.08, glass: 0.03, wood: 0.01, gel: 0.02, water: 0.02 } },
     rubble: { name: 'Demolition rubble', blurb: 'Concrete, rebar and timber.', cost: -8, comp: { limestone: 0.5, granite: 0.2, steel: 0.1, wood: 0.1, glass: 0.05, plastic: 0.05 } },
     pallets: { name: 'Pallets with nails', blurb: 'Wood with a tramp-metal problem.', cost: -15, comp: { wood: 0.94, steel: 0.04, plastic: 0.02 } },
     tires: { name: 'Scrap tires', blurb: 'Rubber, steel belts and fabric.', cost: -70, comp: { rubber: 0.70, steel: 0.15, plastic: 0.15 } },
@@ -509,9 +509,10 @@
   const LINES = {
     starter: {
       name: 'Starter yard', feed: 'elv', tons: 15,
-      blurb: 'Day one: a hammermill and nothing else. Mixed shred sells at a discount until you buy a sorter.',
+      blurb: 'Day one: a hammermill grinds the junk and a magnetic drum pulls the steel out clean. Only sorted material sells; the rest waits in MISC for your next sorter.',
       nodes: [
-        { m: 'hammer', s: { grate: 100, rpm: 100 }, src: 'feed' }
+        { m: 'hammer', s: { grate: 100, rpm: 100 }, src: 'feed' },
+        { m: 'magnet', src: '1:product' }
       ]
     },
     car: {
@@ -614,9 +615,11 @@
   const PRICE_SCALE = 0.2;
   Object.keys(MACHINES).forEach(function (id) { const M = MACHINES[id]; M.price = Math.max(500, Math.round(M.price * PRICE_SCALE / 500) * 500); });
   // Day one is a hammermill alone: unsorted shred sells at a discount, and the sorters are unlocked one purchase at a time.
-  const STARTER_MACHINES = ['hammer'];
-  // $2,800 pays for one 15 t batch of ELV feed (36 $/t) with a little spare. A hammermill-only batch nets about $400, so the
-  // first sorter (the $3,500 sink-float tank) is reachable after two batches; tests/progression.js checks this stays true.
+  const STARTER_MACHINES = ['hammer', 'magnet'];   // a grinder and one sorter: only sorted material sells (#52, #55)
+  // $2,800 pays for one 15 t batch of ELV feed (150 $/t, about 30% of what the hulks are worth fully sorted: US shredder
+  // yards pay roughly a third of the shred value for a hulk). Only sorted material sells (#52), so the day-one yard is a
+  // hammermill and a magnetic drum: the magnet's clean steel nets about $1,100 a batch, and the next sorters pay in pairs
+  // (eddy current + sink-float for clean aluminum). tests/progression.js and tests/playtest.js check the pacing (#55).
   const START_BANK = 2800;
   const LEVEL_MAX = 5;
   const LEVEL_FX = { cap: 0.20, eta: 0.06, life: 0.30, power: 0.10 };   // per level, multiplicative on base

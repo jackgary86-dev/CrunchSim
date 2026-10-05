@@ -18,6 +18,10 @@
  * Value of a lot = t x MATERIALS[m].sell x Sim.prices.market x factor[m] x grade x sf, the same formula Sim.binStats
  * uses at batch end.
  *
+ * Sorted only (#52): a batch's pure bins (one material at 90% or better, Sim.binStats sellable) go into stock as one
+ * lot of their main material; mixed bins go to the MISC store { mat: { t, p80 } }, which cannot be sold and is only
+ * re-run through the plant. A saved stock lot below 90% purity (from before this rule) moves to MISC on load.
+ *
  * Hold-to-sell (ticket #34): a per-material price target raises an alert in the event log when the market reaches it
  * and, with the auto-sell switch on (off by default), sells the lot at once. Yard bays rent per round; the owned bays grow
  * through the 'storage' entry of PLANT_UPGRADES. Each held material gets a sparkline of the last 30 rounds of price with
@@ -63,7 +67,7 @@
    * Weighted merge, value preserving (see the header). */
   function addLot(stock, mat, dt, purity, grade, sf, p80, cost) {
     if (!(dt > 0) || !MATERIALS[mat]) return;
-    purity = clamp(+purity || 0, 0, 1); grade = clamp(isFinite(+grade) ? +grade : 1, 0, 1); sf = clamp(isFinite(+sf) ? +sf : 1, 0, 1);
+    purity = clamp(+purity || 0, 0, 1); grade = clamp(isFinite(+grade) ? +grade : 1, 0, 1.5); sf = clamp(isFinite(+sf) ? +sf : 1, 0, 1);
     cost = isFinite(+cost) && +cost > 0 ? +cost : 0;
     const lnp = Math.log(p80 > 0 ? p80 : 1e-3);
     const e = stock[mat];
@@ -81,21 +85,47 @@
   /* Move every bin of a finished batch into stock. bins: [{st: binStats}] per head-tonne, tonnes: head tonnes run,
    * batchCost: $ the batch cost (feed, power, consumables), shared out by sales value at split-off; by mass if nothing sells.
    * Returns what this batch produced per material: { mat: { t, n, unit, p80, cost } }. */
-  function absorbBins(stock, bins, tonnes, batchCost) {
+  /* MISC: mixed material that has not been sorted yet. { mat: { t, p80 } }; never sold, only re-run. */
+  function newMisc() { return {}; }
+  function addMisc(misc, mat, dt, p80) {
+    if (!(dt > 0) || !MATERIALS[mat]) return;
+    const e = misc[mat], lnp = Math.log(p80 > 0 ? p80 : 1e-3);
+    if (!e) { misc[mat] = { t: dt, p80: Math.exp(lnp) }; return; }
+    e.p80 = Math.exp((e.t * Math.log(e.p80 > 0 ? e.p80 : 1e-3) + dt * lnp) / (e.t + dt)); e.t += dt;
+  }
+  function withdrawMisc(misc, mat, t) {
+    const e = misc[mat]; if (!e || !(e.t > 0) || !(t > 0)) return { t: 0, p80: 0 };
+    const take = Math.min(+t, e.t); e.t -= take; const out = { t: take, p80: e.p80 };
+    if (e.t <= 1e-9) delete misc[mat];
+    return out;
+  }
+  function miscTotal(misc) { let t = 0; for (const m in misc || {}) t += misc[m].t > 0 ? misc[m].t : 0; return t; }
+
+  /* A finished batch: each sellable (pure) bin becomes one lot of its main material, at the bin's purity, grade and
+   * a size factor that keeps the bin's value exactly; each mixed bin goes to MISC material by material. The batch cost
+   * is shared over the sellable lots by value (MISC carries none: it has no sale value yet). */
+  function absorbBins(stock, bins, tonnes, batchCost, misc) {
     const produced = {};
     if (!(tonnes > 0)) return produced;
     const lots = []; let valTot = 0, massTot = 0;
     (bins || []).forEach(function (b) {
       const st = b && b.st; if (!st || !(st.total > 0)) return;
-      for (const mat in st.perMat) {
-        const pm = st.perMat[mat]; if (!pm || !(pm.mass > 0) || !MATERIALS[mat]) continue;
-        // effective size factor carries the bin-valuation price factor (#35): contaminants are paid as the bucket's dominant group
-        const sfEff = (isFinite(+pm.sizeFactor) ? +pm.sizeFactor : 1) * (pm.priceFactor == null ? 1 : pm.priceFactor);
-        const dt = pm.mass / 1000 * tonnes, g = clamp(isFinite(+st.grade) ? +st.grade : 1, 0, 1), sf = clamp(sfEff, 0, 1);
-        const val = dt * MATERIALS[mat].sell * g * sf;
-        lots.push({ mat, dt, purity: pm.mass / st.total, grade: st.grade, sf: sf, p80: pm.p80, val: val > 0 ? val : 0 });
-        valTot += val > 0 ? val : 0; massTot += dt;
+      const sellable = st.sellable != null ? st.sellable : st.share >= 0.9;
+      if (!sellable) {
+        if (misc) for (const mat in st.perMat) { const pm = st.perMat[mat]; if (pm && pm.mass > 0) addMisc(misc, mat, pm.mass / 1000 * tonnes, pm.p80); }
+        return;
       }
+      let main = st.main, mm = 0;
+      if (!main || !MATERIALS[main]) for (const mat in st.perMat) if (st.perMat[mat].mass > mm) { mm = st.perMat[mat].mass; main = mat; }
+      if (!main || !MATERIALS[main]) return;
+      const g = clamp(isFinite(+st.grade) ? +st.grade : 1, 0, 1.5);
+      // value of the bin before the market, per tonne of feed: what each material in it is paid as (priceFactor, #35) x size
+      let vb = 0;
+      for (const mat in st.perMat) { const pm = st.perMat[mat]; if (!(pm.mass > 0) || !MATERIALS[mat]) continue; vb += pm.mass / 1000 * MATERIALS[mat].sell * (pm.priceFactor == null ? 1 : pm.priceFactor) * (isFinite(+pm.sizeFactor) ? +pm.sizeFactor : 1) * g; }
+      const dt = st.total / 1000 * tonnes, val = vb * tonnes;
+      const sf = dt > 0 && g > 0 ? clamp(val / (dt * MATERIALS[main].sell * g), 0, 1) : 0;
+      lots.push({ mat: main, dt, purity: st.share, grade: g, sf, p80: st.perMat[main] ? st.perMat[main].p80 : st.p80, val: val > 0 ? val : 0 });
+      valTot += val > 0 ? val : 0; massTot += dt;
     });
     const cTot = isFinite(+batchCost) && +batchCost > 0 ? +batchCost : 0;
     lots.forEach(function (l) {
@@ -149,10 +179,12 @@
   function baysFor(t, bayT) { return t > 1e-6 ? Math.ceil(t / (bayT || storageCfg().bayT) - 1e-9) : 0; }
   /* bays in use, owned vs hired, the round's rent and how it falls on each material. perMat[mat] is the bays a lot
    * takes on its own; the lots listed in `shared` sit together in one more bay and split its rent evenly. */
-  function storage(stock, owned) {
+  function storage(stock, owned, miscT) {
     const cfg = storageCfg(), perMat = {}, shared = [], weight = {}; let bays = 0;
-    for (const mat in stock) {
-      const t = stock[mat].t; if (!(t > 1e-6)) continue;
+    const lots = {}; for (const mat in stock) lots[mat] = stock[mat].t;
+    if (miscT > 1e-6) lots.misc = miscT;   // the MISC pile takes yard space like any product
+    for (const mat in lots) {
+      const t = lots[mat]; if (!(t > 1e-6)) continue;
       if (t < cfg.smallT) { shared.push(mat); continue; }
       const n = baysFor(t, cfg.bayT); perMat[mat] = n; weight[mat] = n; bays += n;
     }
@@ -164,8 +196,8 @@
     return { bays, perMat, shared, owned, own, hired, rent, rentPerMat, bayT: cfg.bayT, smallT: cfg.smallT, rentOwn: cfg.rentOwn, rentHired: cfg.rentHired };
   }
   /* charge a round's rent against the lots' cost basis; returns the storage summary */
-  function chargeStorage(stock, owned) {
-    const s = storage(stock, owned);
+  function chargeStorage(stock, owned, miscT) {
+    const s = storage(stock, owned, miscT);
     for (const mat in s.rentPerMat) if (stock[mat]) stock[mat].cost = (stock[mat].cost || 0) + s.rentPerMat[mat];
     return s;
   }
@@ -256,22 +288,26 @@
 
   /* ---------------- persistence ---------------- */
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
-  function serialize(stock, mkt, targets) {
-    const s = {}, tg = {};
+  function serialize(stock, mkt, targets, misc) {
+    const s = {}, tg = {}, mi = {};
+    for (const mat in (misc || {})) { const e = misc[mat]; if (e && e.t > 0) mi[mat] = { t: e.t, p80: e.p80 }; }
     for (const mat in stock) { const e = stock[mat]; if (e && e.t > 0) s[mat] = { t: e.t, purity: e.purity, grade: e.grade, sf: e.sf, p80: e.p80, cost: e.cost || 0 }; }
     for (const mat in (targets || {})) { const t = targets[mat]; if (t && t.price > 0) tg[mat] = { price: t.price, auto: !!t.auto, hit: !!t.hit }; }
-    return { stock: s, market: { hour: mkt.hour, drift: Object.assign({}, mkt.drift), trend: Object.assign({}, mkt.trend) }, targets: tg };
+    return { stock: s, misc: mi, market: { hour: mkt.hour, drift: Object.assign({}, mkt.drift), trend: Object.assign({}, mkt.trend) }, targets: tg };
   }
   /* Rebuild validated state from a saved object (or anything else: garbage gives fresh state).
    * Returns { stock, mkt, hadMarket, targets } where hadMarket says whether a usable market state was present. */
   function deserialize(d) {
-    const stock = newStock(), mkt = newMarket(), targets = newTargets(); let hadMarket = false;
-    if (!d || typeof d !== 'object') return { stock, mkt, hadMarket, targets };
+    const stock = newStock(), mkt = newMarket(), targets = newTargets(), misc = newMisc(); let hadMarket = false;
+    if (!d || typeof d !== 'object') return { stock, mkt, hadMarket, targets, misc };
     const s = d.stock && typeof d.stock === 'object' ? d.stock : {};
     for (const mat in s) {
       const e = s[mat]; if (!MATERIALS[mat] || !e || !(+e.t > 0)) continue;
+      if (!(+e.purity >= 0.9)) { addMisc(misc, mat, +e.t, +e.p80); continue; }   // saved before #52: unsorted stock is MISC now
       addLot(stock, mat, +e.t, +e.purity, +e.grade, +e.sf, +e.p80, +e.cost);
     }
+    const mi = d.misc && typeof d.misc === 'object' ? d.misc : {};
+    for (const mat in mi) { const e = mi[mat]; if (MATERIALS[mat] && e && +e.t > 0) addMisc(misc, mat, +e.t, +e.p80); }
     const m = d.market;
     if (m && typeof m === 'object' && isFinite(+m.hour) && +m.hour >= 0 && m.drift && typeof m.drift === 'object') {
       hadMarket = true; mkt.hour = Math.floor(+m.hour);
@@ -282,21 +318,24 @@
     }
     const tg = d.targets && typeof d.targets === 'object' ? d.targets : {};
     for (const mat in tg) { const t = tg[mat]; if (!t || typeof t !== 'object') continue; const r = setTarget(targets, mat, +t.price, !!t.auto); if (r) r.hit = !!t.hit; }
-    return { stock, mkt, hadMarket, targets };
+    return { stock, mkt, hadMarket, targets, misc };
   }
 
   /* ---------------- live stock (page) ---------------- */
-  let liveStock = newStock();
+  let liveStock = newStock(), liveMisc = newMisc();
   const Inv = {
     UNITS, DRIFT_MIN, DRIFT_MAX, SIGMA_H, KAPPA_H,
     unitFor, unitsOf, fmtUnits, pluralUnit,
-    newStock, addLot, absorbBins, withdrawLot, avgCost, baseValue, lotValue, stockTotals,
+    newStock, addLot, absorbBins, withdrawLot, newMisc, addMisc, takeMisc: withdrawMisc, miscTotal, avgCost, baseValue, lotValue, stockTotals,
     storageCfg, ownedBays, baysFor, storage, chargeStorage,
     newTargets, setTarget, targetEvents,
     newMarket, marketStep, marketAdvance, marketAt, priceOf, drift, trendOf, trendArrow,
     sell, sellAll, serialize, deserialize,
     /* the live stock: tonnes held per material (read-only view for other modules) */
     stock() { return liveStock; },
+    /* the live MISC pile: mixed material waiting to be re-run (read-only view) */
+    misc() { return liveMisc; },
+    withdrawMisc(mat, tonnes) { return withdrawMisc(liveMisc, mat, tonnes); },
     /* Deliver held stock: takes up to `tonnes` of `mat` out of the yard. Returns { t, purity, ... } with the tonnes actually
      * withdrawn and their average purity. Set by the page integration to refresh the panel; this is the no-page fallback. */
     withdraw(mat, tonnes) { return withdrawLot(liveStock, mat, tonnes); }
@@ -306,7 +345,7 @@
   /* ======================= page integration (needs CS.app) ======================= */
   function start() {
     const API = CS.app; if (!API || API.inventoryStarted) return; API.inventoryStarted = true;
-    let stock = liveStock, mkt = newMarket(), hadMarket = false, targets = newTargets();
+    let stock = liveStock, misc = liveMisc, mkt = newMarket(), hadMarket = false, targets = newTargets();
     let body = null;
     const Market = function () { return CS.Market && typeof CS.Market.view === 'function' ? CS.Market : null; };
     const clockHour = function () { return Math.floor((API.S ? API.S.clock : 0) / 3600); };
@@ -316,7 +355,7 @@
     const livePrice = function (mat) { return priceOf(mat, mv(), marketMul()); };
     const storageLevel = function () { return API.S && API.S.plant ? (API.S.plant.storage || 0) : 0; };
 
-    function restore(ext) { const r = deserialize(ext && ext.inventory); stock = liveStock = r.stock; mkt = r.mkt; hadMarket = r.hadMarket; targets = r.targets; }
+    function restore(ext) { const r = deserialize(ext && ext.inventory); stock = liveStock = r.stock; misc = liveMisc = r.misc; mkt = r.mkt; hadMarket = r.hadMarket; targets = r.targets; }
     function initStorage() { const S = API.S; if (S && S.plant) S.plant.storage = S.plant.storage || 0; }   // the app only initialises its four known keys
     function syncMarket() {
       if (Market()) return false;   // the market module owns prices: no hourly walk
@@ -398,13 +437,13 @@
     function renderPanel() {
       if (!body) return;
       const mu = marketMul(), market = mv(), tot = stockTotals(stock, market, mu), M = Market();
-      const sto = storage(stock, ownedBays(storageLevel()));
+      const sto = storage(stock, ownedBays(storageLevel()), miscTotal(misc));
       body.innerHTML = '';
       const ros = API.el('div', 'readouts', API.ro('STOCK VALUE', fmtPrice(tot.value), '', tot.value > 0 ? 'good' : '') + API.ro('UNITS', API.fmtNum(tot.units, tot.units >= 10 ? 0 : 1), '') + API.ro('IN STOCK', API.fmtNum(tot.t, 1), 't') +
         API.ro('YARD BAYS', sto.bays + ' / ' + sto.owned, 'used / owned', sto.hired > 0 ? 'hi' : '') + API.ro('STORAGE', fmtPrice(sto.rent), '/batch', sto.hired > 0 ? 'hi' : '') + API.ro('COST BASIS', fmtPrice(tot.cost), ''));
       body.appendChild(ros);
       const rows = MAT_ORDER.filter(function (mat) { return stock[mat] && stock[mat].t > 1e-6; });
-      if (!rows.length) body.appendChild(API.el('div', 'empty', 'Nothing in stock. Run a batch: products are baled and held here until you sell.'));
+      if (!rows.length) body.appendChild(API.el('div', 'empty', 'No sorted stock. Run a batch: pure buckets (one material at 90% or better) are baled and held here until you sell.'));
       rows.forEach(function (mat) {
         const e = stock[mat], D = MATERIALS[mat], u = unitsOf(mat, e.t, e.p80);
         const price = priceOf(mat, market, mu), pct = Math.round((drift(market, mat) - 1) * 100), tr = trendOf(market, mat);
@@ -430,6 +469,11 @@
       all.textContent = 'SELL ALL · ' + fmtPrice(tot.value); all.style.width = '100%'; all.style.marginTop = '6px';
       all.addEventListener('click', sellEverything);
       body.appendChild(all);
+      const mt = miscTotal(misc);
+      if (mt > 1e-6) {
+        const mats = Object.keys(misc).sort(function (a, b) { return misc[b].t - misc[a].t; });
+        body.appendChild(API.el('div', 'urow', '<span class="ic">&#9636;</span><span><div class="nm">MISC <span class="small">' + API.fmtNum(mt, 1) + ' t not sorted yet</span></div><div class="cur">' + mats.slice(0, 4).map(function (m) { return API.esc(matName(m).toLowerCase()) + ' ' + Math.round(100 * misc[m].t / mt) + '%'; }).join(', ') + '</div><div class="cur">Mixed material cannot be sold. RE-RUN it from the plant screen through different sorters.</div></span>'));
+      }
       body.appendChild(API.el('div', 'small', (M ? 'Prices move once per batch; the Market bulletin names the hot and cold grades. ' : 'Prices drift with the mission clock around list price × your offtake deals. ') +
         'Each product takes a ' + sto.bayT + ' t yard bay (lots under ' + sto.smallT + ' t share one): ' + fmtPrice(sto.rentOwn) + '/batch owned, ' + fmtPrice(sto.rentHired) + '/batch hired. Set a target to be told when the price gets there.'));
     }
@@ -437,18 +481,21 @@
     function onBatchComplete(p) {
       const r = p && p.r; if (!r || r.held !== 'inventory' || !(r.done > 0)) return;
       const batchCost = Math.max(0, (r.feedC || 0)) + Math.max(0, (p.powerC || 0)) + Math.max(0, (r.extra || 0));
-      const produced = absorbBins(stock, p.bins, r.done, batchCost);
+      const m0 = miscTotal(misc);
+      const produced = absorbBins(stock, p.bins, r.done, batchCost, misc);
+      const mAdd = miscTotal(misc) - m0;
       const txt = producedText(produced);
       if (txt) API.log('Into inventory: ' + txt + (batchCost > 0 ? ' (cost basis ' + fmtPrice(batchCost) + ' shared by value)' : '') + '.', 'ok');
+      if (mAdd > 1e-6) API.log('Into MISC: ' + API.fmtNum(mAdd, 1) + ' t of mixed material that no sorter separated. It cannot be sold: re-run it through different sorters.', txt ? '' : 'warn');
       // a round in the yard: rent on every bay in use, owned ones cheap, hired ones dear
-      const sto = chargeStorage(stock, ownedBays(storageLevel()));
+      const sto = chargeStorage(stock, ownedBays(storageLevel()), miscTotal(misc));
       if (sto.rent > 0) {
         API.S.money -= sto.rent;
         API.log('Yard storage: ' + sto.bays + ' bay' + (sto.bays === 1 ? '' : 's') + ' in use (' + sto.own + ' owned, ' + sto.hired + ' hired), rent ' + fmtPrice(sto.rent) + ' this batch.' + (sto.hired > 0 ? ' Sell stock or buy Yard storage in Bank & upgrades.' : ''), sto.hired > 0 ? 'warn' : '');
       }
       const card = document.querySelector('#scorecard .card');
       if (card) {
-        const line = API.el('div', 'small', '<b class="cyan">UNITS PRODUCED</b> ' + (txt ? API.esc(txt) : 'none') + (sto.rent > 0 ? ' · <b class="cyan">YARD RENT</b> ' + fmtPrice(sto.rent) : ''));
+        const line = API.el('div', 'small', '<b class="cyan">UNITS PRODUCED</b> ' + (txt ? API.esc(txt) : 'none') + (mAdd > 1e-6 ? ' · <b class="cyan">TO MISC</b> ' + API.fmtNum(mAdd, 1) + ' t' : '') + (sto.rent > 0 ? ' · <b class="cyan">YARD RENT</b> ' + fmtPrice(sto.rent) : ''));
         line.style.marginTop = '8px';
         const tip = card.querySelector('.tip');
         if (tip) card.insertBefore(line, tip); else card.appendChild(line);
@@ -467,6 +514,8 @@
 
     /* the plant screen's bucket list sells one material at a time */
     Inv.sellMat = function (mat) { sellMat(mat); };
+    Inv.misc = function () { return misc; };
+    Inv.withdrawMisc = function (mat, tonnes) { const out = withdrawMisc(misc, mat, tonnes); if (out.t > 0) { renderPanel(); API.save(); } return out; };
     Inv.quote = function (mat) { return stock[mat] && stock[mat].t > 0 ? lotValue(stock, mat, mv(), marketMul()) : 0; };   // what SELL would pay now (#44)
 
     /* hooks */
@@ -487,7 +536,7 @@
     API.on('render', renderPanel);
     API.on('batchComplete', onBatchComplete);
     API.on('tick', function (p) { if (p && p.dh > 0 && syncMarket()) { checkTargets(); renderPanel(); } });
-    API.on('save', function () { return { inventory: serialize(stock, mkt, targets) }; });
+    API.on('save', function () { return { inventory: serialize(stock, mkt, targets, misc) }; });
   }
 
   if (CS.app) start();

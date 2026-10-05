@@ -185,10 +185,10 @@
     let bands = '', acc = 0;
     tops.forEach((m) => { const f = st.perMat[m].mass / st.total; bands += '<i style="flex:' + f.toFixed(3) + ';background:' + MATERIALS[m].color + '"></i>'; acc += f; });
     if (acc < 0.999) bands += '<i style="flex:' + (1 - acc).toFixed(3) + ';background:#5a6573"></i>';
-    const pure = st.share >= CLEAN;
+    const pure = st.sellable != null ? st.sellable : st.share >= CLEAN;
     return '<div class="fbin' + (pure ? ' pure' : '') + '" title="' + esc((PORT_NAME[port] || port) + ': ' + tops.map((m) => MATERIALS[m].name + ' ' + Math.round(100 * st.perMat[m].mass / st.total) + '%').join(', ')) + '">' +
       '<div class="fbin-box"><div class="fbin-fill">' + bands + '</div></div>' +
-      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span>' + (verdict || '') + '</div></div>';
+      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span>' + (verdict || (pure ? '<em class="ship ok">SELLS</em>' : '<em class="ship bad" title="Mixed: under 90% of one material. It cannot be sold; it goes to the MISC bucket to re-run.">TO MISC</em>')) + '</div></div>';
   }
   /* ---------------- contract on the plant screen (#47) ---------------- */
   let spec = null;   // Score.evalContract for the active contract, refreshed each plant render
@@ -280,7 +280,10 @@
 
   /* held stock as buckets: clean materials each get one, everything below CLEAN purity pools into MISC */
   function buckets() {
-    const b = splitBuckets(CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {}, MAT_ORDER);
+    const Inv = CS.Inventory, b = splitBuckets(Inv && Inv.stock ? Inv.stock() : {}, MAT_ORDER, 0);
+    const misc = Inv && Inv.misc ? Inv.misc() : {};
+    b.misc = { t: 0, comp: {} };
+    for (const m in misc) if (misc[m].t > 0.05) { b.misc.t += misc[m].t; b.misc.comp[m] = misc[m].t; }
     b.clean.forEach((x) => { x.value = x.t * MATERIALS[x.m].sell * Sim.prices.market * ((Sim.prices.perMat && Sim.prices.perMat[x.m]) || 1) * (x.grade == null ? 1 : x.grade) * (x.sf == null ? 1 : x.sf); });
     return b;
   }
@@ -293,8 +296,9 @@
     for (const k of keys) if (Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-6) return false;
     return true;
   }
-  function rerun(mats, label) {
-    const S = app.S, stock = CS.Inventory.stock();
+  function srcMap(src) { const Inv = CS.Inventory; return src === 'misc' ? (Inv.misc ? Inv.misc() : {}) : Inv.stock(); }
+  function rerun(mats, label, src) {
+    const S = app.S, stock = srcMap(src);
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
     if (app.contract && app.contract()) { app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return; }
     if (S.feedPrepaid && !loaded) { app.log('A prepaid lot is already loaded as the feed. Run it first, or change the feed by hand to put it back in the yard.', 'warn'); return; }
@@ -304,7 +308,7 @@
     const prev = loaded ? loaded.prev : (FEEDS[S.feedPreset] ? { preset: S.feedPreset, tons: S.tons } : null);   // the feed to go back to after the batch
     loaded = null;   // setFeed renders before the flag is set
     app.setFeed(comp, 'custom', tons);
-    loaded = { comp: Object.assign({}, S.comp), label, sizes: plan.sizes, entry, prev };
+    loaded = { comp: Object.assign({}, S.comp), label, sizes: plan.sizes, entry, prev, src: src || 'stock' };
     S.feedPrepaid = true;
     S.feedOpts = { sizes: plan.sizes, entry };   // it goes in as the shred it already is (#41), past the shredders (#42)
     app.markDirty(true);
@@ -321,7 +325,7 @@
   /* drop the loaded bucket when the feed no longer matches it, or another module took the prepaid flag away */
   function guardLoaded() {
     if (!loaded) return;
-    const S = app.S, stock = CS.Inventory.stock();
+    const S = app.S, stock = srcMap(loaded.src);
     if (!S.run && S.feedPrepaid && !app.contract() && sameComp(S.comp, loaded.comp)) {
       let have = 0; for (const m in loaded.comp) have += stock[m] ? stock[m].t : 0;   // never run more than the bucket holds
       if (S.tons > have && have >= 1) { S.tons = Math.floor(have); app.syncFeedRows(); }
@@ -339,7 +343,7 @@
     const S = app.S, Inv = CS.Inventory, l = loaded; loaded = null;
     if (app.contract() || !sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
     const tons = p && p.run && p.run.total ? p.run.total : S.tons;
-    for (const m in l.comp) Inv.withdraw(m, tons * l.comp[m]);
+    for (const m in l.comp) { if (l.src === 'misc' && Inv.withdrawMisc) Inv.withdrawMisc(m, tons * l.comp[m]); else Inv.withdraw(m, tons * l.comp[m]); }
     rerunActive = l.prev || true;   // the sizes and entry station hold for this batch, then the feed is ordinary again
   }
   let rerunActive = false;
@@ -373,14 +377,14 @@
       const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
       row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + x.t.toFixed(1) + ' t · ' + Math.round(x.purity * 100) + '% pure</span></span>';
       const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + x.t.toFixed(1) + ' t now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
-      const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase()));
+      const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re); list.appendChild(row);
     });
     if (b.misc.t > 0) {
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
       row.innerHTML = '<span class="bk-sw misc"></span><span class="bk-t"><b>MISC</b><span class="small">' + b.misc.t.toFixed(1) + ' t not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
-      const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC'));
+      const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re); list.appendChild(row);
     }
     col.appendChild(list);
@@ -392,7 +396,7 @@
     const seq = S.line.map((n, i) => ({ n, i })).concat([{ add: true }]);
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t)]);
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';

@@ -35,8 +35,9 @@ check(L.rerunPlan(stock, ['glass'], 30).error === 'small', 'a bucket under 1 t i
 check(L.rerunPlan(stock, ['gold'], 30).error === 'small', 'an unknown material is an empty bucket');
 
 /* ---- stations: bins and leftovers ---- */
+const LONE = { nodes: [{ m: 'hammer', s: { grate: 100, rpm: 100 }, src: 'feed' }] };   // a hammermill on its own
 function walk(lineId, feedId, tons) {
-  const line = Sim.buildLine(LINES[lineId]), ev = Sim.evalLine(line, FEEDS[feedId].comp);
+  const line = Sim.buildLine(lineId === 'lone' ? LONE : LINES[lineId]), ev = Sim.evalLine(line, FEEDS[feedId].comp);
   return { line, ev, flows: line.map((nd) => L.stationFlow(ev, line, tons, nd.uid)) };
 }
 for (const [lineId, feedId] of [['starter', 'elv'], ['car', 'elv'], ['universal', 'elv']]) {
@@ -59,7 +60,7 @@ for (const [lineId, feedId] of [['starter', 'elv'], ['car', 'elv'], ['universal'
   check(near(t30, binKg / 1000 * 30, 1e-9), lineId + ' line: bin tonnes scale with the batch size');
 }
 {
-  const { flows } = walk('starter', 'elv', 15);
+  const { flows } = walk('lone', 'elv', 15);
   check(flows[0].bins.length >= 1 && flows[0].next.length === 0, 'a lone hammermill fills one bin of mixed shred and sends nothing on');
 }
 {
@@ -91,7 +92,7 @@ check(L.stationFlow(null, [], 30, 1).bins.length === 0, 'no evaluation yet: an e
   const line = Sim.buildLine(LINES.car);
   const k = line.findIndex((nd) => nd.m === 'air');
   check(L.defaultEntry(line, globalThis.CS.MACHINES) === line[k].uid, 'a bucket enters at the first station that is not a shredder');
-  const lone = Sim.buildLine(LINES.starter);
+  const lone = Sim.buildLine(LONE);
   check(L.defaultEntry(lone, globalThis.CS.MACHINES) === null, 'a line of shredders only: the bucket enters at station 1');
   const comp = FEEDS.elv.comp, mag = line.findIndex((nd) => nd.m === 'magnet');
   const ev = Sim.evalLine(line, comp, { entry: line[mag].uid });

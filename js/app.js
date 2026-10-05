@@ -178,8 +178,9 @@
     const E = Eco(); if (!E || !S.line.length || Object.keys(unownedIn(S.line)).length) return '';
     const picks = nextPurchases(); if (!picks || !picks.length) return '';
     const b = E.betterLine(picks[0], marginPerT().margin, r.done); if (!b) return '';
-    const M = MACHINES[b.m], last = S.line[S.line.length - 1];
-    return '<div class="hint">WHAT WOULD HAVE EARNED · a ' + esc(M.name) + ' (' + fmtMoney(M.price) + ') after ' + S.line.length + ':' + esc(MACHINES[last.m].short) + '/' + esc(b.port.toUpperCase()) + ' lifts the margin from ' + fmtMoney(b.base / Math.max(r.done, 1e-9)) + '/t to ' + fmtMoney(b.perT) + '/t: about ' + fmtMoney(b.net) + ' on this batch.</div>';
+    const at = b.src ? S.line.findIndex((n) => n.uid === b.src.uid) : S.line.length - 1, from = S.line[at];
+    const what = b.ms.map((m) => MACHINES[m].name).join(' + '), price = b.ms.reduce((c, m) => c + MACHINES[m].price, 0);
+    return '<div class="hint">WHAT WOULD HAVE EARNED · ' + (b.ms.length > 1 ? '' : 'a ') + esc(what) + ' (' + fmtMoney(price) + ') on ' + (at + 1) + ':' + esc(MACHINES[from.m].short) + '/' + esc(String(b.port).toUpperCase()) + ' lifts the margin from ' + fmtMoney(b.base / Math.max(r.done, 1e-9)) + '/t to ' + fmtMoney(b.perT) + '/t: about ' + fmtMoney(b.net) + ' on this batch.</div>';
   }
 
   function feedCostPerT() {
@@ -488,46 +489,78 @@
     return rev - P / R * Sim.prices.power - extra - wearC;
   }
   /* null when the line cannot run on this feed; otherwise up to three {m, port, gain} sorted by gain */
-  function nextPurchases() {
-    const last = S.line[S.line.length - 1]; if (!last) return [];
-    const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
-    const ports = MACHINES[last.m].kind === 'separator' ? ['extract', 'residue'] : ['product'];
+  /* Everything must be sorted to be sold (#52), so a sorter often pays only together with a second one on its output (an
+   * eddy current pulls the mixed metals, a sink-float tank then floats the aluminum out clean). Every free output port of
+   * the line is tried for each candidate; when no single purchase adds margin, pairs are ranked instead.
+   * Returns [{ ms: [machine ids], src: {uid, port}, port2, gain }] or null when the line cannot run. */
+  function freePorts(line) {
     const out = [];
+    line.forEach((n) => (MACHINES[n.m].kind === 'separator' ? ['extract', 'residue'] : ['product']).forEach((p) => {
+      if (!line.some((x) => x.src && x.src !== 'feed' && x.src.uid === n.uid && x.src.port === p)) out.push({ uid: n.uid, port: p });
+    }));
+    return out;
+  }
+  function nextPurchases() {
+    if (!S.line.length) return [];
+    const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
+    const ports = freePorts(S.line), singles = [];
     TRIAL_MACHINES.forEach((m) => {
       if (freeUnit(m)) return;   // a spare unit is free to add; this block ranks purchases
       let best = null;
-      ports.forEach((port) => {
-        const n = Sim.makeNode(m, {}, { uid: last.uid, port }); n.level = levelOf(m);
+      ports.forEach((src) => {
+        const n = Sim.makeNode(m, {}, src); n.level = levelOf(m);
         const gain = lineMarginNoFeed(S.line.concat([n])) - base;
-        if (!best || gain > best.gain) best = { m, port, gain };
+        if (!best || gain > best.gain) best = { ms: [m], src, gain };
       });
-      if (best && best.gain > 0.5) out.push(best);   // under fifty cents a tonne is noise
+      if (best && best.gain > 0.5) singles.push(best);   // under fifty cents a tonne is noise
     });
-    return out.sort((a, b) => b.gain - a.gain).slice(0, 3);
+    if (singles.length) return singles.sort((a, b) => b.gain - a.gain).slice(0, 3);
+    const pairs = [], SORT = TRIAL_MACHINES.filter((m) => MACHINES[m].kind === 'separator');
+    SORT.forEach((a) => SORT.forEach((b) => {
+      let best = null;
+      ports.forEach((src) => {
+        const na = Sim.makeNode(a, {}, src); na.level = levelOf(a);
+        ['extract', 'residue'].forEach((port2) => {
+          const nb = Sim.makeNode(b, {}, { uid: na.uid, port: port2 }); nb.level = levelOf(b);
+          const gain = lineMarginNoFeed(S.line.concat([na, nb])) - base;
+          if (!best || gain > best.gain) best = { ms: [a, b], src, port2, gain };
+        });
+      });
+      if (best && best.gain > 0.5) pairs.push(best);
+    }));
+    const cost = (p) => p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
+    return pairs.sort((x, y) => cost(x) / x.gain - cost(y) / y.gain).slice(0, 3);   // pairs ranked by payback
   }
   function renderNextPurchase() {
     const box = $('#next-buy'); if (!box) return; box.innerHTML = '';
     const note = (t) => box.appendChild(el('div', 'small', t));
-    if (!S.line.length) { note('Build a line first. This block ranks the sorters that would add the most margin to its end.'); return; }
+    if (!S.line.length) { note('Build a line first. This block ranks the sorters that would add the most margin.'); return; }
     if (Object.keys(unownedIn(S.line)).length) { note('Buy the machines already on the line first.'); return; }
     const picks = nextPurchases();
     if (!picks) { note('The line cannot run on this feed, so nothing can be ranked.'); return; }
-    if (!picks.length) { note('No new sorter or crusher adds margin at the end of this line. Try another output port or feed.'); return; }
-    const last = S.line[S.line.length - 1];
+    if (!picks.length) { note('No new sorter, or pair of sorters, adds margin to this line on this feed.'); return; }
+    if (picks[0].ms.length > 1) note('No single sorter pulls anything pure out of what is left: these pairs do, one sorter feeding the next.');
     picks.forEach((p) => {
-      const M = MACHINES[p.m];
-      const row = el('div', 'urow', '<span class="ic ok">&#9650;</span><span><div class="nm">' + esc(M.name) + ' <b class="ok">+' + fmtMoney(p.gain) + '/t</b></div><div class="cur">after ' + S.line.length + ':' + esc(MACHINES[last.m].short) + '/' + esc(p.port.toUpperCase()) + ' · pays back in ' + fmtNum(Math.ceil(M.price / p.gain), 0) + ' t</div></span>');
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = fmtMoney(M.price); b.className = 'buy' + (S.money < M.price ? ' poor' : ''); b.title = 'Buy it and add it to the end of the line';
-      b.addEventListener('click', () => buyAndAppend(p.m, p.port));
+      const at = S.line.findIndex((n) => n.uid === p.src.uid), from = (at + 1) + ':' + MACHINES[S.line[at].m].short + '/' + p.src.port.toUpperCase();
+      const price = p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
+      const name = p.ms.map((m) => MACHINES[m].name).join(' + ');
+      const where = p.ms.length > 1 ? 'on ' + from + ', then the second on its ' + p.port2.toUpperCase() : 'on ' + from;
+      const row = el('div', 'urow', '<span class="ic ok">&#9650;</span><span><div class="nm">' + esc(name) + ' <b class="ok">+' + fmtMoney(p.gain) + '/t</b></div><div class="cur">' + esc(where) + ' · pays back in ' + fmtNum(Math.ceil(price / p.gain), 0) + ' t</div></span>');
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = fmtMoney(price); b.className = 'buy' + (S.money < price ? ' poor' : ''); b.title = p.ms.length > 1 ? 'Buy both and add them to the line' : 'Buy it and add it to the line';
+      b.addEventListener('click', () => buyAndAdd(p));
       row.appendChild(b); box.appendChild(row);
     });
   }
-  function buyAndAppend(m, port) {
-    const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; }
-    if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }
-    const last = S.line[S.line.length - 1];
-    const n = Sim.makeNode(m, {}, last ? { uid: last.uid, port } : 'feed'); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom';
-    Audio.ui('click'); log('Added ' + MACHINES[m].name + ' as node ' + S.line.length + '.'); markDirty(true);
+  function buyAndAdd(p) {
+    for (const m of p.ms) { const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; } }
+    const price = p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
+    if (S.money < price) { Audio.ui('deny'); log('Not enough in the bank: ' + fmtMoney(price) + ' needed.', 'bad'); renderBank(); return; }
+    for (const m of p.ms) if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }
+    const na = Sim.makeNode(p.ms[0], {}, p.src); S.line.push(na);
+    let last = na;
+    if (p.ms[1]) { last = Sim.makeNode(p.ms[1], {}, { uid: na.uid, port: p.port2 }); S.line.push(last); }
+    S.sel = last.uid; S.linePreset = 'custom';
+    Audio.ui('click'); log('Added ' + p.ms.map((m) => MACHINES[m].name).join(' and ') + ' to the line.'); markDirty(true);
   }
 
   /* ---------------- telemetry ---------------- */
@@ -877,7 +910,7 @@
     $('#log').innerHTML = '';
     applyLinePreset('starter');
     lastRankIdx = rankOf(netWorth()).idx;
-    log('New game. You own a hammermill shredder and ' + fmtMoney(START_BANK) + '. Grind scrap, bank the margin, buy your first sorter.', 'ok');
+    log('New game. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Grind the junk, sort it, sell only what is pure.', 'ok');
     API.emit('newgame'); renderAll(); save();
     const b = $('#btn-newgame'); resetArmed = false; b.textContent = 'NEW GAME'; b.classList.remove('bad');
     $('#help').classList.remove('hidden');
@@ -896,7 +929,7 @@
     API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
     if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; setFeedLock(true); }
-    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder and ' + fmtMoney(START_BANK) + '. Unsorted shred sells at a discount: run a few batches, then buy your first sorter from NEXT PURCHASE in Bank & upgrades (toolbar).', 'ok'); }
+    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Only sorted material sells: the magnet pulls the steel out clean, and everything still mixed waits in MISC until you buy another sorter. Run a few batches, run a few batches, then buy your first sorter from NEXT PURCHASE in Bank & upgrades (toolbar).', 'ok'); }
     else { renderFeedSelect(); syncFeedRows(); log('Session restored.', 'ok'); }
     lastRankIdx = rankOf(netWorth()).idx;
     setSpeed(S.speed); setMuted(S.muted);

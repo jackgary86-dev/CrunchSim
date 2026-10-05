@@ -44,7 +44,7 @@ const quarry = Sim.buildLine(LINES.quarry);   // 71.5 m2: a 45.5 m2 hammermill n
 const addHammer = Floor.addVeto(quarry, 'hammer', 0);
 ok(addHammer && /Plant hall/.test(addHammer), 'adding a hammermill to the quarry plant at level 0 should be refused');
 ok(Floor.addVeto(quarry, 'hammer', 1) === '', 'the hammermill should fit after one hall upgrade');
-ok(Floor.addVeto(starter, 'hammer', 0) === '', 'a hammermill should still fit next to the starter yard (85.8 of 96 m2)');
+['sinkfloat', 'eddy', 'air', 'screen'].forEach((m) => ok(Floor.addVeto(starter, m, 0) === '', 'the next sorter (' + m + ') should fit next to the starter yard (hammermill + magnet) at hall level 0'));
 ok(Floor.addVeto(starter, 'granulator', 0) === '', 'a granulator should fit the starter hall');
 ok(Floor.addVeto(starter, 'no-such-machine', 0) === '', 'an unknown machine is not the floor module\'s problem');
 const lineV = Floor.lineVeto(LINES.car.nodes, 0, LINES.car.name);

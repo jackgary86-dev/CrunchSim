@@ -63,11 +63,13 @@ car.ev.terminals.forEach((t) => {
   check(p.grade === st.grade && near(p.sf, pm.sizeFactor), '  grade is the bin grade, size factor is the dominant material\'s');
 });
 check(binsChecked >= 4, binsChecked + ' bins priced on the car line');
-// the hammermill alone: mixed shred, steel dominant, both discounts bite
-const mixed = Sim.binStats(starter.ev.terminals.find((t) => t.port === 'product').stream.m);
-const mp = E.binPricing(mixed, 1);
-console.log('  hammermill shred: ' + f(mp.perT, 0) + ' $/t = ' + mp.name + ' ' + mp.text);
-check(mp.dom === 'steel' && mp.grade < 0.4 && mp.list === MATERIALS.steel.sell, 'unsorted shred is steel at a low purity grade (65% ferrous, grade ' + f(mp.grade) + ')');
+// the starter yard (#52): the magnet's ferrous bin is sorted and sells; what it leaves is still mixed and sells for nothing
+const ferr = Sim.binStats(starter.ev.terminals.find((t) => t.port === 'extract').stream.m);
+const mixed = Sim.binStats(starter.ev.terminals.find((t) => t.port === 'residue').stream.m);
+const fp = E.binPricing(ferr, 1);
+console.log('  magnet ferrous: ' + f(fp.perT, 0) + ' $/t = ' + fp.name + ' ' + fp.text);
+check(ferr.sellable && fp.dom === 'steel' && ferr.grade >= 1, 'the magnet\'s ferrous bin is sorted steel at a purity premium (grade ' + f(ferr.grade) + ')');
+check(!mixed.sellable && mixed.value === 0 && mixed.grade === 0, 'the rest of the shred is still mixed: it goes to MISC and sells for nothing');
 // market multiplier scales the list price; ingot and dross forms are labelled
 const ingotLine = run(LINES.ingot, FEEDS.zorba.comp, FEEDS.zorba.cost);
 const ing = ingotLine.ev.terminals.find((t) => t.form === 'ingot'), dro = ingotLine.ev.terminals.find((t) => t.form === 'dross');
@@ -139,12 +141,12 @@ function report(r, name) {
   console.log('    by node: ' + rep.perNode.map((x) => (x.idx + 1) + ' ' + x.short + ' $' + f(x.total, 1) + ' (power ' + f(x.power, 1) + ', wear ' + f(x.wear, 1) + ', extra ' + f(x.extra, 1) + ', scalp ' + f(x.scalp, 1) + ')').join(' · '));
   return rep;
 }
-const rs = report(starter, 'hammermill only on cars');
+const rs = report(starter, 'starter yard (hammermill + magnet) on cars');
 check(rs.losses.length === 3 && rs.losses.every((l) => CAUSES.includes(l.cause) && l.text.length > 10 && l.loss >= E.MIN_LOSS), 'three losses, each with a cause and a sentence');
 check(rs.losses[0].loss >= rs.losses[1].loss && rs.losses[1].loss >= rs.losses[2].loss, 'sorted by loss');
-check(rs.losses[0].cause === 'reject' && /sits in 1 HAMM\/product at \d+% purity/.test(rs.losses[0].text), 'unsorted shred: the top loss is dilution in the mixed bin');
+check(rs.losses[0].cause === 'reject' && /sits in 2 MAG\/residue at \d+% purity, price grade 0%/.test(rs.losses[0].text), 'the non-ferrous metal left in the magnet residue is the top loss: mixed, so it sells for nothing (#52)');
 check(rs.all.every((l) => near(l.parts.scalp + l.parts.reject + l.parts.size + l.parts.energy, l.loss)), 'the parts add up to the loss');
-check(rs.perNode.length === 1 && rs.perNode[0].short === 'HAMM' && rs.perNode[0].power > 0 && rs.perNode[0].wear > 0 && near(rs.perNode[0].total, rs.perNode[0].power + rs.perNode[0].wear + rs.perNode[0].extra + rs.perNode[0].scalp), 'one node carries power and wear');
+check(rs.perNode.length === 2 && rs.perNode[0].short === 'HAMM' && rs.perNode[1].short === 'MAG' && rs.perNode[0].power > 0 && rs.perNode[0].wear > 0 && near(rs.perNode[0].total, rs.perNode[0].power + rs.perNode[0].wear + rs.perNode[0].extra + rs.perNode[0].scalp), 'one node carries power and wear');
 const rc = report(car, 'car line');
 const sumLoss = (rep) => rep.all.reduce((s, l) => s + l.loss, 0);
 check(sumLoss(rc) < sumLoss(rs), 'the sorted car line loses less than unsorted shred ($' + f(sumLoss(rc), 0) + ' vs $' + f(sumLoss(rs), 0) + '/t)');

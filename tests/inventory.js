@@ -26,18 +26,24 @@ function binsOf(preset, feed) {
 }
 function binsValuePerT(bins) { return bins.reduce((v, b) => v + b.st.value, 0); }
 function binsMassPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.perMat[mat] ? b.st.perMat[mat].mass : 0), 0); }
+// #52: a sellable (pure) bin is held whole as its main material; a mixed bin goes to MISC
+function heldPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.sellable && b.st.main === mat ? b.st.total : 0), 0); }
+function miscPerT(bins) { return bins.reduce((m, b) => m + (b.st.sellable ? 0 : b.st.total), 0); }
 
 Sim.prices.market = 1;
 const carBins = binsOf(LINES.car, 'elv');
-const stock = Inv.newStock();
-const produced = Inv.absorbBins(stock, carBins, 15);
+const stock = Inv.newStock(), misc0 = Inv.newMisc();
+const produced = Inv.absorbBins(stock, carBins, 15, 0, misc0);
 console.log('car line x 15 t produced: ' + Object.keys(produced).map((m) => m + ' ' + Inv.fmtUnits(produced[m].n, produced[m].unit)).join(', '));
 let massOk = true;
-for (const mat in stock) if (!near(stock[mat].t, binsMassPerT(carBins, mat) / 1000 * 15)) massOk = false;
-check(massOk && Object.keys(stock).length > 3, 'absorbBins keeps every material\'s tonnage (bins are per head-tonne, scaled by the batch)');
+for (const mat in stock) if (!near(stock[mat].t, heldPerT(carBins, mat) / 1000 * 15)) massOk = false;
+check(massOk && Object.keys(stock).length >= 2, 'absorbBins holds each pure bin whole as its main material (bins are per head-tonne, scaled by the batch)');
+check(near(Inv.miscTotal(misc0), miscPerT(carBins) / 1000 * 15) && Inv.miscTotal(misc0) > 0, 'every mixed bin goes to MISC, tonne for tonne (' + f(Inv.miscTotal(misc0), 1) + ' t)');
+check(MAT_ORDER.every((m) => !stock[m] || stock[m].purity >= 0.9), 'nothing under 90% purity is held as sellable stock');
+check(near(Object.keys(stock).reduce((t, m) => t + stock[m].t, 0) + Inv.miscTotal(misc0), carBins.reduce((t, b) => t + b.st.total, 0) / 1000 * 15), 'stock plus MISC is the whole batch');
 const baseAfterOne = MAT_ORDER.reduce((v, m) => v + Inv.baseValue(stock, m), 0);
 check(near(baseAfterOne, binsValuePerT(carBins) * 15, 1e-9), 'value is preserved on absorption: stock base value = sum of bin values x tonnes (' + f(baseAfterOne, 0) + ')');
-check(MAT_ORDER.every((m) => !stock[m] || (stock[m].purity > 0 && stock[m].purity <= 1 && stock[m].grade > 0 && stock[m].grade <= 1 && stock[m].sf > 0 && stock[m].sf <= 1 && stock[m].p80 > 0)), 'purity, grade, size factor and p80 are in range');
+check(MAT_ORDER.every((m) => !stock[m] || (stock[m].purity > 0 && stock[m].purity <= 1 && stock[m].grade > 0 && stock[m].grade <= 1.25 && stock[m].sf > 0 && stock[m].sf <= 1 && stock[m].p80 > 0)), 'purity, grade, size factor and p80 are in range');
 // the magnet bin is 89% steel + 11% cast iron: both ferrous, so the price grade is ~1 while steel's own purity is below 90%
 check(stock.steel && stock.steel.purity > 0.8 && stock.steel.grade > 0.95, 'steel from the car line is held at high purity and full ferrous grade (purity ' + f(stock.steel ? stock.steel.purity * 100 : 0, 0) + '%, grade ' + f(stock.steel ? stock.steel.grade * 100 : 0, 0) + '%)');
 
@@ -46,7 +52,7 @@ const quarryBins = binsOf(LINES.quarry, 'quarry');
 Inv.absorbBins(stock, quarryBins, 30);
 const baseAfterTwo = MAT_ORDER.reduce((v, m) => v + Inv.baseValue(stock, m), 0);
 check(near(baseAfterTwo, binsValuePerT(carBins) * 15 + binsValuePerT(quarryBins) * 30, 1e-9), 'merging a second batch (quarry, 30 t) preserves the combined value (' + f(baseAfterTwo, 0) + ')');
-check(near(stock.granite.t, binsMassPerT(quarryBins, 'granite') / 1000 * 30), 'granite tonnage from the quarry batch is right');
+check(!stock.granite || near(stock.granite.t, heldPerT(quarryBins, 'granite') / 1000 * 30), 'granite tonnage from the quarry batch is right (pure aggregate bins only)');
 
 // hand-made merge: two lots of the same material, different grade and size factor
 {
@@ -85,7 +91,7 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   check(Inv.sell(s, 'steel', mk, mul) === null, 'selling an empty lot returns null');
   const all = Inv.sellAll(s, mk, mul);
   check(near(all.proceeds + r.proceeds, before.value) && Object.keys(s).length === 0, 'SELL ALL pays exactly the stock value and empties the stock');
-  check(before.units > 0 && near(before.t, carBins.reduce((t, b) => t + b.st.total, 0) / 1000 * 15), 'stock totals report units and the batch tonnage');
+  check(before.units > 0 && near(before.t, carBins.reduce((t, b) => t + (b.st.sellable ? b.st.total : 0), 0) / 1000 * 15), 'stock totals report units and the sorted tonnage of the batch');
 }
 
 /* ---- persistence ---- */
@@ -116,7 +122,7 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   check(Inv.avgCost(s, 'steel') > 0 && near(Inv.avgCost(s, 'steel'), s.steel.cost / s.steel.t), 'avgCost is $ per tonne of the lot');
   const steelBefore = s.steel.cost;
   Inv.absorbBins(s, carBins, 15, 0);
-  check(near(s.steel.cost, steelBefore) && near(s.steel.t, 2 * binsMassPerT(carBins, 'steel') / 1000 * 15), 'a free batch (contract feed, no cost given) adds tonnes but no cost');
+  check(near(s.steel.cost, steelBefore) && near(s.steel.t, 2 * heldPerT(carBins, 'steel') / 1000 * 15), 'a free batch (contract feed, no cost given) adds tonnes but no cost');
   const s2 = Inv.newStock(); Inv.addLot(s2, 'copper', 1, 1, 1, 1, 20, 500); Inv.addLot(s2, 'copper', 3, 1, 1, 1, 20, 100);
   check(near(s2.copper.cost, 600) && near(Inv.avgCost(s2, 'copper'), 150), 'merging lots adds their cost: $500 + $100 over 4 t = $150/t');
   const sold = Inv.sell(s2, 'copper', Inv.newMarket(), 1);
@@ -136,6 +142,19 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   check(typeof Inv.withdraw === 'function' && Inv.withdraw('steel', 1).t === 0 && typeof Inv.stock() === 'object', 'CS.Inventory.withdraw(material, tonnes) exists for the missions worker (nothing held here)');
 }
 
+/* ---- #52: MISC store ---- */
+{
+  const m = Inv.newMisc();
+  Inv.addMisc(m, 'rubber', 3, 50); Inv.addMisc(m, 'rubber', 1, 20); Inv.addMisc(m, 'glass', 2, 10);
+  check(near(m.rubber.t, 4) && m.rubber.p80 < 50 && m.rubber.p80 > 20 && near(Inv.miscTotal(m), 6), 'MISC merges tonnes and keeps a mean size per material');
+  const w = Inv.takeMisc(m, 'rubber', 10);
+  check(near(w.t, 4) && !m.rubber && near(Inv.miscTotal(m), 2), 'withdrawing from MISC never takes more than is there');
+  const back = Inv.deserialize(Inv.serialize(Inv.newStock(), Inv.newMarket(), {}, m));
+  check(near(Inv.miscTotal(back.misc), 2) && back.misc.glass, 'MISC round-trips through JSON');
+  const old = Inv.deserialize({ stock: { steel: { t: 5, purity: 0.99, grade: 1, sf: 1, p80: 80 }, rubber: { t: 3, purity: 0.3, grade: 0.2, sf: 1, p80: 50 } } });
+  check(old.stock.steel && !old.stock.rubber && near(old.misc.rubber.t, 3), 'a save from before #52: unsorted stock under 90% moves to MISC on load');
+}
+
 /* ---- ticket #34: yard storage ---- */
 {
   const U = PLANT_UPGRADES.storage;
@@ -152,9 +171,12 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   check(near(st0.rent, st0.own * U.rent.own + st0.hired * U.rent.hired), 'rent = owned bays x $' + U.rent.own + ' + hired bays x $' + U.rent.hired);
   check(near(Object.keys(st0.rentPerMat).reduce((v, m) => v + st0.rentPerMat[m], 0), st0.rent) && small.every((m) => near(st0.rentPerMat[m], st0.rentPerMat[small[0]])), 'the rent is shared over the materials by bays, the shared bay split evenly');
   // four car batches: aluminum, plastic and the rest grow past the small-lot size and need bays of their own
-  for (let k = 0; k < 3; k++) Inv.absorbBins(s, carBins, 15);
-  const st4 = Inv.storage(s, Inv.ownedBays(0)), st4b = Inv.storage(s, Inv.ownedBays(4));
-  check(st4.bays > st0.bays && st4.hired > 0 && st4.rent > st0.rent, 'after four batches ' + st4.bays + ' bays are in use, ' + st4.hired + ' hired: rent $' + f(st4.rent, 0) + ' per batch');
+  // ten more car batches, with their MISC pile: the steel outgrows its bay and the yard has to hire
+  const mi = Inv.newMisc();
+  for (let k = 0; k < 10; k++) Inv.absorbBins(s, carBins, 15, 0, mi);
+  const st4 = Inv.storage(s, Inv.ownedBays(0), Inv.miscTotal(mi)), st4b = Inv.storage(s, Inv.ownedBays(4), Inv.miscTotal(mi));
+  check(st4.perMat.misc >= 1, 'the MISC pile takes yard bays like any product (' + f(Inv.miscTotal(mi), 1) + ' t)');
+  check(st4.bays > st0.bays && st4.hired > 0 && st4.rent > st0.rent, 'after eleven batches ' + st4.bays + ' bays are in use, ' + st4.hired + ' hired: rent $' + f(st4.rent, 0) + ' per batch');
   check(st4b.hired === 0 && st4b.rent < st4.rent, 'with the yard built out nothing is hired and the rent falls to $' + f(st4b.rent, 0));
   const before = MAT_ORDER.reduce((v, m) => v + (s[m] ? s[m].cost : 0), 0);
   const charged = Inv.chargeStorage(s, Inv.ownedBays(0));

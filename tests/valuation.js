@@ -1,5 +1,5 @@
-// Bin valuation (#35): a contaminant is paid no more than the material the bucket is sold as, and a mixed non-ferrous bucket
-// trades as zorba or zebra at its own price. Run: node tests/valuation.js
+// Bin valuation (#35, #52): a contaminant is paid no more than the material the bucket is sold as, and only sorted
+// buckets (90% or more of one material) sell, at a premium that rises with purity. Run: node tests/valuation.js
 require('../js/data.js'); require('../js/sim.js');
 const { MATERIALS, Sim } = globalThis.CS;
 let fails = 0;
@@ -19,15 +19,17 @@ const naive = (900 * MATERIALS.steel.sell + 60 * MATERIALS.copper.sell + 25 * MA
 check(sinks.value < naive * 0.4, 'far below the old own-price sum ($' + sinks.value.toFixed(0) + ' vs $' + naive.toFixed(0) + ' per t)');
 check(sinks.perMat.steel.priceFactor === 1, 'the dominant material keeps its own price');
 
-console.log('== zorba and zebra ==');
+console.log('== everything must be sorted to be sold (#52) ==');
 const zorba = bin({ aluminum: 650, copper: 100, brass: 80, potmetal: 120, plastic: 50 });
-const zebra = bin({ aluminum: 150, copper: 350, brass: 250, potmetal: 200, plastic: 50 });
-check(zorba.klass === 'zorba' && zebra.klass === 'zebra', 'mixed non-ferrous is named zorba when mostly aluminum and zebra when mostly heavies');
-check(zorba.value > 500, 'an honest zorba bucket is still worth something ($' + zorba.value.toFixed(0) + ' per t)');
-check(zebra.value > zorba.value, 'zebra (heavies) is worth more than zorba');
-const own = (650 * MATERIALS.aluminum.sell + 100 * MATERIALS.copper.sell + 80 * MATERIALS.brass.sell + 120 * MATERIALS.potmetal.sell + 50 * MATERIALS.plastic.sell) / 1000;
-check(zorba.value < own && zorba.perMat.copper.priceFactor < 1, 'a mix is paid below the sum of its metals at straight prices ($' + zorba.value.toFixed(0) + ' vs $' + own.toFixed(0) + ')');
-check(bin({ aluminum: 950, copper: 50 }).klass === null, 'a 95% aluminum bucket is a straight grade, not zorba');
+check(!zorba.sellable && zorba.value === 0 && zorba.klass === null, 'a mixed non-ferrous bucket (old "zorba") is MISC now: it sells for nothing until it is sorted');
+const at89 = bin({ aluminum: 890, plastic: 110 }), at90 = bin({ aluminum: 900, plastic: 100 });
+check(!at89.sellable && at89.value === 0 && at90.sellable && at90.value > 0, 'the line is 90% of one material: 89% aluminum is MISC, 90% sells');
+check(bin({ steel: 600, castiron: 320, plastic: 80 }).sellable, 'a trade group counts as one material: steel plus cast iron is sorted ferrous');
+const g = [0.9, 0.95, 0.99, 1].map(Sim.pureGrade);
+check(Math.abs(g[0] - 0.85) < 1e-9 && Math.abs(g[1] - 1) < 1e-9 && Math.abs(g[2] - 1.25) < 1e-9 && g[3] === 1.25 && Sim.pureGrade(0.89) === 0, 'the purity premium: 85% of list at 90% pure, list at 95%, 125% at 99% and up');
+const s95 = bin({ steel: 950, plastic: 50 }), s99 = bin({ steel: 999, plastic: 1 });
+check(s99.value > s95.value * 1.15, 'a 99.9% steel bucket pays well above a 95% one ($' + s99.value.toFixed(0) + ' vs $' + s95.value.toFixed(0) + ' per t)');
+check(s99.main === 'steel' && at90.main === 'aluminum', 'binStats names the main material of the bucket');
 
 console.log('== furnace products are not touched ==');
 const ing = bin({ aluminum: 950, copper: 50 }, 'ingot');

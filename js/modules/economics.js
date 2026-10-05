@@ -196,7 +196,8 @@
   function betterLine(pick, margin, tons) {
     if (!pick || !(pick.gain > NOISE)) return null;
     const perT = margin + pick.gain;
-    return { m: pick.m, port: pick.port, gain: pick.gain, perT: perT, net: perT * tons, base: margin * tons };
+    const ms = pick.ms || [pick.m];   // a single machine or, since #52, a pair that only pays together
+    return { m: ms[0], ms: ms, port: pick.port || (pick.src && pick.src.port), src: pick.src || null, gain: pick.gain, perT: perT, net: perT * tons, base: margin * tons };
   }
 
   CS.Economics = {

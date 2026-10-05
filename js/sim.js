@@ -513,15 +513,17 @@
   // about 80% it is "alloy soup" a refiner must re-melt, worth little more than the scrap in it (floor 12% of ingot price).
   function ingotGrade(share) { return Math.max(0.12, Math.pow(Math.min(1, Math.max(0, (share - 0.8) / 0.19)), 1.5)); }
   const DROSS_VALUE = 0.15;   // dross processors pay roughly 10-20% of metal value for the metal locked in it
-  /* Loose scrap is paid by what the bucket is sold as. A buyer of ferrous shred pays ferrous prices for the whole load, so a
-   * material outside the dominant group is paid no more than the dominant group's average price (stray copper in a steel bale
-   * is just more steel). A bucket that is mostly non-ferrous metal with no dominant metal is sold as mixed "zorba" (mostly
-   * aluminum) or "zebra" (mostly heavies: copper, brass, zinc) at its own tradeable price instead. */
-  const NONFERROUS = ['aluminum', 'copper', 'brass', 'potmetal'], HEAVY_NF = ['copper', 'brass', 'potmetal'];
-  const MIXED_NF_MIN = 0.7;     // share of the bucket that must be non-ferrous metal to trade as zorba/zebra
-  const MIXED_PURE_MAX = 0.9;   // a single group at or above this share is a straight grade, not a mix
-  const MIXED_DISCOUNT = 0.8;   // the buyer has to sort the mix and keeps ~20%: ISRI zorba trades around 80% of the metal in it
-  const ZEBRA_HEAVY_MIN = 0.5;  // zebra is the heavy fraction of the non-ferrous mix (ISRI "Zebra": heavy mix of copper, brass, zinc)
+  /* Everything must be sorted to be sold (#52). A bucket sells only when one material (or one trade group: ferrous,
+   * aggregate) makes up at least PURE_MIN of it; anything more mixed is MISC, worth nothing until it is re-run and
+   * sorted. A sorted bucket is paid as what it is sold as: stray material in it is paid no more than the main material
+   * (a bit of copper in a steel bale is just more steel), and the price rises with purity, because refiners and mills pay
+   * a premium for clean feed: about 85% of list at 90% pure, list at 95%, and up to 125% for 99%+ ("No. 1" grades). */
+  const PURE_MIN = 0.9;
+  function pureGrade(share) {
+    if (share < PURE_MIN) return 0;
+    if (share < 0.95) return 0.85 + 3 * (share - PURE_MIN);   // 0.85 at 90%, 1.0 at 95%
+    return Math.min(1.25, 1 + 6.25 * (share - 0.95));        // 1.25 at 99%
+  }
   /* mats: {materialId: psd}. form (optional): 'ingot' or 'dross' from a furnace; anything else is priced as loose scrap. */
   function binStats(mats, form) {
     let total = 0; const groups = {}, perMat = {};
@@ -533,20 +535,20 @@
     let dom = 0, domG = null;
     for (const g in groups) if (groups[g] > dom) { dom = groups[g]; domG = g; }
     const share = total > 0 ? dom / total : 0;
-    const ingot = form === 'ingot', loose = !ingot && form !== 'dross';
-    let grade = ingot ? ingotGrade(share) : Math.pow(Math.min(1, Math.max(0.15, (share - 0.5) / 0.45)), 1.2);
-    // reference price of what the bucket is sold as, and the mixed non-ferrous class if it is one
-    let refSell = 0, refMass = 0, nfMass = 0, heavyMass = 0, nfSell = 0;
+    const ingot = form === 'ingot', dross = form === 'dross', loose = !ingot && !dross;
+    // dross is a furnace by-product sold to dross processors as it is; everything else must be sorted to sell
+    const sellable = total > 0 && (dross || share >= PURE_MIN);
+    let grade = !sellable ? 0 : ingot ? ingotGrade(share) : dross ? 1 : pureGrade(share);
+    // reference price of what the bucket is sold as
+    let refSell = 0, refMass = 0;
     for (const mat in perMat) {
       const pm = perMat[mat], D = MATERIALS[mat];
       if ((GROUP[mat] || mat) === domG) { refSell += D.sell * pm.mass; refMass += pm.mass; }
-      if (NONFERROUS.indexOf(mat) >= 0) { nfMass += pm.mass; nfSell += D.sell * pm.mass; if (HEAVY_NF.indexOf(mat) >= 0) heavyMass += pm.mass; }
     }
     if (refMass > 0) refSell /= refMass;
-    const mixed = loose && nfMass / total >= MIXED_NF_MIN && share < MIXED_PURE_MAX;
-    const klass = mixed ? (heavyMass / nfMass >= ZEBRA_HEAVY_MIN ? 'zebra' : 'zorba') : null;
-    const mixSell = mixed ? nfSell / nfMass * MIXED_DISCOUNT : 0;
-    if (mixed) grade = 1;   // a trade class has its own price; the purity grade is for straight grades
+    let main = null, mm = 0;
+    for (const mat in perMat) if ((GROUP[mat] || mat) === domG && perMat[mat].mass > mm) { mm = perMat[mat].mass; main = mat; }
+    const klass = null;
     let value = 0;
     for (const mat in perMat) {
       const D = MATERIALS[mat], p = perMat[mat].p80, lo = D.range[0], hi = D.range[1];
@@ -556,13 +558,12 @@
       else if (p < lo) sf = Math.max(0.2, 1 - 0.7 * Math.log10(lo / p));
       perMat[mat].sizeFactor = sf;
       let price = ingot ? (D.ingot || D.sell) : D.sell;
-      if (mixed && NONFERROUS.indexOf(mat) >= 0) price = Math.min(price, mixSell);   // the mix trades at its own price, never above a material's straight price
-      else if (loose && (GROUP[mat] || mat) !== domG) price = Math.min(price, refSell);
+      if (loose && (GROUP[mat] || mat) !== domG) price = Math.min(price, refSell);
       perMat[mat].priceFactor = loose && D.sell > 0 ? price / D.sell : 1;     // price paid relative to the list price (inventory lots)
       const v = perMat[mat].mass / 1000 * price * prices.market * ((prices.perMat && prices.perMat[mat]) || 1) * sf * grade * (form === 'dross' ? DROSS_VALUE : 1);   // per-material factor: market swings (#33)
       perMat[mat].value = v; value += v;
     }
-    return { total, share, domGroup: domG, grade, klass, value, perMat, p80: percentile(aggregateMap(mats)), form: form || null };
+    return { total, share, domGroup: domG, main, sellable, grade, klass, value, perMat, p80: percentile(aggregateMap(mats)), form: form || null };
   }
   function aggregateMap(mats) {
     const a = new Float64Array(NB);
@@ -597,7 +598,7 @@
   G.CS.Sim = {
     makeNode, buildLine, nextUid,
     NB, LOW, EDGE, MID, makePSD, percentile, sum, newStream, addArr, streamMass, aggregate, aggregateMap, makeFeed,
-    profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, ingotGrade, cumCurve, pExtract,
+    profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, ingotGrade, pureGrade, PURE_MIN, cumCurve, pExtract,
     prices, levelOf
   };
 })(typeof window !== 'undefined' ? window : globalThis);

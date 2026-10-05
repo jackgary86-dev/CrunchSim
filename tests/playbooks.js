@@ -53,8 +53,8 @@ const steelRow = starter.fit.mats.find((r) => r.m === 'steel'), cuRow = starter.
 check(steelRow && steelRow.fate === 'mixed' && Math.abs(steelRow.purity - 0.65) < 0.02 && steelRow.recovery > 0.99, 'hammermill alone: steel is mixed at ' + f(steelRow.purity * 100, 0) + '% ferrous purity, 100% recovery');
 check(cuRow && cuRow.fate === 'mixed' && cuRow.purity < 0.05 && cuRow.contaminant === 'steel', 'copper sits in the same bin, contaminant steel');
 check(starter.fit.clean.length === 0 && starter.fit.mixed.length === starter.fit.mats.length, 'every valuable material ends in a mixed bin');
-// unsorted shred is worth about $65/t since the bin valuation fix (#35)
-check(isFinite(starter.fit.kwhT) && starter.fit.kwhT > 5 && starter.fit.valuePerT > 30, 'energy ' + f(starter.fit.kwhT) + ' kWh/t and value $' + f(starter.fit.valuePerT, 0) + '/t reported');
+// unsorted shred sells for nothing since everything must be sorted to be sold (#52)
+check(isFinite(starter.fit.kwhT) && starter.fit.kwhT > 5 && starter.fit.valuePerT === 0, 'energy ' + f(starter.fit.kwhT) + ' kWh/t reported, and unsorted shred is worth $' + f(starter.fit.valuePerT, 0) + '/t');
 const car = fitOf(globalThis.CS.LINES.car, FEEDS.elv.comp);
 const carSteel = car.fit.mats.find((r) => r.m === 'steel'), carAl = car.fit.mats.find((r) => r.m === 'aluminum');
 check(carSteel.fate === 'clean' && carSteel.bin.short === 'MAG' && carSteel.bin.port === 'extract', 'car line: steel clean in MAG/extract (' + f(carSteel.purity * 100, 0) + '%)');
@@ -91,10 +91,12 @@ check(soup.sep === 'sensor' && /sensor sorter set to copper/.test(soup.text), 'c
 
 console.log('\n=== ranking by projected margin');
 const owned = new Set(['hammer']);
-[['quarry', 'aggregate'], ['tires', 'rubber'], ['pallets', 'wood'], ['gel', 'gel'], ['zorba', 'heavies']].forEach(([feed, want]) => {
+// zorba (#52): the heavies line's copper comes out 88% pure, under the 90% sell line, so only its clean aluminum earns and it
+// ties with the aluminum playbook: either may lead
+[['quarry', 'aggregate'], ['tires', 'rubber'], ['pallets', 'wood'], ['gel', 'gel'], ['zorba', 'heavies|aluminum']].forEach(([feed, want]) => {
   const rows = PB.rank(FEEDS[feed].comp, owned, {});
   console.log('  ' + feed.padEnd(8) + rows.slice(0, 3).map((r) => r.pb.id + (r.relevant ? '*' : '') + ' $' + f(r.margin, 0) + (r.cost ? ' (buy $' + r.cost + ')' : '')).join(' > ') + ' ... ' + rows.filter((r) => !r.runs).map((r) => r.pb.id + ' x').join(' '));
-  check(rows[0].pb.id === want && rows[0].runs && rows[0].relevant, feed + ': the ' + want + ' playbook ranks first');
+  check(want.split('|').includes(rows[0].pb.id) && rows[0].runs && rows[0].relevant, feed + ': the ' + want + ' playbook ranks first');
   check(rows.every((r, i) => i === 0 || !r.runs || !rows[i - 1].runs || r.relevant !== rows[i - 1].relevant || rows[i - 1].margin >= r.margin), feed + ': within a relevance tier the runnable lines are sorted by margin');
   check(rows.every((r, i) => i === 0 || !(r.relevant && !rows[i - 1].relevant && rows[i - 1].runs)), feed + ': cards whose bucket is in the lot come before the rest');
 });

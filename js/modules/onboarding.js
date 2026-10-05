@@ -246,15 +246,15 @@
     { id: 'auction', n: 1, label: 'Auction', targets: ['#auction-panel', '#feed-panel'] },
     { id: 'haulin', n: 2, label: 'Haul in', targets: ['#auction-panel', '#feed-panel'] },
     { id: 'offload', n: 3, label: 'Offload', targets: ['#feed-panel'] },
-    { id: 'shred', n: 4, label: 'Shred', targets: ['#line-panel'] },
-    { id: 'sort', n: 5, label: 'Sort', targets: ['#bins', '#plant-panel'] },
+    { id: 'shred', n: 4, label: 'Shred', targets: ['#line-panel', '#flow-panel'] },
+    { id: 'sort', n: 5, label: 'Sort', targets: ['#bins', '#plant-panel', '#flow-panel'] },
     { id: 'sell', n: 6, label: 'Smelt & sell', targets: ['#bank-panel'] }
   ];
 
   /* The first-run tour. Each step points at the first selector that exists. */
   const STEPS = [
     { targets: ['#feed-preset', '#feed-panel'], title: '1 · PICK A FEED', text: 'Choose a preset in the Feed panel, or dial in your own mix with the sliders. The starter line below it is built for end-of-life vehicles.' },
-    { targets: ['#plant-readouts', '#plant-panel'], title: '2 · CHECK THE MARGIN', text: 'The Plant panel projects product value, power and margin per tonne before you spend anything. A red margin means the batch loses money: change the line or the feed first.' },
+    { targets: ['#plant-readouts', '#plant-panel', '#tool-report', '#flow-panel'], title: '2 · CHECK THE MARGIN', text: 'The Plant report (toolbar) projects product value, power and margin per tonne before you spend anything. A red margin means the batch loses money: change the line or the feed first.' },
     { targets: ['#btn-run'], title: '3 · RUN THE BATCH', text: 'Press RUN BATCH (or Space). The slowest machine sets the rate, the cam shows what happens inside, and the net lands in your bank when the batch completes.' }
   ];
 
@@ -314,7 +314,7 @@
     const hasDom = () => typeof document !== 'undefined' && !!document.body;
     const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
-    const first = (sels) => { for (let i = 0; i < sels.length; i++) { const e = document.querySelector(sels[i]); if (e) return e; } return null; };
+    const first = (sels) => { let any = null; for (let i = 0; i < sels.length; i++) { const e = document.querySelector(sels[i]); if (e && e.getClientRects().length) return e; any = any || e; } return any; };   // prefer a target on screen: the calm layout keeps most panels in drawers
 
     /* persistence: 'load' fires before boot when this module ran first; when the app booted first, read S.ext directly */
     const readExt = (ext) => { state.done = !!(ext && ext.onboarding && ext.onboarding.done); };

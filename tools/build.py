@@ -7,7 +7,7 @@ import io, os, re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ['data.js', 'sim.js', 'audio.js', 'cam.js', 'scenes-a.js', 'scenes-b.js', 'score.js', 'app.js']
-MODULES = ['market', 'inventory', 'auction', 'missions', 'floor', 'onboarding', 'blueprints', 'playbooks', 'economics', 'intake', 'facility', 'rivals', 'endgame']   # load order matters: later modules may use earlier ones
+MODULES = ['market', 'inventory', 'auction', 'missions', 'floor', 'onboarding', 'blueprints', 'playbooks', 'economics', 'intake', 'facility', 'rivals', 'endgame', 'layout']   # load order matters: later modules may use earlier ones
 
 def rd(p):
     return io.open(os.path.join(ROOT, p), encoding='utf-8').read()

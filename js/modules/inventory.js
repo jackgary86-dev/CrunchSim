@@ -465,6 +465,9 @@
       return out;
     };
 
+    /* the plant screen's bucket list sells one material at a time */
+    Inv.sellMat = function (mat) { sellMat(mat); };
+
     /* hooks */
     API.on('veto:autoSell', function () { return 'inventory'; });
     if (API.booted) { restore(API.S.ext); initStorage(); API.renderBank(); } else { API.on('load', restore); API.on('load', initStorage); }

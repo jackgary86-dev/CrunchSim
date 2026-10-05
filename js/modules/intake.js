@@ -136,6 +136,7 @@
     /* what can be bought: every preset with a supplier contract at its market price, and the current hand mix */
     function presetCost(id) { const q = { id: id, cost: FEEDS[id].cost }; app.emit('feedCost', q); return q.cost; }
     function sources() {
+      return [];   // #57: material comes only from the auction or the MISC bucket
       const out = [], s = S();
       Object.keys(FEEDS).forEach(function (id) { if (s.suppliers.has(id)) out.push({ id: id, name: FEEDS[id].name, comp: FEEDS[id].comp, cost: presetCost(id) }); });
       if (s.feedPreset === 'custom' && !app.contract() && Object.keys(cleanComp(s.comp)).length) out.push({ id: 'current', name: 'Current hand mix', comp: cleanComp(s.comp), cost: mixCost(s.comp) });
@@ -147,13 +148,14 @@
       if (panel) return;
       panel = app.addPanel('left', 'intake-panel', 'Intake stockpile', 'line-panel');
       panel.querySelector('h2').appendChild(app.el('span', 'tag', ''));
-      panel.appendChild(app.el('div', 'small', 'Buy feed ahead by the thousand tonnes. A pile blends every delivery; RUN FROM STOCKPILE loads it prepaid and each batch draws its tonnage off the pile.'));
+      panel.appendChild(app.el('div', 'small', 'Piles bought before the auction became the only source. RUN FROM STOCKPILE loads one prepaid; each batch draws its tonnage off the pile.'));
       panel.insertAdjacentHTML('beforeend',
         '<div class="row"><label for="intake-src">Source</label><select id="intake-src"></select></div>' +
         '<div class="row"><label for="intake-t">Tonnes</label><input type="number" id="intake-t" class="intake-t" min="1" step="1"><button id="intake-buy" type="button" class="buy">BUY</button></div>' +
         '<div id="intake-yard" class="small"></div><div id="intake-piles"></div>');
       els = { src: panel.querySelector('#intake-src'), t: panel.querySelector('#intake-t'), buy: panel.querySelector('#intake-buy'), yard: panel.querySelector('#intake-yard'), piles: panel.querySelector('#intake-piles'), tag: panel.querySelector('h2 .tag') };
       els.t.value = cap();
+      [els.src, els.t].forEach(function (e) { const r = e.closest('.row'); if (r) r.classList.add('hidden'); });   // #57: nothing to buy here
       els.src.addEventListener('change', updateBuy);
       els.t.addEventListener('input', updateBuy);
       els.buy.addEventListener('click', buy);
@@ -192,7 +194,7 @@
       updateBuy();
       const box = els.piles; box.innerHTML = '';
       const keys = Object.keys(st.piles).filter(function (k) { return st.piles[k].t > 0; }).sort(function (a, b) { return st.piles[b].t - st.piles[a].t; });
-      if (!keys.length) box.appendChild(app.el('div', 'empty', 'The yard is empty. Buy feed to a stockpile above.'));
+      if (!keys.length) box.appendChild(app.el('div', 'empty', 'No stockpiles. Lots won at auction wait in the Auction drawer.'));
       const run = !!S().run, C = app.contract();
       keys.forEach(function (k) {
         const p = st.piles[k], loaded = st.loaded === k, ppt = paidPerT(p), batches = Math.ceil(p.t / c);
@@ -243,11 +245,10 @@
       const s = S(), pile = st.piles[key]; if (!pile || !(pile.t > 0)) return false;
       if (s.run) { if (!quiet) app.log('Finish the running batch first.', 'warn'); return false; }
       if (app.contract()) { if (!quiet) app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return false; }
-      if (s.feedPrepaid && !st.loaded) { if (!quiet) app.log('A prepaid auction lot is loaded as the feed. Run it first, or change the feed by hand to put it back in the yard.', 'warn'); return false; }
       const tons = Math.max(1, Math.min(Math.floor(pile.t), cap()));
-      st.loaded = null;   // setFeed renders before the flag is set; the render guard must not read this as a hand change
+      st.loaded = null; s.feedOwner = null;   // setFeed renders before the flag is set; the render guard must not read this as a hand change
       app.setFeed(pile.comp, FEEDS[key] ? key : 'custom', tons);
-      st.loaded = key; s.feedPrepaid = true;
+      st.loaded = key; s.feedPrepaid = true; s.feedOwner = 'intake';
       app.markDirty();   // feed info and the projected margin now show prepaid feed
       if (!quiet) app.log('Feed loaded from the ' + pile.name + ' stockpile: ' + tons + ' t per batch, prepaid; ' + fmtT(pile.t) + ' t on the pile.', 'ok');
       return true;
@@ -264,8 +265,8 @@
         return;
       }
       st.loaded = null;
-      const theirs = viaRender && !C && s.feedPreset === 'custom';
-      if (!theirs) s.feedPrepaid = false;
+      if (s.feedOwner === 'intake') { s.feedPrepaid = false; s.feedOwner = null; }   // only our own flag
+      const theirs = true;
       if (pile) app.log('The ' + pile.name + ' stockpile is no longer loaded: the feed was changed' + (C ? ' by the contract.' : theirs ? '.' : ', so feed is charged at the normal price again.'), 'warn');
       if (!viaRender) render();
     }

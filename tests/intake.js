@@ -133,11 +133,11 @@ check(Object.keys(I.addLifetime({}, bins, 0)).length === 0 && Object.keys(I.addL
   check(ext().loaded === null && S.feedPrepaid === false && logs.some((m) => /no longer loaded/.test(m)), 'a changed feed unloads the pile and clears the prepaid flag');
   // a preset applied through a render clears it too; another module's setFeed (preset custom) leaves the flag to that module
   app.emit('load', { intake: { piles: { elv: { name: 'ELV', t: 50, comp: elv, paid: 0 } }, life: {}, loaded: 'elv' } });
-  S.comp = Object.assign({}, elv); S.feedPrepaid = true; S.feedPreset = 'custom'; S.comp.steel += 0.1; app.emit('render');
+  S.comp = Object.assign({}, elv); S.feedPrepaid = true; S.feedOwner = 'auction'; S.feedPreset = 'custom'; S.comp.steel += 0.1; app.emit('render');   // #57: the flag carries its owner
   check(ext().loaded === null && S.feedPrepaid === true, 'a programmatic feed change at preset custom is left prepaid for the module that made it');
   app.emit('load', { intake: { piles: { elv: { name: 'ELV', t: 50, comp: elv, paid: 0 } }, life: {}, loaded: 'elv' } });
-  S.comp = Object.assign({}, FEEDS.quarry.comp); S.feedPrepaid = true; S.feedPreset = 'quarry'; app.emit('render');
-  check(ext().loaded === null && S.feedPrepaid === false, 'switching to a preset clears the prepaid flag');
+  S.comp = Object.assign({}, FEEDS.quarry.comp); S.feedPrepaid = true; S.feedOwner = 'intake'; S.feedPreset = 'quarry'; app.emit('render');
+  check(ext().loaded === null && S.feedPrepaid === false, 'switching away from its own pile clears the stockpile\'s prepaid flag');
   check(saves === 0, 'no save is forced by the hooks themselves');
   delete globalThis.CS.app;
 }

@@ -39,6 +39,10 @@
   const LIFE_H = [6, 48];       // online scrap auctions close in one to two days (sim hours)
   const TONS = [5, 1.2];        // 5 t (a skip lorry) up to 1.2x the logistics limit (a walking-floor trailer carries 20-25 t)
   const BOARD = { min: 3, max: 6, arriveH: 6 };   // three to six open lots; a new one arrives about every 6 sim hours (Poisson)
+  // #48: the board the game shows is six lots, one per price tier. A tier's lot is about that much money's worth of scrap at a
+  // fair price: a skip of mixed junk for $1k up to hundreds of tonnes, or a few tonnes of circuit boards, for $100k.
+  const TIERS = [1000, 3000, 8000, 20000, 50000, 100000];
+  const TIER_TONS = [1, 4000];   // a lot is at least a tonne and at most 4,000 t (a few trainloads)
   // feed market random walk: 3%/sqrt(h) (LME aluminium moves ~0.3%/sqrt(h), x10 for sim pace), mean-reverting to list price over about a day, pinned to 0.8-1.3x
   const MARKET = { lo: 0.8, hi: 1.3, sigma: 0.03, kappa: 0.05 };
   // bidding (ticket #31; js/modules/rivals.js places the bids): online industrial auctions raise in steps of about 5% of the standing bid, $1/t at least
@@ -68,7 +72,17 @@
   function genLot(rng, opts) {
     opts = opts || {};
     const feeds = (opts.feeds || ALWAYS).filter((id) => FEEDS[id] && worthOf(FEEDS[id].comp) > 1);
-    const base = pick(rng, feeds.length ? feeds : ALWAYS), F = FEEDS[base];
+    let pool = feeds.length ? feeds : ALWAYS;
+    if (opts.budget > 0) {   // a tier lot: only feeds whose fair price puts the budget between 1 and 4,000 t
+      const fits = pool.filter((id) => { const fa = worthOf(FEEDS[id].comp) * fairRatio(id); return fa > 0.5 && opts.budget / fa >= TIER_TONS[0] && opts.budget / fa <= TIER_TONS[1]; });
+      if (fits.length) pool = fits;
+      // richer tiers draw richer scrap: the candidates sorted by value per tonne, and tier k picks from the top part of the list
+      if (opts.tier > 0 && pool.length > 2) {
+        const ranked = pool.slice().sort((a, b) => worthOf(FEEDS[a].comp) * fairRatio(a) - worthOf(FEEDS[b].comp) * fairRatio(b));
+        pool = ranked.slice(Math.min(ranked.length - 2, Math.floor(ranked.length * opts.tier / (TIERS.length + 1))));
+      }
+    }
+    const base = pick(rng, pool), F = FEEDS[base];
     const u = rng(); const cls = u < DEAL.great ? 'great' : (u < DEAL.great + DEAL.fair ? 'fair' : 'terrible');
     // truth: the preset with lognormal scatter on every fraction
     const truth = {};
@@ -102,14 +116,16 @@
     else ask = worth * uni(rng, MULT.terrible[0], MULT.terrible[1]);
     ask = Math.max(1, Math.round(ask * mk));
     const limit = opts.limit > 0 ? opts.limit : 30;
-    const tons = Math.max(1, Math.round(uni(rng, TONS[0], TONS[1] * limit)));
+    let tons = Math.max(1, Math.round(uni(rng, TONS[0], TONS[1] * limit)));
+    // a tier lot costs about the tier's money at the asking price: a bargain is more tonnes for it, a bad buy fewer (#48)
+    if (opts.budget > 0) { const x = clamp(opts.budget / ask * uni(rng, 0.9, 1.1), TIER_TONS[0], TIER_TONS[1]); tons = x < 10 ? Math.round(x * 10) / 10 : Math.round(x); }   // small rich lots to 0.1 t
     const clockH = opts.clockH || 0, expiresH = clockH + Math.round(uni(rng, LIFE_H[0], LIFE_H[1]) * 2) / 2;
     const seller = pick(rng, SELLERS);
     let note;
     if (padded) note = tramp.note;
     else if (tramp) note = pick(rng, NOTES.tramp).replace('{what}', tramp.what);
     else note = pick(rng, NOTES[cls]);
-    return { id: opts.id || 0, base, cls, truth, declared, tons, ask, worth: Math.round(worth), expiresH, seller, headline: F.name, note, tramp: tramp ? tramp.m : null, padded };
+    return { id: opts.id || 0, base, cls, truth, declared, tons, ask, worth: Math.round(worth), expiresH, seller, headline: F.name, note, tramp: tramp ? tramp.m : null, padded, tier: opts.tier == null ? null : opts.tier };
   }
 
   /* Board upkeep: expire lots, let new ones arrive, keep at least BOARD.min open. Pure: mutates st and draws from rng only. */
@@ -123,6 +139,19 @@
     if (!st.board.length && before === 0) { const n = BOARD.min + Math.floor(rng() * (BOARD.max - BOARD.min + 1)); while (st.board.length < n) st.board.push(mk()); }
     while (st.board.length < BOARD.min) st.board.push(mk());
     return st.board.length !== before;
+  }
+  /* The tiered board (#48): one open lot per price tier, always six. Closed or sold tiers refill at once with a fresh lot. */
+  function tickTiers(st, rng, clockH, opts) {
+    const before = st.board.map((l) => l.id).join(',');
+    const closed = st.board.filter((l) => !(l.expiresH > clockH));
+    st.board = st.board.filter((l) => l.expiresH > clockH && l.tier != null);
+    if (opts && typeof opts.onClose === 'function') closed.forEach(opts.onClose);
+    TIERS.forEach((budget, k) => {
+      if (st.board.some((l) => l.tier === k)) return;
+      st.board.push(genLot(rng, Object.assign({}, opts, { clockH, id: st.nextId++, budget, tier: k })));
+    });
+    st.board.sort((a, b) => a.tier - b.tier);
+    return st.board.map((l) => l.id).join(',') !== before;
   }
   /* Feed market: one mean-reverting lognormal step per feed over dh sim hours. */
   function marketStep(market, rng, dh, ids) {
@@ -145,20 +174,20 @@
   }
   function validBid(b) { return !!(b && typeof b === 'object' && isFinite(+b.perT) && +b.perT > 0 && typeof b.by === 'string' && b.by); }
 
-  CS.Auction = { mulberry32, genLot, tickBoard, marketStep, worthOf, fairRatio, feedsFor, validLot, sameComp, minBid, placeBid, validBid, ALWAYS, DEAL, MULT, MARKET, BOARD, BID, WORTH_FACTOR };
+  CS.Auction = { TIERS, TIER_TONS, tickTiers, mulberry32, genLot, tickBoard, marketStep, worthOf, fairRatio, feedsFor, validLot, sameComp, minBid, placeBid, validBid, ALWAYS, DEAL, MULT, MARKET, BOARD, BID, WORTH_FACTOR };
 
   /* ---------------- game wiring (browser only) ---------------- */
   function init() {
     const app = CS.app; if (!app || init.done) return; init.done = true;
-    const st = { board: [], market: {}, nextId: 1001, pending: null, settle: null };
+    const st = { board: [], market: {}, nextId: 1001, pending: null, settle: null, yard: [] };   // pending: the lot loaded as the feed; yard: lots waiting their turn (#49)
     const rng = mulberry32(0); let seeded = false, lastKey = '', panel = null;
     const S = () => app.S, clockH = () => app.S.clock / 3600;
-    const feeds = () => feedsFor(S().suppliers);
+    const feeds = () => Object.keys(FEEDS).filter((id) => worthOf(FEEDS[id].comp) > 1);   // #57: the auction is where all scrap comes from
     const genOpts = () => ({ feeds: feeds(), limit: app.plantValue('logistics'), market: st.market, onClose: closeLot });
     /* hooks for js/modules/rivals.js (ticket #31): the live board, the yard lot, a redraw; 'lotPrice' {lot, perT} may raise the buy price,
      * 'veto:auctionBuy' {lot} may refuse a purchase, 'lotClose' {lot, award} may award a closing lot to the operator at award $/t,
      * and 'auctionRender' {box} lets a module add to the board after each redraw (lot rows carry data-lot) */
-    CS.Auction.live = { board: () => st.board, pending: () => st.pending, render: () => render() };
+    CS.Auction.live = { board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render() };
     function priceOf(L) { const q = { lot: L, perT: L.ask }; app.emit('lotPrice', q); return q.perT > 0 ? Math.ceil(q.perT) : L.ask; }
     function closeLot(L) { const q = { lot: L, award: 0 }; app.emit('lotClose', q); if (q.award > 0) take(L, q.award, 'Won at auction:'); }
 
@@ -169,11 +198,13 @@
       st.market = {}; for (const id in (d.market || {})) if (FEEDS[id] && isFinite(+d.market[id])) st.market[id] = clamp(+d.market[id], MARKET.lo, MARKET.hi);
       st.nextId = Math.max(1001, Math.floor(+d.nextId) || 0);
       st.pending = validLot(d.pending) ? d.pending : null;
+      st.yard = Array.isArray(d.yard) ? d.yard.filter(validLot) : [];
+      if (!st.board.every((l) => l.tier != null)) st.board = [];   // a board from before the tiers: deal a fresh one
       st.board.forEach((l) => { if (l.bid && !validBid(l.bid)) delete l.bid; });
     }
     app.on('load', loadState);
     if (app.S && app.S.ext) loadState(app.S.ext);   // a module that registers after boot has missed the 'load' event
-    app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending } }));
+    app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending, yard: st.yard } }));
     app.on('feedCost', (q) => { if (st.market[q.id] > 0) q.cost *= st.market[q.id]; });   // scales the preset price the app charges (feed market)
     const feedCost = (id) => FEEDS[id].cost * (st.market[id] > 0 ? st.market[id] : 1);
 
@@ -202,21 +233,30 @@
       const C = app.contract(), run = !!S().run, cap = app.plantValue('logistics'), now = clockH();
       panel.querySelector('h2 .tag').textContent = st.board.length + ' OPEN';
       const P = st.pending;
+      const yardRow = (L) => {
+        const row = app.el('div', 'crow yard', '<div class="ch"><b>WAITING IN THE YARD: LOT #' + L.id + '</b><span class="ask">' + app.fmtMoney(L.ask) + '/t paid</span></div><div class="cd">' + L.tons + ' t of ' + app.esc(L.headline) + ' · declared: ' + compText(L.declared) + '</div>');
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = 'LOAD'; b.className = 'buy'; b.disabled = run;
+        b.title = 'Load this lot as the feed; the loaded one goes back to wait in the yard';
+        b.addEventListener('click', () => { if (swapIn(L)) render(); });
+        row.appendChild(b); box.appendChild(row);
+      };
       if (P) {
-        const loaded = S().feedPrepaid && !C && sameComp(S().comp, P.truth);
+        const loaded = S().feedPrepaid && S().feedOwner === 'auction' && !C && sameComp(S().comp, P.truth);
         const row = app.el('div', 'crow yard', '<div class="ch"><b>IN THE YARD: LOT #' + P.id + '</b><span class="ask">' + app.fmtMoney(P.ask) + '/t paid</span></div><div class="cd">' + P.tons + ' t of ' + app.esc(P.headline) + ' · declared: ' + compText(P.declared) + compBar(P.declared) + '</div><div class="cd">' + (loaded ? 'Loaded as the feed, prepaid. Run the batch.' : P.arriving && run ? 'Won at the gavel: it loads when this batch ends.' : (C ?'Waiting: the contract feed is loaded.' : 'Not loaded: the feed was changed by hand.')) + '</div>');
         const b = document.createElement('button'); b.type = 'button'; b.textContent = loaded ? 'LOADED' : 'LOAD'; b.className = loaded ? 'buy max' : 'buy'; b.disabled = loaded || !!C || run;
         b.addEventListener('click', () => { if (loadPending()) { app.log('Lot #' + P.id + ' loaded as the feed again.', 'ok'); render(); } });
         row.appendChild(b); box.appendChild(row);
       }
+      st.yard.forEach(yardRow);
       if (!st.board.length) box.appendChild(app.el('div', 'empty', 'No lots on the board.'));
-      st.board.slice().sort((a, b) => a.expiresH - b.expiresH).forEach((L) => {
+      st.board.slice().sort((a, b) => (a.tier == null ? 99 : a.tier) - (b.tier == null ? 99 : b.tier) || a.expiresH - b.expiresH).forEach((L) => {
         const total = priceOf(L) * L.tons;
-        const row = app.el('div', 'crow', '<div class="ch"><b>' + app.esc(L.headline) + ' · ' + L.tons + ' t</b><span class="ask">' + app.fmtMoney(L.ask) + '/t</span></div>' +
+        const tierTag = L.tier != null ? '<span class="tier">' + app.fmtMoney(TIERS[L.tier]).replace(',000', 'k') + ' LOT</span> ' : '';
+        const row = app.el('div', 'crow', '<div class="ch"><b>' + tierTag + app.esc(L.headline) + ' · ' + L.tons + ' t</b><span class="ask">' + app.fmtMoney(L.ask) + '/t</span></div>' +
           '<div class="cd">Declared: ' + compText(L.declared) + compBar(L.declared) + '</div>' +
           '<div class="cd">' + app.esc(L.seller) + ': ' + app.esc(L.note) + ' · closes in ' + fmtH(L.expiresH - now) + (L.tons > cap ? ' · over your ' + cap + ' t batch limit' : '') + '</div>');
         const b = document.createElement('button'); b.type = 'button'; b.textContent = 'BUY ' + app.fmtMoney(total); b.className = 'buy' + (S().money < total ? ' poor' : '');
-        b.title = C ? 'Release the contract first' : (run ? 'Wait for the batch' : 'Pay ' + app.fmtMoney(total) + ' and load the lot as the feed');
+        b.title = 'Pay ' + app.fmtMoney(total) + ' for the whole lot; it lands in the yard and feeds your batches until it runs out';
         b.addEventListener('click', () => buy(L));
         row.dataset.lot = L.id; row.appendChild(b); box.appendChild(row);
       });
@@ -233,13 +273,21 @@
     /* ---- buying and settlement ---- */
     function loadPending() {
       const P = st.pending; if (!P || app.contract() || S().run) return false;
+      S().feedOwner = null;   // setFeed renders before the flag is set: no guard may read this as someone else's feed
       app.setFeed(P.truth, 'custom', Math.max(1, Math.min(P.tons, app.plantValue('logistics'))));
-      S().feedPrepaid = true; return true;
+      S().feedPrepaid = true; S().feedOwner = 'auction'; return true;
+    }
+    /* LOAD a waiting lot: it becomes the loaded one and the loaded one goes back to wait (#49) */
+    function swapIn(L) {
+      if (S().run) return false;
+      const i = st.yard.indexOf(L); if (i < 0) return false;
+      st.yard.splice(i, 1);
+      if (st.pending) st.yard.unshift(st.pending);
+      st.pending = L;
+      if (loadPending()) app.log('Lot #' + L.id + ' (' + L.tons + ' t of ' + L.headline + ') loaded as the feed.', 'ok');
+      app.save(); return true;
     }
     function buy(L) {
-      if (app.contract()) { app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return; }
-      if (S().run) { app.log('Finish the running batch before buying a lot.', 'warn'); return; }
-      if (st.pending) { app.log('Lot #' + st.pending.id + ' (' + st.pending.tons + ' t) is still in the yard. Run it before buying another.', 'warn'); return; }
       if (!st.board.includes(L)) return;
       const why = app.veto('auctionBuy', { lot: L }); if (why) { app.log(why, 'warn'); return; }
       take(L, priceOf(L), 'Bought');
@@ -249,56 +297,60 @@
       const total = perT * L.tons;
       if (!app.spend(total, 'lot #' + L.id + ' (' + L.tons + ' t at ' + app.fmtMoney(perT) + '/t)')) { render(); return false; }
       st.board = st.board.filter((x) => x !== L);
-      st.pending = Object.assign({}, L, { ask: perT, listAsk: L.ask, paid: total, boughtTons: L.tons, bid: undefined });
+      const lot = Object.assign({}, L, { ask: perT, listAsk: L.ask, paid: total, boughtTons: L.tons, bid: undefined });
+      if (st.pending) st.yard.push(lot); else st.pending = lot;   // #49: lots queue in the yard
       const cap = app.plantValue('logistics');
       app.log(how + ' lot #' + L.id + ' from ' + L.seller + ': ' + L.tons + ' t of ' + L.headline + ' at ' + app.fmtMoney(perT) + '/t, ' + app.fmtMoney(total) + ' paid. Declared ' + compText(L.declared, 4).replace(/&amp;/g, '&') + '.' + (L.tons > cap ? ' Only ' + cap + ' t fit a batch; the rest waits in the yard.' : ''), 'ok');
-      if (!loadPending() && S().run) st.pending.arriving = true;   // won mid-batch: it loads when the batch ends
+      if (st.pending === lot && !loadPending() && S().run) st.pending.arriving = true;   // won mid-batch: it loads when the batch ends
+      tickTiers(st, rng, clockH(), genOpts());   // the tier refills at once
       app.renderBank(); render(); app.save();
       return true;
     }
     app.on('batchStart', (p) => {
       S().feedPrepaid = false;   // the prepaid lot is consumed by this batch
-      const P = st.pending; if (!P || app.contract() || !sameComp(S().comp, P.truth)) return;
+      const P = st.pending; if (!P || app.contract() || S().feedOwner !== 'auction' || !sameComp(S().comp, P.truth)) return;
       const tons = p.run.total;
       const extra = P.tramp ? ' ' + (P.padded ? 'A lot of ' : 'Some ') + TRAMP.find((t) => t.m === P.tramp).what + ' in the load.' : '';
       app.log('Weighbridge, lot #' + P.id + ': ' + compText(P.truth, 8).replace(/&amp;/g, '&') + '.' + extra, P.padded ? 'warn' : 'ok');
       st.settle = { lot: P, tons };
       P.tons -= tons;
-      if (P.tons < 1) st.pending = null; else app.log(P.tons + ' t of lot #' + P.id + ' stay in the yard for the next batch.');
+      if (P.tons < 1) { st.pending = st.yard.length ? st.yard.shift() : null; if (st.pending) app.log('Lot #' + P.id + ' is used up. Lot #' + st.pending.id + ' from the yard is next.'); }
+      else app.log(P.tons + ' t of lot #' + P.id + ' stay in the yard for the next batch.');
       render();
     });
     app.on('batchComplete', (p) => {
       const s = st.settle; st.settle = null;
-      if (!s) {   // a lot won at the gavel during this batch (rivals module) loads now that the line is free
-        if (st.pending && st.pending.arriving && loadPending()) { app.log('Lot #' + st.pending.id + ' is loaded for the next batch.', 'ok'); delete st.pending.arriving; render(); }
+      if (!s) {   // a re-run or another feed ran; the lot in the yard is loaded again once the line is free
+        if (st.pending && !S().feedPrepaid && loadPending()) { app.log('Lot #' + st.pending.id + ' is loaded for the next batch.', 'ok'); delete st.pending.arriving; render(); }
         return;
       }
       const L = s.lot, done = p.r.done, paid = L.ask * done, w = worthOf(L.truth) * done, dw = worthOf(L.declared) * done;
       const verdict = L.cls === 'great' ? 'a bargain' : L.cls === 'fair' ? 'a fair deal' : (L.padded ? 'a padded lot' : 'overpriced');
       app.log('Lot #' + L.id + ' settled: paid ' + app.fmtMoney(paid) + ' for ' + app.fmtNum(done, 1) + ' t. Declared worth ' + app.fmtMoney(dw) + ', weighbridge worth ' + app.fmtMoney(w) + ' (60% of product prices); the line made ' + app.fmtMoney(p.r.rev) + ' of product. That was ' + verdict + '.', L.cls === 'terrible' ? 'bad' : (L.cls === 'great' ? 'ok' : ''));
-      if (st.pending && loadPending()) { app.log('Lot #' + st.pending.id + ' loaded for the next batch.'); delete st.pending.arriving; }
+      if (st.pending && !S().feedPrepaid && loadPending()) { app.log('Lot #' + st.pending.id + ' loaded for the next batch.'); delete st.pending.arriving; }
       render();
     });
     // guard: a prepaid lot only covers its own composition and tonnage
     function guard() {
-      const P = st.pending; if (!P || !S().feedPrepaid || app.contract()) return;
-      if (!sameComp(S().comp, P.truth)) { S().feedPrepaid = false; app.log('Feed changed by hand: lot #' + P.id + ' stays in the yard and the feed is charged at the normal price. LOAD brings the lot back.', 'warn'); render(); }
+      const P = st.pending; if (!P || !S().feedPrepaid || S().feedOwner !== 'auction' || app.contract()) return;
+      if (!sameComp(S().comp, P.truth)) { S().feedPrepaid = false; S().feedOwner = null; app.log('Lot #' + P.id + ' is no longer loaded; it waits in the yard. LOAD brings it back.', 'warn'); render(); }
       else if (S().tons > P.tons) { S().tons = P.tons; app.syncFeedRows(); }
     }
 
     app.on('boot', () => {
       if (!seeded) { rng.setState(Math.floor(S().clock)); seeded = true; }
       marketStep(st.market, rng, 0);
-      tickBoard(st, rng, clockH(), 0, genOpts());
-      if (st.pending && !app.contract() && !S().feedPrepaid && sameComp(S().comp, st.pending.truth)) S().feedPrepaid = true;   // the flag is not saved by the app
+      tickTiers(st, rng, clockH(), genOpts());
+      if (st.pending && !app.contract() && !S().feedPrepaid && sameComp(S().comp, st.pending.truth)) { S().feedPrepaid = true; S().feedOwner = 'auction'; }   // the flag is not saved by the app
+      else if (st.pending && !S().feedPrepaid) loadPending();
       build(); render();
     });
     app.on('render', render);
-    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); tickBoard(st, rng, clockH(), 0, genOpts()); render(); });
+    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; tickTiers(st, rng, clockH(), genOpts()); render(); });
     app.on('tick', (p) => {
       if (!(p.dh > 0)) return;
       marketStep(st.market, rng, p.dh);
-      const changed = tickBoard(st, rng, clockH(), p.dh, genOpts());
+      const changed = tickTiers(st, rng, clockH(), genOpts());
       guard();
       const key = Math.floor(clockH() * 4);
       if (changed || key !== lastKey) { lastKey = key; render(); if (!changed) app.markDirty(); }   // quarter-hourly: refresh timers and the feed price line

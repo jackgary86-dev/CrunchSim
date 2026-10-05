@@ -128,13 +128,18 @@
   /* ---------------- contracts ---------------- */
   function contract() { return S.contract ? Score.CONTRACTS.find((c) => c.id === S.contract) || null : null; }
   function starsText(n) { return '\u2605\u2605\u2605'.slice(0, n) + '\u2606\u2606\u2606'.slice(0, 3 - n); }
+  /* Material comes only from auction lots or a re-run bucket (#57): the mix sliders and the preset list are a read-out of what
+   * is loaded. Only the batch size stays in the operator's hands. */
+  const AUCTION_ONLY = true;
   function setFeedLock(on) {
+    on = on || AUCTION_ONLY;
     document.querySelectorAll('#feed-comp input').forEach((r) => { r.disabled = on; });
-    $('#feed-preset').disabled = on; $('#feed-tons').disabled = on;
+    $('#feed-preset').disabled = on; $('#feed-tons').disabled = !!S.contract;
     $('#feed-panel').classList.toggle('locked', on); $('#feed-lock').classList.toggle('hidden', !on);
   }
   function acceptContract(id) {
     const C = Score.CONTRACTS.find((c) => c.id === id); if (!C) return;
+    if (AUCTION_ONLY) { Audio.ui('deny'); log('Clients no longer send their own feed: every tonne you run comes from the auction or your MISC bucket. Take Jobs instead: they buy sorted material from your stock.', 'warn'); return; }
     if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch before changing contracts.', 'warn'); return; }
     const why = API.veto('acceptContract', { id, C }); if (why) { Audio.ui('deny'); log(why, 'warn'); return; }   // rivals module: a contract a rival yard holds
     S.contract = id; S.feedPreset = C.feed; S.comp = Object.assign({}, FEEDS[C.feed].comp); S.tons = C.tons;
@@ -147,7 +152,7 @@
   function cancelContract() {
     const C = contract(); if (!C) return;
     if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch first.', 'warn'); return; }
-    log('Contract released: ' + C.name + '.'); S.contract = null; setFeedLock(false); applyPlant(); renderFeedSelect(); markDirty(true);
+    log('Contract released: ' + C.name + '.'); S.contract = null; setFeedLock(AUCTION_ONLY); applyPlant(); renderFeedSelect(); markDirty(true);
   }
   function renderContracts() {
     const box = $('#contracts'); box.innerHTML = '';
@@ -708,6 +713,7 @@
     let tot = 0; for (const m in S.comp) tot += S.comp[m] > 0 ? S.comp[m] : 0;
     if (tot <= 0) { Audio.ui('deny'); log('The feed is empty.', 'bad'); return; }
     const C = contract();
+    if (AUCTION_ONLY && !C && !S.feedPrepaid) { Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
     const feedC = C ? 0 : feedCostPerT() * S.tons;
     if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) return;
     if (feedC <= 0) S.money -= feedC;   // paid to take it
@@ -881,7 +887,7 @@
       S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id); (d.suppliers || []).forEach((f) => { if (FEEDS[f]) S.suppliers.add(f); });
       S.speed = [1, 10, 60].includes(+d.speed) ? +d.speed : 1; S.muted = !!d.muted; S.clock = +d.clock || 0;
       S.feedPreset = d.feedPreset || 'custom'; S.linePreset = d.linePreset || 'custom';
-      S.contract = d.contract && Score.CONTRACTS.find((c) => c.id === d.contract) ? d.contract : null;
+      S.contract = !AUCTION_ONLY && d.contract && Score.CONTRACTS.find((c) => c.id === d.contract) ? d.contract : null;   // #57: no client feed
       S.contracts = {}; for (const k in (d.contracts || {})) if (Score.CONTRACTS.find((c) => c.id === k)) S.contracts[k] = clamp(Math.floor(+d.contracts[k] || 0), 0, 3);
       S.ext = d.ext && typeof d.ext === 'object' ? d.ext : {};
       return true;
@@ -930,7 +936,8 @@
     if (!S.ext) S.ext = {};
     API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
-    if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; setFeedLock(true); }
+    if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; }
+    setFeedLock(!!S.contract);
     if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Only sorted material sells: the magnet pulls the steel out clean, and everything still mixed waits in MISC until you buy another sorter. Run a few batches, run a few batches, then buy your first sorter from NEXT PURCHASE in Bank & upgrades (toolbar).', 'ok'); }
     else { renderFeedSelect(); syncFeedRows(); log('Session restored.', 'ok'); }
     lastRankIdx = rankOf(netWorth()).idx;

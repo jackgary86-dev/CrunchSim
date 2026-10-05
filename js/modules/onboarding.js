@@ -253,7 +253,7 @@
 
   /* The first-run tour. Each step points at the first selector that exists. */
   const STEPS = [
-    { targets: ['#feed-preset', '#feed-panel'], title: '1 · PICK A FEED', text: 'Choose a preset in the Feed panel, or dial in your own mix with the sliders. The plant on the right is built for end-of-life vehicles.' },
+    { targets: ['#tool-auction', '#feed-panel'], title: '1 · BUY A LOT', text: 'Material comes only from the scrap auction (and later from re-running your MISC bucket). Open Auction in the toolbar: six lots from $1k to $100k. Buy one you can afford; it lands in the yard and loads as the feed.' },
     { targets: ['#plant-readouts', '#plant-panel', '#tool-report', '#flow-panel'], title: '2 · CHECK THE MARGIN', text: 'The Plant report (toolbar) projects product value, power and margin per tonne before you spend anything. A red margin means the batch loses money: change the line or the feed first.' },
     { targets: ['#btn-run'], title: '3 · RUN THE BATCH', text: 'Press RUN BATCH (or Space). The slowest machine sets the rate, the cam shows what happens inside, and the net lands in your bank when the batch completes.' }
   ];

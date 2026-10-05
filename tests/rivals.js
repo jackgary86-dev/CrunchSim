@@ -222,8 +222,10 @@ check(A.live.board().some((L) => L.bid) || st.results.length > 0, 'open lots car
 const target = A.live.board().slice().sort((a, b) => a.expiresH - b.expiresH)[0];
 check(live.raise(target.id) && target.bid.by === 'you', 'BID puts the operator on top of lot #' + target.id + ' at $' + target.bid.perT + '/t');
 const other = A.live.board().find((L) => L !== target);
-check(!live.raise(other.id) && /already lead/.test(logs[logs.length - 1].msg), 'one lead at a time: a second BID is refused');
-check(/You lead lot/.test(app.veto('auctionBuy', { lot: other })) && app.veto('auctionBuy', { lot: target }) === '', 'buy-now on another lot is vetoed while leading; on the same lot it is allowed');
+// #49: the yard holds several lots, so the operator may lead several and buy now while leading
+check(live.raise(other.id) && other.bid.by === 'you' && target.bid.by === 'you', 'a second BID on another lot is fine: the yard holds several lots');
+check(!live.raise(other.id) && /already hold/.test(logs[logs.length - 1].msg), 'but not a second bid on a lot you already lead');
+check(app.veto('auctionBuy', { lot: other }) === '' && app.veto('auctionBuy', { lot: target }) === '', 'buy-now is never vetoed for leading elsewhere');
 { const q = { lot: other, perT: other.ask }; app.emit('lotPrice', q); check(q.perT === RV.buyNowPrice(other) && q.perT > other.ask, 'the buy price carries the buy-now premium: $' + other.ask + ' -> $' + q.perT + '/t'); }
 const money0 = app.S.money; let paid = 0, guard = 0;
 while (A.live.board().includes(target) && guard++ < 4000) { tick(0.05); if (A.live.board().includes(target) && target.bid && target.bid.by !== 'you') { live.raise(target.id); } }
@@ -238,7 +240,8 @@ if (P) {
   check(app.S.feedPrepaid && A.sameComp(app.S.comp, P.truth) && !P.arriving, 'and loads as the prepaid feed when the batch ends');
   app.S.run = run;
 }
-check(!live.raise(other.id) && /still in the yard/.test(logs[logs.length - 1].msg), 'no bidding while a lot waits in the yard');
+const third = A.live.board().find((L) => !(L.bid && L.bid.by === 'you'));
+check(!third || live.raise(third.id), 'bidding goes on while a lot waits in the yard (#49)');
 // contracts held by rivals
 for (let i = 0; i < 4 * 200; i++) tick(0.25);
 const claimed = Object.keys(st.claims);

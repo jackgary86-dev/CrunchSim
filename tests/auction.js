@@ -102,5 +102,23 @@ const r1 = A.mulberry32(99), r2 = A.mulberry32(99);
 const a = A.genLot(r1, { feeds: ['elv'], limit: 30, market: {} }), b = A.genLot(r2, { feeds: ['elv'], limit: 30, market: { elv: 1.25 } });
 check(Math.abs(b.ask - Math.round(a.ask * 1.25)) <= 1, 'market factor did not scale the ask: ' + a.ask + ' vs ' + b.ask);
 
+// #48: the tiered board, six lots from $1k to $100k, refilled at once
+{
+  const allFeeds = Object.keys(FEEDS).filter((id) => A.worthOf(FEEDS[id].comp) > 1);
+  let tierOk = true, priceOk = true, richTop = 0, rounds = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const st = { board: [], nextId: 1, market: {} }, rr = A.mulberry32(seed);
+    A.tickTiers(st, rr, 0, { feeds: allFeeds, limit: 15, market: {} });
+    if (st.board.length !== 6 || st.board.some((l, k) => l.tier !== k)) tierOk = false;
+    st.board.forEach((l) => { const tot = l.ask * l.tons, t = A.TIERS[l.tier]; if (l.tons > 1 && l.tons < A.TIER_TONS[1] && (tot < 0.8 * t || tot > 1.25 * t)) priceOk = false; });
+    const top = st.board[5]; if (A.worthOf(FEEDS[top.base].comp) > A.worthOf(FEEDS.elv.comp)) richTop++;
+    st.board.splice(2, 1); A.tickTiers(st, rr, 0, { feeds: allFeeds, limit: 15, market: {} }); if (st.board.length !== 6) tierOk = false;
+    rounds++;
+  }
+  check(tierOk, 'the board always shows six lots, one per tier, and a sold tier refills at once');
+  check(priceOk, 'a tier lot costs about the tier at its asking price (' + A.TIERS.map((t) => '$' + t / 1000 + 'k').join(', ') + ')');
+  check(richTop > rounds / 2, 'the $100k tier mostly draws scrap richer than car hulks (' + richTop + ' of ' + rounds + ')');
+}
+
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nauction checks pass');
 process.exit(fails ? 1 : 0);

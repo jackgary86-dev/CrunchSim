@@ -69,7 +69,7 @@
     ['flowsheet', 'Flowsheet', ['line-panel', 'blueprint-panel', 'playbook-panel']],
     ['auction', 'Auction', ['auction-panel', 'intake-panel']],
     ['sales', 'Market', ['inventory-panel', 'market-panel']],
-    ['jobs', 'Contracts & jobs', ['contract-panel', 'missions-panel']],
+    ['jobs', 'Jobs', ['missions-panel']],
     ['bank', 'Bank & upgrades', ['bank-panel', 'slots-panel', 'refinery-panel', 'facility-panel']],
     ['rivals', 'Rivals', ['rivals-panel']],
     ['report', 'Plant report', ['plant-panel']],
@@ -116,6 +116,7 @@
     document.body.appendChild($('#scorecard'));   // the score card must show without the station open
     const stash = el('div', 'hidden'); stash.id = 'stash'; document.body.appendChild(stash);
     DRAWERS.forEach(([, , ids]) => ids.forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); }));
+    ['contract-panel'].forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); });   // #57: clients no longer send feed, so no contracts
     drawer.addEventListener('click', (e) => { if (e.target === drawer) closeDrawer(); });
     station.addEventListener('click', (e) => { if (e.target === station) closeStation(); });
     $('#drawer-close').addEventListener('click', closeDrawer);
@@ -303,15 +304,14 @@
     const S = app.S, stock = srcMap(src);
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
     if (app.contract && app.contract()) { app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return; }
-    if (S.feedPrepaid && !loaded) { app.log('A prepaid lot is already loaded as the feed. Run it first, or change the feed by hand to put it back in the yard.', 'warn'); return; }
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
     if (plan.error) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
     const comp = plan.comp, tot = plan.tot, tons = plan.tons, entry = defaultEntry(S.line, MACHINES);
     const prev = loaded ? loaded.prev : (FEEDS[S.feedPreset] ? { preset: S.feedPreset, tons: S.tons } : null);   // the feed to go back to after the batch
-    loaded = null;   // setFeed renders before the flag is set
+    loaded = null; S.feedOwner = null;   // setFeed renders before the flag is set; a loaded auction lot goes back to wait in the yard
     app.setFeed(comp, 'custom', tons);
     loaded = { comp: Object.assign({}, S.comp), label, sizes: plan.sizes, entry, prev, src: src || 'stock' };
-    S.feedPrepaid = true;
+    S.feedPrepaid = true; S.feedOwner = 'rerun';
     S.feedOpts = { sizes: plan.sizes, entry };   // it goes in as the shred it already is (#41), past the shredders (#42)
     app.markDirty(true);
     const k = entry == null ? 0 : S.line.findIndex((n) => n.uid === entry);
@@ -328,15 +328,15 @@
   function guardLoaded() {
     if (!loaded) return;
     const S = app.S, stock = srcMap(loaded.src);
-    if (!S.run && S.feedPrepaid && !app.contract() && sameComp(S.comp, loaded.comp)) {
+    if (!S.run && S.feedPrepaid && S.feedOwner === 'rerun' && !app.contract() && sameComp(S.comp, loaded.comp)) {
       let have = 0; for (const m in loaded.comp) have += stock[m] ? stock[m].t : 0;   // never run more than the bucket holds
       if (S.tons > have && have >= 1) { S.tons = Math.floor(have); app.syncFeedRows(); }
       return;
     }
     if (S.run) return;
     const label = loaded.label; loaded = null;
-    // the flag was ours: app.setFeed renders before another module (auction, intake) sets its own flag, so clearing it here never takes theirs
-    S.feedPrepaid = false; S.feedOpts = null;
+    if (S.feedOwner === 'rerun') { S.feedPrepaid = false; S.feedOwner = null; }   // only our own flag: another module may have loaded its feed
+    S.feedOpts = null;
     app.log('The ' + label + ' bucket is no longer loaded: the feed was changed, so it stays in the bucket and the feed is charged at the normal price.', 'warn');
     app.markDirty();   // the feed cost and projected margin change with the flag
   }
@@ -352,8 +352,7 @@
   function onBatchComplete() {
     if (rerunActive) {
       const prev = rerunActive; rerunActive = false; app.S.feedOpts = null;
-      // the bucket's blend is not left behind as a feed to buy at the market price: back to the feed you had before
-      if (prev.preset && FEEDS[prev.preset] && !app.contract()) { app.applyFeedPreset(prev.preset); if (prev.tons) { app.S.tons = Math.min(prev.tons, app.plantValue('logistics')); app.syncFeedRows(); } }
+      // nothing is bought by the tonne any more (#57): the auction module reloads the lot waiting in the yard
       app.markDirty(true);
     }
     setTimeout(() => renderFlow(true), 0);
@@ -425,7 +424,12 @@
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';
-    ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b>' + (src && src.sub ? ' <span class="small">' + esc(src.sub) + '</span>' : '') + ' · ' + S.tons + ' t · ' + (src ? esc(src.note) : S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
+    if (!src && !S.feedPrepaid && !(app.contract && app.contract())) {   // #57: nothing is bought by the tonne
+      ff.innerHTML = 'FEED &#9654; <b>nothing loaded</b> · win a lot in the <a href="#" id="ff-auction">Auction</a>, or RE-RUN a bucket';
+      const a = ff.querySelector('#ff-auction'); if (a) a.addEventListener('click', (e) => { e.preventDefault(); showDrawer('auction'); });
+    } else {
+      ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b>' + (src && src.sub ? ' <span class="small">' + esc(src.sub) + '</span>' : '') + ' · ' + S.tons + ' t · ' + (src ? esc(src.note) : S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
+    }
     const entry = S.feedOpts && S.feedOpts.entry != null ? S.feedOpts.entry : null;
     if (loaded && !S.run && S.line.length) {
       // the re-run bucket can go in at any station (#42)
@@ -469,7 +473,7 @@
       const d = ext && ext.layout, S = app.S; loaded = null; rerunActive = false;
       if (!d || !S) return;
       if (d.loaded && !S.run && !S.contract && sameComp(S.comp, d.loaded.comp)) {
-        loaded = d.loaded; S.feedPrepaid = true; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
+        loaded = d.loaded; S.feedPrepaid = true; S.feedOwner = 'rerun'; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
       } else if (d.rerunActive && S.feedOpts) S.feedOpts = null;
     };
     app.on('load', restore);

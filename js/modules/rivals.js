@@ -418,9 +418,7 @@
       const A = CS.Auction, live = auction(), L = board().find((x) => x.id === id); if (!L || !A || !live) return false;
       const P = live.pending(), lead = leading();
       let why = '';
-      if (P) why = 'Lot #' + P.id + ' (' + P.tons + ' t) is still in the yard. Run it before bidding on another.';
-      else if (lead && lead !== L) why = 'You already lead lot #' + lead.id + '. The yard takes one lot at a time: let that one close first.';
-      else if (lead === L) why = 'You already hold the high bid on lot #' + L.id + '.';
+      if (lead === L) why = 'You already hold the high bid on lot #' + L.id + '.';   // #49: the yard holds several lots, so you may lead several
       const perT = A.minBid(L), total = perT * L.tons;
       if (!why && S().money < total) why = 'A bid of ' + money(perT) + '/t on lot #' + L.id + ' commits ' + money(total) + '; the bank holds ' + money(S().money) + '.';
       if (why) { if (CS.Audio) CS.Audio.ui('deny'); log(why, 'warn'); return false; }
@@ -434,8 +432,7 @@
     app.on('lotPrice', (q) => { if (st.on && q && q.lot) q.perT = Math.max(q.perT, buyNowPrice(q.lot)); });
     app.on('veto:auctionBuy', (p) => {
       if (!st.on || !p || !p.lot) return '';
-      const lead = leading();
-      return lead && lead !== p.lot ? 'You lead lot #' + lead.id + ' at ' + money(lead.bid.perT) + '/t. The yard takes one lot at a time: let it close before buying another.' : '';
+      return '';   // #49: buying one lot while leading another is fine, the yard holds both
     });
     app.on('lotClose', (q) => {
       if (!st.on || !q || !q.lot) return;
@@ -444,8 +441,7 @@
       const mine = st.mine.indexOf(L.id) >= 0;
       if (r && r.by === 'you') {
         const A = auction();
-        if (A && A.pending()) { res.by = null; res.def = true; log('Lot #' + L.id + ' closed on your bid, but lot #' + A.pending().id + ' still fills the yard: the seller relists.', 'bad'); }
-        else if (S().money < r.perT * L.tons) { res.by = null; res.def = true; log('Your bid on lot #' + L.id + ' defaulted: ' + money(r.perT * L.tons) + ' due and ' + money(S().money) + ' in the bank. The seller relists.', 'bad'); }
+        if (S().money < r.perT * L.tons) { res.by = null; res.def = true; log('Your bid on lot #' + L.id + ' defaulted: ' + money(r.perT * L.tons) + ' due and ' + money(S().money) + ' in the bank. The seller relists.', 'bad'); }
         else q.award = r.perT;
       } else if (r) {
         const rs = st.rivals[r.by]; if (rs) { rs.lots++; rs.lotT += L.tons; rs.spent += r.perT * L.tons; }
@@ -610,7 +606,7 @@
         const b = document.createElement('button'); b.type = 'button';
         if (mine) { b.textContent = 'LEADING'; b.className = 'buy max'; b.disabled = true; }
         else {
-          b.textContent = 'BID ' + money(next) + '/t'; b.className = 'buy' + (S().money < next * L.tons || P || (lead && lead !== L) ? ' poor' : '');
+          b.textContent = 'BID ' + money(next) + '/t'; b.className = 'buy' + (S().money < next * L.tons ? ' poor' : '');
           b.title = 'Commit ' + money(next * L.tons) + ' for ' + L.tons + ' t. The high bid at the timer takes the lot; it comes into the yard when it closes.';
           b.addEventListener('click', () => raise(L.id));
         }

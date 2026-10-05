@@ -47,7 +47,7 @@
         <input type="range" id="feed-tons" min="1" max="100" step="1" value="15">
         <span id="feed-tons-v" class="num">15 t</span>
       </div>
-      <div id="feed-lock" class="small hidden">CONTRACT FEED &middot; supplied by the client, free of charge. Release the contract to change it.</div>
+      <div id="feed-lock" class="small hidden">WHAT IS LOADED &middot; material comes only from auction lots and your MISC bucket. Win a lot in the Auction, or RE-RUN a bucket from the plant screen. Only the batch size is yours to set.</div>
       <div id="feed-info" class="small"></div>
       <div id="mat-info" class="matinfo"></div>
     </section>
@@ -72,8 +72,8 @@
       <div id="next-buy"></div>
       <h3>Plant upgrades</h3>
       <div id="plant-upgrades"></div>
-      <h3>Supplier contracts</h3>
-      <div id="suppliers"></div>
+      <h3 class="hidden">Supplier contracts</h3>
+      <div id="suppliers" class="hidden"></div><!-- #57: feed is bought only at auction -->
       <button id="btn-newgame" type="button" class="danger">NEW GAME</button>
     </section>
   </aside>
@@ -140,7 +140,7 @@
     <h2>CrunchSim</h2>
     <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
     <ol>
-      <li><b>Feed.</b> Choose a preset or dial in your own mix of steel, cast iron, aluminum, copper, brass, pot metal, wood, rubber, plastic, glass, granite, limestone, hydrogel and water. Click a material name for its properties.</li>
+      <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board always shows six lots, one per tier from $1k to $100k: cheap tiers are skips of mixed junk, the dear ones carry zorba, circuit boards and gold-plated pins. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Feed panel shows what is loaded; only the batch size is yours to set.</li>
       <li><b>The plant.</b> The main screen shows your stations left to right in the order you placed them, three at a time (the arrows page through longer lines). Each station shows its machine at work, the bins it fills and what is left over moving on to the next station. Click a station to sit down at it: the machine cam, its settings, upgrades and telemetry, with CLOSE to get back.</li>
       <li><b>Flowsheet.</b> Open Flowsheet in the toolbar to add machines. Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
       <li><b>Buckets.</b> The last section, END RESULT IN BUCKETS, holds what your batches made. A sorted material (60% pure or better) has its own bucket: SELL it, or RE-RUN it as the next batch's feed at no feed cost. Everything not yet separated sits in MISC: RE-RUN it through different machines. A re-run keeps its shred size and enters past the shredders; pick another entry station above the plant if you like. The Market drawer sells at your own price.</li>
@@ -169,22 +169,22 @@
 <script src="js/scenes-a.js?v=f822f9574c"></script>
 <script src="js/scenes-b.js?v=b99bb3bb00"></script>
 <script src="js/score.js?v=d88a44e57f"></script>
-<script src="js/app.js?v=ce0421bbce"></script>
+<script src="js/app.js?v=2b4d40fd09"></script>
 <script src="js/modules/market.js?v=9f24c2cc7f"></script>
 <script src="js/modules/inventory.js?v=48db15c299"></script>
-<script src="js/modules/auction.js?v=4a5fdb8ea8"></script>
+<script src="js/modules/auction.js?v=75df7873de"></script>
 <script src="js/modules/missions.js?v=aace985cec"></script>
 <script src="js/modules/floor.js?v=35f9e2577d"></script>
-<script src="js/modules/onboarding.js?v=8b13659b45"></script>
+<script src="js/modules/onboarding.js?v=073cef94ed"></script>
 <script src="js/modules/blueprints.js?v=70691a1087"></script>
 <script src="js/modules/playbooks.js?v=5a77ec87d6"></script>
 <script src="js/modules/economics.js?v=34ee0ad7dc"></script>
-<script src="js/modules/intake.js?v=4286dd7ccf"></script>
+<script src="js/modules/intake.js?v=011cdcac20"></script>
 <script src="js/modules/facility.js?v=6ce160beb4"></script>
-<script src="js/modules/rivals.js?v=c12ddb0ecd"></script>
+<script src="js/modules/rivals.js?v=23bc0ea94a"></script>
 <script src="js/modules/endgame.js?v=f8dd4bb6fa"></script>
 <script src="js/modules/refinery.js?v=a335e81970"></script>
 <script src="js/modules/slots.js?v=4d5fb7c5c6"></script>
-<script src="js/modules/layout.js?v=55eea30933"></script>
+<script src="js/modules/layout.js?v=5041674189"></script>
 </body>
 </html>

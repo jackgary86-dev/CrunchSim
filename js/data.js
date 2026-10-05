@@ -504,7 +504,7 @@
 
   /* ---------------- PRESET FEEDS ---------------- */
   const FEEDS = {
-    elv: { name: 'End-of-life vehicles', blurb: 'What a car shredder eats.', cost: 150, comp: { steel: 0.58, castiron: 0.07, aluminum: 0.07, copper: 0.015, brass: 0.01, potmetal: 0.025, rubber: 0.07, plastic: 0.08, glass: 0.03, wood: 0.01, gel: 0.02, water: 0.02 } },
+    elv: { name: 'End-of-life vehicles', blurb: 'What a car shredder eats.', cost: 170, comp: { steel: 0.58, castiron: 0.07, aluminum: 0.07, copper: 0.015, brass: 0.01, potmetal: 0.025, rubber: 0.07, plastic: 0.08, glass: 0.03, wood: 0.01, gel: 0.02, water: 0.02 } },
     rubble: { name: 'Demolition rubble', blurb: 'Concrete, rebar and timber.', cost: -8, comp: { limestone: 0.5, granite: 0.2, steel: 0.1, wood: 0.1, glass: 0.05, plastic: 0.05 } },
     pallets: { name: 'Pallets with nails', blurb: 'Wood with a tramp-metal problem.', cost: -15, comp: { wood: 0.94, steel: 0.04, plastic: 0.02 } },
     tires: { name: 'Scrap tires', blurb: 'Rubber, steel belts and fabric.', cost: -70, comp: { rubber: 0.70, steel: 0.15, plastic: 0.15 } },
@@ -646,7 +646,7 @@
   Object.keys(MACHINES).forEach(function (id) { const M = MACHINES[id]; M.price = Math.max(500, Math.round(M.price * PRICE_SCALE / 500) * 500); });
   // Day one is a hammermill alone: unsorted shred sells at a discount, and the sorters are unlocked one purchase at a time.
   const STARTER_MACHINES = ['hammer', 'magnet'];   // a grinder and one sorter: only sorted material sells (#52, #55)
-  // $2,800 pays for one 15 t batch of ELV feed (150 $/t, about 30% of what the hulks are worth fully sorted: US shredder
+  // $2,800 pays for one 15 t batch of ELV feed (170 $/t, about 30% of what the hulks are worth fully sorted: US shredder
   // yards pay roughly a third of the shred value for a hulk). Only sorted material sells (#52), so the day-one yard is a
   // hammermill and a magnetic drum: the magnet's clean steel nets about $1,100 a batch, and the next sorters pay in pairs
   // (eddy current + sink-float for clean aluminum). tests/progression.js and tests/playtest.js check the pacing (#55).
@@ -664,7 +664,7 @@
     nitrogen: { name: 'Nitrogen supply', icon: '❄', desc: 'Cheaper liquid nitrogen', unit: '$/kg', levels: [0.12, 0.09, 0.065, 0.045], costs: [8000, 28000, 95000] },
     // Plant hall floor area: 12x8, 20x12, 30x18, 50x30, 80x50 m. A pre-engineered steel hall costs roughly $500-1000 per m2
     // built; at PRICE_SCALE the added floor runs $80-240 per m2, rising with span. Machine footprints are MACHINES[id].foot.
-    room: { name: 'Plant hall', icon: '🏭', desc: 'More floor area for machines', unit: 'm²', levels: [96, 240, 540, 1500, 4000], costs: [12000, 45000, 160000, 600000], dims: [[12, 8], [20, 12], [30, 18], [50, 30], [80, 50]] },
+    room: { name: 'Plant hall', icon: '🏭', desc: 'More floor area for machines', unit: 'm²', levels: [160, 240, 540, 1500, 4000], costs: [12000, 45000, 160000, 600000], dims: [[16, 10], [20, 12], [30, 18], [50, 30], [80, 50]] },
     // Yard storage for held product (inventory module): concrete push-wall bays, 10 x 10 m with 3 m interlocking-block walls, one
     // product per bay. bayT: a bay stacked 2 m deep holds about 60 t of bales or loose shred at 0.3 t/m3 bulk density. Costs: a bay
     // runs $12-15k built (blocks, slab, drainage); at PRICE_SCALE that is about $2,750 per bay added (2, 4, 8, 16 bays per level).

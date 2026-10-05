@@ -70,7 +70,7 @@
     ['auction', 'Auction', ['auction-panel', 'intake-panel']],
     ['sales', 'Market', ['inventory-panel', 'market-panel']],
     ['jobs', 'Contracts & jobs', ['contract-panel', 'missions-panel']],
-    ['bank', 'Bank & upgrades', ['bank-panel', 'refinery-panel', 'facility-panel']],
+    ['bank', 'Bank & upgrades', ['bank-panel', 'slots-panel', 'refinery-panel', 'facility-panel']],
     ['rivals', 'Rivals', ['rivals-panel']],
     ['report', 'Plant report', ['plant-panel']],
     ['log', 'Event log', ['log-panel']]
@@ -446,7 +446,8 @@
     for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
     box.appendChild(bucketsCol());
     $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + MACHINE_COLS >= seq.length;
-    $('#flow-count').textContent = S.line.length + ' machine' + (S.line.length === 1 ? '' : 's') + (S.line.length > MACHINE_COLS ? ' · showing ' + (offset + 1) + '-' + Math.min(S.line.length, offset + MACHINE_COLS) : '');
+    const SL = CS.Slots && CS.Slots.live;
+    $('#flow-count').textContent = S.line.length + ' machine' + (S.line.length === 1 ? '' : 's') + (SL ? ' · sorters ' + SL.used() + ' / ' + SL.owned() + ' slots' : '') + (S.line.length > MACHINE_COLS ? ' · showing ' + (offset + 1) + '-' + Math.min(S.line.length, offset + MACHINE_COLS) : '');
   }
 
   function init() {

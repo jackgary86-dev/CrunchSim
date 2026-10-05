@@ -5,17 +5,18 @@
 // leftovers stay mixed until two sorters work together (an eddy current pulls the metals, a sink-float tank floats the
 // aluminum out of them). So the operator weighs single purchases and pairs (a sorter plus a second one on its output).
 // Options are recomputed only after a purchase: between purchases the plant just runs batches.
-require('../js/data.js'); require('../js/sim.js');
+require('../js/data.js'); require('../js/sim.js'); require('../js/modules/slots.js');
 const CS = globalThis.CS, { MACHINES, FEEDS, PLANT_UPGRADES: PU, RANKS, levelCost, Sim } = CS;
 
-const MAX_MACHINES = 8;   // a grinder, the starter magnet and up to six more: keeps the search honest and fast
-const S = { money: CS.START_BANK, units: {}, owned: new Set(CS.STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0, room: 0 }, line: Sim.buildLine(CS.LINES.starter), hours: 0, batches: 0 };
+const MAX_MACHINES = 14;  // a safety cap; the real limit is the sorter slots (#51): 5 to start, up to 10 bought
+const S = { money: CS.START_BANK, units: {}, owned: new Set(CS.STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0, room: 0 }, line: Sim.buildLine(CS.LINES.starter), hours: 0, batches: 0, slots: CS.Slots.START };
 CS.STARTER_MACHINES.forEach((m) => { S.units[m] = 1; });
 const feed = FEEDS.elv;
 if (process.env.PT_FEED_COST) feed.cost = +process.env.PT_FEED_COST;   // balance experiments only
 const pv = (k) => PU[k].levels[Math.min(S.plant[k], PU[k].levels.length - 1)];
 function assets() {
   let v = 0;
+  v += CS.Slots.assetValue(S.slots);
   S.owned.forEach((m) => { v += MACHINES[m].price * (S.units[m] || 1); for (let l = 0; l < (S.levels[m] || 0); l++) v += levelCost(MACHINES[m], l); });
   for (const k in S.plant) for (let l = 0; l < S.plant[k]; l++) v += PU[k].costs[l];
   return v;
@@ -43,7 +44,7 @@ function freePorts(line) {
   }));
   return out;
 }
-function fits(line) { return line.length <= MAX_MACHINES && floorUsed(line) <= pv('room'); }
+function fits(line) { return line.length <= MAX_MACHINES && CS.Slots.sortersIn(line) <= S.slots && floorUsed(line) <= pv('room'); }
 /* the best way to add machine m on any free port */
 function bestAppend(base, m) {
   let best = null;
@@ -87,6 +88,15 @@ function options() {
     S.levels[n.m] = lvl + 1; const e = econ(S.line); S.levels[n.m] = lvl;
     const gain = (e.margin - cur.margin) * tons; if (gain > 1) out.push({ what: 'level ' + n.m, cost: levelCost(MACHINES[n.m], lvl), gain, apply: () => { S.levels[n.m] = lvl + 1; } });
   });
+  // a sorter slot: worth the best single or pair it makes room for
+  const sp = CS.Slots.nextPrice(S.slots);
+  if (sp && CS.Slots.sortersIn(S.line) >= S.slots) {
+    S.slots++; let g = 0;
+    for (const m of SORTERS) { const b = bestAppend(S.line, m); if (b) g = Math.max(g, (b.e.margin - cur.margin) * tons); }
+    if (!(g > 1)) for (const a of SORTERS) for (const b2 of SORTERS) { const pp = bestPair(S.line, a, b2); if (pp) g = Math.max(g, (pp.e.margin - cur.margin) * tons * 0.5); }
+    S.slots--;
+    if (g > 1) out.push({ what: 'sorter slot ' + (S.slots + 1), cost: sp, gain: g, apply: () => { S.slots++; } });
+  }
   for (const k of ['logistics', 'market', 'power', 'room']) {
     const l = S.plant[k]; if (l >= PU[k].costs.length) continue;
     let gain;

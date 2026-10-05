@@ -506,6 +506,7 @@
     const ports = freePorts(S.line), singles = [];
     TRIAL_MACHINES.forEach((m) => {
       if (freeUnit(m)) return;   // a spare unit is free to add; this block ranks purchases
+      if (API.veto('addMachine', { m })) return;   // no slot or no floor for it (#51)
       let best = null;
       ports.forEach((src) => {
         const n = Sim.makeNode(m, {}, src); n.level = levelOf(m);
@@ -517,6 +518,7 @@
     if (singles.length) return singles.sort((a, b) => b.gain - a.gain).slice(0, 3);
     const pairs = [], SORT = TRIAL_MACHINES.filter((m) => MACHINES[m].kind === 'separator');
     SORT.forEach((a) => SORT.forEach((b) => {
+      if (API.veto('addMachine', { m: a }) || API.veto('addMachine', { m: b, pending: 1 })) return;
       let best = null;
       ports.forEach((src) => {
         const na = Sim.makeNode(a, {}, src); na.level = levelOf(a);
@@ -552,7 +554,7 @@
     });
   }
   function buyAndAdd(p) {
-    for (const m of p.ms) { const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; } }
+    for (let i = 0; i < p.ms.length; i++) { const why = API.veto('addMachine', { m: p.ms[i], pending: i }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; } }   // pending: the pair's first sorter is not on the line yet
     const price = p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
     if (S.money < price) { Audio.ui('deny'); log('Not enough in the bank: ' + fmtMoney(price) + ' needed.', 'bad'); renderBank(); return; }
     for (const m of p.ms) if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }

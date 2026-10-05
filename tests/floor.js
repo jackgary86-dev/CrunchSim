@@ -32,24 +32,26 @@ for (const [id, L] of Object.entries(LINES)) {
   console.log('  ' + L.name.padEnd(22) + f(c0.used).padStart(6) + ' m2  fits from hall level ' + lv + (c0.ok ? '' : '  (needs an upgrade)'));
 }
 const car = Sim.buildLine(LINES.car), starter = Sim.buildLine(LINES.starter);
-const carUse = Floor.floorUsed(car);
-ok(carUse > Floor.hallArea(0), 'car line should not fit the level-0 hall (' + f(carUse) + ' vs ' + Floor.hallArea(0) + ')');
-ok(carUse <= Floor.hallArea(2), 'car line should fit the level-2 hall (' + f(carUse) + ' vs ' + Floor.hallArea(2) + ')');
-ok(!Floor.check(car, 0).ok && Floor.check(car, 2).ok, 'check() must agree with the hall areas');
+// #51: the day-one hall (16 x 10 m) takes a grinder and the five sorters of the starting sorter slots
+const five = Sim.buildLine({ nodes: ['hammer', 'magnet', 'eddy', 'sinkfloat', 'air', 'screen'].map((m, i) => ({ m, src: i ? '1:product' : 'feed' })) });
+ok(Floor.check(five, 0).ok, 'a grinder and five sorters fit the day-one hall (' + f(Floor.floorUsed(five)) + ' of ' + Floor.hallArea(0) + ' m2)');
+ok(Floor.check(car, 0).ok, 'the car line fits the day-one hall');
 ok(Floor.check(starter, 0).ok, 'the starter yard must fit the day-one hall');
 ok(Floor.floorUsed([]) === 0 && Floor.check([], 0).free === Floor.hallArea(0), 'an empty line uses no floor');
+const big = five.concat([Sim.makeNode('sensor', {}, 'feed'), Sim.makeNode('hammer', {}, 'feed')]);
+ok(!Floor.check(big, 0).ok && Floor.check(big, 1).ok, 'a second grinder and a sixth sorter need the next hall (' + f(Floor.floorUsed(big)) + ' m2)');
 
 console.log('\n=== vetoes');
-const quarry = Sim.buildLine(LINES.quarry);   // 71.5 m2: a 45.5 m2 hammermill no longer fits the 96 m2 hall
-const addHammer = Floor.addVeto(quarry, 'hammer', 0);
-ok(addHammer && /Plant hall/.test(addHammer), 'adding a hammermill to the quarry plant at level 0 should be refused');
-ok(Floor.addVeto(quarry, 'hammer', 1) === '', 'the hammermill should fit after one hall upgrade');
-['sinkfloat', 'eddy', 'air', 'screen'].forEach((m) => ok(Floor.addVeto(starter, m, 0) === '', 'the next sorter (' + m + ') should fit next to the starter yard (hammermill + magnet) at hall level 0'));
+const addHammer = Floor.addVeto(five.concat([Sim.makeNode('sensor', {}, 'feed')]), 'hammer', 0);
+ok(addHammer && /Plant hall/.test(addHammer), 'a second hammermill next to a full sorting line is refused at level 0');
+ok(Floor.addVeto(five, 'hammer', 1) === '', 'it fits after one hall upgrade');
+['sinkfloat', 'eddy', 'air', 'screen', 'sensor'].forEach((m) => ok(Floor.addVeto(starter, m, 0) === '', 'the next sorter (' + m + ') fits next to the starter yard at hall level 0'));
 ok(Floor.addVeto(starter, 'granulator', 0) === '', 'a granulator should fit the starter hall');
 ok(Floor.addVeto(starter, 'no-such-machine', 0) === '', 'an unknown machine is not the floor module\'s problem');
-const lineV = Floor.lineVeto(LINES.car.nodes, 0, LINES.car.name);
-ok(lineV && lineV.indexOf(LINES.car.name) >= 0, 'the car line preset should be refused at level 0');
-ok(Floor.lineVeto(LINES.car.nodes, 2, LINES.car.name) === '', 'the car line preset should load at level 2');
+const bigNodes = big.map((x) => ({ m: x.m }));
+const lineV = Floor.lineVeto(bigNodes, 0, 'Big line');
+ok(lineV && lineV.indexOf('Big line') >= 0, 'a preset bigger than the hall is refused at level 0');
+ok(Floor.lineVeto(bigNodes, 1, 'Big line') === '', 'and loads after the upgrade');
 console.log('  ' + addHammer);
 console.log('  ' + lineV);
 

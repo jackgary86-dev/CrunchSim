@@ -783,7 +783,7 @@
       '<div class="checks">' + cs.checks.map((c) => '<div class="chk ' + (c.ok ? (c.great ? 'great' : 'ok') : 'bad') + '"><span>' + c.label + '</span><span>' + esc(c.text) + '</span><span>' + esc(c.need) + '</span></div>').join('') + '</div>';
     card.innerHTML = '<div class="card">' + head +
       (r.held
-        ? '<div class="net ' + (result >= 0 ? 'ok' : 'bad') + '"><small>BATCH RESULT · CASH PLUS STOCK</small>' + (result >= 0 ? '+' : '') + fmtMoney(result) + '</div><div class="small" style="margin:-6px 0 8px">Bank ' + (net >= 0 ? '+' : '') + fmtMoney(net) + ' now · ' + fmtMoney(r.rev) + ' of product in ' + esc(r.held) + ', sell it from the inventory panel</div>'
+        ? '<div class="net ' + (result >= 0 ? 'ok' : 'bad') + '"><small>BATCH RESULT · CASH PLUS STOCK</small>' + (result >= 0 ? '+' : '') + fmtMoney(result) + '</div><div class="small" style="margin:-6px 0 8px">Bank ' + (net >= 0 ? '+' : '') + fmtMoney(net) + ' now · ' + fmtMoney(r.rev) + ' of product in ' + esc(r.held) + ', sell it from the end buckets or the Market drawer</div>'
         : '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>') +
       (cs ? '<dl><dt>Contract fee (' + fmtNum(cs.deliveredT, 1) + ' t of ' + esc(cs.C.label) + ' shipped)</dt><dd class="ok">' + fmtMoney(cs.fee) + '</dd></dl>' : '') +
       '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') + svcRow + wearRow + projRow +
@@ -895,7 +895,7 @@
     API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
     if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; setFeedLock(true); }
-    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder and ' + fmtMoney(START_BANK) + '. Unsorted shred sells at a discount: run a few batches, then buy your first sorter from NEXT PURCHASE in the bank panel.', 'ok'); }
+    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder and ' + fmtMoney(START_BANK) + '. Unsorted shred sells at a discount: run a few batches, then buy your first sorter from NEXT PURCHASE in Bank & upgrades (toolbar).', 'ok'); }
     else { renderFeedSelect(); syncFeedRows(); log('Session restored.', 'ok'); }
     lastRankIdx = rankOf(netWorth()).idx;
     setSpeed(S.speed); setMuted(S.muted);

@@ -10,7 +10,53 @@
  */
 (function (G) {
   'use strict';
-  const CS = G.CS; if (!CS || typeof document === 'undefined') return;
+  const CS = G.CS; if (!CS) return;
+
+  /* ================= pure logic (no DOM; tested in Node by tests/layout.js) ================= */
+  const SORTED = 0.6;   // held stock at 60% or better has been sorted out: its own end bucket; below that it goes to MISC
+                        // (inventory merges each material across bins, so stray bits lower the figure)
+  /* held stock -> sorted buckets (one per material, in material order) and one MISC bucket for the rest */
+  function splitBuckets(stock, order, min) {
+    const lim = min == null ? SORTED : min, clean = [], misc = { t: 0, comp: {} };
+    (order || Object.keys(stock || {})).forEach((m) => {
+      const e = stock && stock[m]; if (!e || !(e.t > 0.05)) return;
+      if ((e.purity || 0) >= lim) clean.push({ m, t: e.t, purity: e.purity, grade: e.grade, sf: e.sf });
+      else { misc.t += e.t; misc.comp[m] = e.t; }
+    });
+    return { clean, misc };
+  }
+  /* what RE-RUN would load: the bucket's blend as fractions, and whole tonnes capped by the batch limit and the stock */
+  function rerunPlan(stock, mats, cap) {
+    const comp = {}; let tot = 0;
+    mats.forEach((m) => { const t = stock && stock[m] ? stock[m].t : 0; if (t > 0) { comp[m] = t; tot += t; } });
+    if (tot < 1) return { error: 'small', tot };
+    for (const m in comp) comp[m] /= tot;
+    return { comp, tot, tons: Math.max(1, Math.min(Math.floor(tot), cap)) };
+  }
+  /* one station's work on a batch of `tons`: the bins it fills (its unconnected outputs) and what moves on to which
+   * stations (1-based placement numbers) */
+  function stationFlow(ev, line, tons, uid) {
+    const { Sim, MATERIALS } = CS;
+    if (!ev) return { bins: [], next: [] };
+    const bins = [], next = [];
+    ev.terminals.forEach((t) => {
+      if (t.uid !== uid) return;
+      const st = Sim.binStats(t.stream.m, t.form); if (st.total < 0.5) return;
+      bins.push({ st, port: t.port, kg: st.total, tons: st.total / 1000 * tons });
+    });
+    for (const key in ev.ports) {
+      const parts = key.split(':'), port = parts[1]; if (Number(parts[0]) !== uid) continue;
+      const users = line.filter((x) => x.src && x.src !== 'feed' && x.src.uid === uid && x.src.port === port);
+      if (!users.length) continue;
+      const kg = Sim.streamMass(ev.ports[key]); if (kg < 0.5) continue;
+      const st = Sim.binStats(ev.ports[key].m);
+      next.push({ port, kg, tons: kg / 1000 * tons, to: users.map((x) => line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()) });
+    }
+    bins.sort((a, b) => b.tons - a.tons);
+    return { bins, next };
+  }
+  CS.Layout = { SORTED, splitBuckets, rerunPlan, stationFlow, topMats };
+  if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
   const DRAWERS = [
@@ -25,7 +71,6 @@
   ];
   const MACHINE_COLS = 3;          // three machine sections, then the buckets section
   const CLEAN = 0.9;               // a station bin at 90% purity or better is a straight grade (drawn green)
-  const SORTED = 0.6;              // held stock at 60% or better has been sorted out: its own end bucket; below that it goes to MISC (inventory merges each material across bins, so stray bits lower the figure)
   let app = null, offset = 0, openDrawer = null, stationOpen = false, lastSig = '';
   const $ = (s) => document.querySelector(s);
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -139,26 +184,6 @@
       '<div class="fbin-box"><div class="fbin-fill">' + bands + '</div></div>' +
       '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span></div></div>';
   }
-  function stationFlow(n) {
-    const S = app.S, ev = S.ev; if (!ev) return { bins: [], next: [] };
-    const bins = [], next = [];
-    ev.terminals.forEach((t) => {
-      if (t.uid !== n.uid) return;
-      const st = Sim.binStats(t.stream.m, t.form); if (st.total < 0.5) return;
-      bins.push({ st, port: t.port, tons: st.total / 1000 * S.tons });
-    });
-    for (const key in ev.ports) {
-      const [u, port] = key.split(':'); if (Number(u) !== n.uid) continue;
-      const users = S.line.filter((x) => x.src && x.src !== 'feed' && x.src.uid === n.uid && x.src.port === port);
-      if (!users.length) continue;
-      const kg = Sim.streamMass(ev.ports[key]); if (kg < 0.5) continue;
-      const st = Sim.binStats(ev.ports[key].m);
-      next.push({ port, tons: kg / 1000 * S.tons, to: users.map((x) => S.line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()) });
-    }
-    bins.sort((a, b) => b.tons - a.tons);
-    return { bins, next };
-  }
-
   /* ---------------- sections ---------------- */
   function machineCol(n, i) {
     const M = MACHINES[n.m], inf = app.info(n.uid), S = app.S, owned = app.nodeOwned ? app.nodeOwned(n) : true;
@@ -178,7 +203,7 @@
     col.innerHTML = '<div class="fn-k">STATION ' + (i + 1) + '</div><div class="fn-camwrap"></div><div class="fn-n">' + esc(M.name) + '</div><div class="fn-s">' + esc(status) + '</div>' + warn;
     const mini = miniFor(n.uid);
     if (mini) col.querySelector('.fn-camwrap').appendChild(mini.cv);
-    const f = stationFlow(n);
+    const f = stationFlow(S.ev, S.line, S.tons, n.uid);
     const binsBox = el('div', 'fbins');
     binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port)).join('') : '<div class="small">None: everything moves on.</div>');
     col.appendChild(binsBox);
@@ -203,14 +228,9 @@
 
   /* held stock as buckets: clean materials each get one, everything below CLEAN purity pools into MISC */
   function buckets() {
-    const Inv = CS.Inventory, stock = Inv && Inv.stock ? Inv.stock() : {};
-    const clean = [], misc = { t: 0, comp: {} };
-    MAT_ORDER.forEach((m) => {
-      const e = stock[m]; if (!e || !(e.t > 0.05)) return;
-      if ((e.purity || 0) >= SORTED) clean.push({ m, t: e.t, purity: e.purity, value: e.t * MATERIALS[m].sell * Sim.prices.market * ((Sim.prices.perMat && Sim.prices.perMat[m]) || 1) * (e.grade == null ? 1 : e.grade) * (e.sf == null ? 1 : e.sf) });
-      else { misc.t += e.t; misc.comp[m] = e.t; }
-    });
-    return { clean, misc };
+    const b = splitBuckets(CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {}, MAT_ORDER);
+    b.clean.forEach((x) => { x.value = x.t * MATERIALS[x.m].sell * Sim.prices.market * ((Sim.prices.perMat && Sim.prices.perMat[x.m]) || 1) * (x.grade == null ? 1 : x.grade) * (x.sf == null ? 1 : x.sf); });
+    return b;
   }
   /* RE-RUN: the bucket becomes the feed, prepaid because the material is already yours. Nothing leaves the bucket until
    * the batch starts, so changing the feed by hand just puts the bucket back. Same pattern as the intake stockpiles. */
@@ -226,11 +246,9 @@
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
     if (app.contract && app.contract()) { app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return; }
     if (S.feedPrepaid && !loaded) { app.log('A prepaid lot is already loaded as the feed. Run it first, or change the feed by hand to put it back in the yard.', 'warn'); return; }
-    const comp = {}; let tot = 0;
-    mats.forEach((m) => { const t = stock[m] ? stock[m].t : 0; if (t > 0) { comp[m] = t; tot += t; } });
-    if (tot < 1) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
-    for (const m in comp) comp[m] /= tot;
-    const cap = app.plantValue('logistics'), tons = Math.max(1, Math.min(Math.floor(tot), cap));
+    const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
+    if (plan.error) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
+    const comp = plan.comp, tot = plan.tot, tons = plan.tons;
     loaded = null;   // setFeed renders before the flag is set
     app.setFeed(comp, 'custom', tons);
     loaded = { comp: Object.assign({}, S.comp), label };

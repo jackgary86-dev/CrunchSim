@@ -96,7 +96,7 @@
       const id = omniId(), M = MACHINES[id];
       if (S().owned.has(id)) { status.innerHTML = 'END GAME · <b class="ok">' + API.esc(M.name.toUpperCase()) + ' OWNED</b>'; return; }
       const u = unlockStatus(id, rankIdx(), S().contracts, list());
-      status.innerHTML = 'END GAME · ' + (u.ok ? '<b class="ok">' + API.esc(M.name.toUpperCase()) + ' UNLOCKED</b> · ' + API.fmtMoney(M.price) + ' in the flowsheet panel'
+      status.innerHTML = 'END GAME · ' + (u.ok ? '<b class="ok">' + API.esc(M.name.toUpperCase()) + ' UNLOCKED</b> · ' + API.fmtMoney(M.price) + ' in the Flowsheet drawer'
         : '<b class="lock">' + API.esc(M.name.toUpperCase()) + ' LOCKED</b> · ' + API.esc(u.rankName) + ' rank, or ' + u.starred + ' / ' + u.total + ' contracts at ' + u.need + ' stars');
     }
 

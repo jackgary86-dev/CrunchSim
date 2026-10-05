@@ -1,9 +1,13 @@
 """Bundle CrunchSim into one self-contained page for hosts that only accept inline styles and scripts.
 
-Usage:  python tools/build.py        -> writes dist/artifact.html
+Usage:  python tools/build.py        -> writes dist/artifact.html and re-stamps index.html
 The bundle has no <html>/<head>/<body> wrapper because the host adds its own skeleton.
+
+GitHub Pages serves index.html and its css/js straight from main, and browsers keep old copies after a release.
+stamp_index() appends ?v=<content hash> to every local stylesheet and script URL in index.html, so a changed file
+gets a new URL and loads fresh (#39). Commit index.html after building.
 """
-import io, os, re
+import hashlib, io, os, re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ['data.js', 'sim.js', 'audio.js', 'cam.js', 'scenes-a.js', 'scenes-b.js', 'score.js', 'app.js']
@@ -12,9 +16,28 @@ MODULES = ['market', 'inventory', 'auction', 'missions', 'floor', 'onboarding', 
 def rd(p):
     return io.open(os.path.join(ROOT, p), encoding='utf-8').read()
 
-def main():
+ASSET = re.compile(r'(<link rel="stylesheet" href="|<script src=")((?:css|js)/[^"?]+)(?:\?v=[0-9a-f]*)?(")')
+
+def stamp(html):
+    """Give every local css/js URL a ?v= query from a hash of the file's contents."""
+    def sub(m):
+        digest = hashlib.sha1(io.open(os.path.join(ROOT, m.group(2)), 'rb').read()).hexdigest()[:10]
+        return m.group(1) + m.group(2) + '?v=' + digest + m.group(3)
+    return ASSET.sub(sub, html)
+
+def stamp_index():
+    path = os.path.join(ROOT, 'index.html')
     html = rd('index.html')
-    body = html[html.index('<body>') + len('<body>'):html.index('<script src="js/data.js">')]
+    out = stamp(html)
+    if out != html:
+        with io.open(path, 'w', encoding='utf-8', newline='') as fh:
+            fh.write(out)
+        print('index.html asset URLs re-stamped')
+    return out
+
+def main():
+    html = stamp_index()
+    body = html[html.index('<body>') + len('<body>'):html.index('<script src="js/data.js')]
     css = rd('css/style.css').replace(':root {', ':root {\n  color-scheme: dark;', 1)
     fonts = re.search(r'<link href="https://fonts\.googleapis\.com[^"]*" rel="stylesheet">', html).group(0)
     js = ''

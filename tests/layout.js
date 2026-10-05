@@ -1,0 +1,76 @@
+// Exercises the DOM-free parts of js/modules/layout.js (ticket #38): the split of held stock into sorted end buckets
+// and MISC, the RE-RUN plan, and each station's bins and leftovers on real preset lines.
+// Run: node tests/layout.js
+require('../js/data.js'); require('../js/sim.js'); require('../js/modules/layout.js');
+const { FEEDS, LINES, MAT_ORDER, Sim, Layout: L } = globalThis.CS;
+let fails = 0, n = 0;
+function check(cond, msg) { n++; if (!cond) { fails++; console.log('FAIL ' + msg); } else console.log('ok   ' + msg); }
+const near = (a, b, eps) => Math.abs(a - b) <= (eps || 1e-6) * Math.max(1, Math.abs(a), Math.abs(b));
+
+/* ---- end buckets ---- */
+const stock = {
+  steel: { t: 8.7, purity: 0.87, grade: 0.9, sf: 1 },
+  aluminum: { t: 1.1, purity: 0.64 },
+  plastic: { t: 1.2, purity: 0.6 },
+  rubber: { t: 1.1, purity: 0.27 },
+  castiron: { t: 1.0, purity: 0.11 },
+  glass: { t: 0.02, purity: 0.9 },   // dust: below the 0.05 t floor, shown nowhere
+  copper: { t: 0, purity: 1 }
+};
+const b = L.splitBuckets(stock, MAT_ORDER);
+check(b.clean.map((x) => x.m).join(',') === 'steel,aluminum,plastic', 'materials at 60% purity or better get their own bucket, in material order (60% exactly counts)');
+check(near(b.misc.t, 2.1) && Object.keys(b.misc.comp).sort().join(',') === 'castiron,rubber', 'everything below 60% pools into MISC with its tonnes');
+check(!b.clean.some((x) => x.m === 'glass' || x.m === 'copper') && !b.misc.comp.glass, 'empty and dust-sized stock shows in no bucket');
+check(b.clean[0].grade === 0.9 && b.clean[0].sf === 1, 'a bucket carries its grade and size factor for pricing');
+check(L.splitBuckets(stock, MAT_ORDER, 0.9).clean.length === 0, 'the purity cut can be raised');
+check(L.splitBuckets({}, MAT_ORDER).clean.length === 0 && L.splitBuckets(null, MAT_ORDER).misc.t === 0, 'no stock, no buckets');
+
+/* ---- RE-RUN plan ---- */
+let p = L.rerunPlan(stock, ['rubber', 'castiron'], 30);
+check(!p.error && near(p.comp.rubber + p.comp.castiron, 1) && near(p.comp.rubber, 1.1 / 2.1), 'MISC re-runs as its own blend, as fractions');
+check(p.tons === 2 && p.tons <= p.tot, 'whole tonnes, never more than the bucket holds');
+p = L.rerunPlan(stock, ['steel'], 5);
+check(p.tons === 5 && near(p.comp.steel, 1), 'the batch limit caps a big bucket; the rest stays');
+check(L.rerunPlan(stock, ['glass'], 30).error === 'small', 'a bucket under 1 t is too small to run');
+check(L.rerunPlan(stock, ['gold'], 30).error === 'small', 'an unknown material is an empty bucket');
+
+/* ---- stations: bins and leftovers ---- */
+function walk(lineId, feedId, tons) {
+  const line = Sim.buildLine(LINES[lineId]), ev = Sim.evalLine(line, FEEDS[feedId].comp);
+  return { line, ev, flows: line.map((nd) => L.stationFlow(ev, line, tons, nd.uid)) };
+}
+for (const [lineId, feedId] of [['starter', 'elv'], ['car', 'elv'], ['universal', 'elv']]) {
+  if (!LINES[lineId]) continue;
+  const { line, ev, flows } = walk(lineId, feedId, 30);
+  let ok = true, toOk = true, termKg = 0, binKg = 0;
+  line.forEach((nd, k) => {
+    let outKg = 0;
+    for (const key in ev.ports) if (Number(key.split(':')[0]) === nd.uid) { const kg = Sim.streamMass(ev.ports[key]); if (kg >= 0.5) outKg += kg; }
+    const f = flows[k], kg = f.bins.reduce((a, x) => a + x.kg, 0) + f.next.reduce((a, x) => a + x.kg, 0);
+    if (!near(kg, outKg, 1e-9)) ok = false;
+    f.next.forEach((x) => x.to.forEach((s) => { const d = line[s - 1]; if (!d || d.src.uid !== nd.uid || d.src.port !== x.port || s <= k + 1) toOk = false; }));
+    binKg += f.bins.reduce((a, x) => a + x.kg, 0);
+  });
+  ev.terminals.forEach((t) => { const kg = Sim.binStats(t.stream.m, t.form).total; if (kg >= 0.5) termKg += kg; });
+  check(ok, lineId + ' line: every station\'s bins plus leftovers add up to everything it puts out');
+  check(toOk, lineId + ' line: leftovers point at later stations that really take that output');
+  check(near(binKg, termKg, 1e-9), lineId + ' line: the stations\' bins together are every end bin of the line');
+  const t30 = flows.map((f) => f.bins.reduce((a, x) => a + x.tons, 0)).reduce((a, x) => a + x, 0);
+  check(near(t30, binKg / 1000 * 30, 1e-9), lineId + ' line: bin tonnes scale with the batch size');
+}
+{
+  const { flows } = walk('starter', 'elv', 15);
+  check(flows[0].bins.length >= 1 && flows[0].next.length === 0, 'a lone hammermill fills one bin of mixed shred and sends nothing on');
+}
+{
+  const { line, flows } = walk('car', 'elv', 30);
+  const k = line.findIndex((nd) => nd.m === 'magnet');
+  const mag = flows[k], top = mag.bins[0];
+  check(top && L.topMats(top.st, 1)[0] === 'steel' && top.st.share > 0.9, 'car line: the magnet\'s bin is clean steel');
+  check(mag.next.length === 1 && mag.next[0].port === 'residue', 'car line: what the magnet leaves moves on to the next station');
+  check(flows[0].bins.length === 0 && flows[0].next[0].port === 'product' && flows[0].next[0].to[0] === 2, 'car line: the shredder fills no bins; all its shred goes to station 2');
+}
+check(L.stationFlow(null, [], 30, 1).bins.length === 0, 'no evaluation yet: an empty station');
+
+console.log('\n' + (n - fails) + '/' + n + ' checks passed');
+process.exit(fails ? 1 : 0);

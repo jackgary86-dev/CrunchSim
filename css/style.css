@@ -365,3 +365,5 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .flow-contract .stars { color: var(--muted); } .flow-contract .stars.got { color: var(--amber); }
 .ship { display: inline-block; font-style: normal; font-family: var(--mono); font-size: 10px; letter-spacing: 1px; margin-top: 2px; }
 .ship.ok { color: var(--green); } .ship.bad { color: var(--red); }
+.bk .refine { grid-column: 2 / -1; justify-self: stretch; }
+.bk .refine.buy { border-color: var(--amber); color: var(--amber); }

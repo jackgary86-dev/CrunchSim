@@ -70,7 +70,7 @@
     ['auction', 'Auction', ['auction-panel', 'intake-panel']],
     ['sales', 'Market', ['inventory-panel', 'market-panel']],
     ['jobs', 'Contracts & jobs', ['contract-panel', 'missions-panel']],
-    ['bank', 'Bank & upgrades', ['bank-panel', 'facility-panel']],
+    ['bank', 'Bank & upgrades', ['bank-panel', 'refinery-panel', 'facility-panel']],
     ['rivals', 'Rivals', ['rivals-panel']],
     ['report', 'Plant report', ['plant-panel']],
     ['log', 'Event log', ['log-panel']]
@@ -369,6 +369,25 @@
     if (!arrow && Math.abs(f - 1) < 0.03) return '';   // a flat, ordinary price: nothing to say
     return '<span class="mk' + (t > 0.0005 ? ' up' : t < -0.0005 ? ' down' : '') + '" title="Market factor this round, and its move since the last round">' + arrow + '×' + f.toFixed(2) + '</span> ';
   }
+  /* REFINE (#54): metal buckets melted into ingots or refined into bars; a rich MISC concentrate sold by assay */
+  function refineButton(m) {
+    const R = CS.Refinery && CS.Refinery.live; if (!R) return null;
+    const q = R.quote(m); if (!q || !q.need) return null;
+    const b = el('button', 'refine' + (q.ok && q.gain > 0 ? ' buy' : ''), q.ok ? 'REFINE ' + app.fmtMoney(q.net) : 'REFINE · needs ' + esc(q.needName.toLowerCase())); b.type = 'button';
+    b.title = q.ok ? 'Refine into ' + q.form + ': ' + app.fmtMoney(q.value) + ' less ' + app.fmtMoney(q.cost) + ' = ' + app.fmtMoney(q.net) + ' (' + (q.gain >= 0 ? '+' : '-') + app.fmtMoney(Math.abs(q.gain)) + ' against selling raw)' : q.why;
+    if (!q.ok) b.disabled = true;
+    b.addEventListener('click', () => { R.refine(m); renderFlow(true); });
+    return b;
+  }
+  function refineMiscButton() {
+    const R = CS.Refinery && CS.Refinery.live; if (!R) return null;
+    const q = R.quoteMisc(); if (!q || !(q.pv > 0)) return null;
+    const b = el('button', 'refine' + (q.ok ? ' buy' : ''), q.ok ? 'REFINE ' + app.fmtMoney(q.net) : 'REFINE · ' + (CS.Refinery.live.level() < 2 ? 'needs precious refinery' : 'too lean')); b.type = 'button';
+    b.title = q.ok ? 'Sell the MISC pile to the precious refinery by assay: ' + app.fmtMoney(q.value) + ' for the gold and silver in it, less ' + app.fmtMoney(q.cost) + ' treatment' : q.why;
+    if (!q.ok) b.disabled = true;
+    b.addEventListener('click', () => { R.refineMisc(); renderFlow(true); });
+    return b;
+  }
   function bucketsCol() {
     const col = el('div', 'fcol buckets'), b = buckets(), Inv = CS.Inventory;
     col.appendChild(el('div', 'fn-k', 'END RESULT IN BUCKETS'));
@@ -380,14 +399,18 @@
       row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span></span>';
       const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
-      row.appendChild(sell); row.appendChild(re); list.appendChild(row);
+      row.appendChild(sell); row.appendChild(re);
+      const rf = refineButton(x.m); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
+      list.appendChild(row);
     });
     if (b.misc.t > 0) {
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
       row.innerHTML = '<span class="bk-sw misc"></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
       const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
-      row.appendChild(re); list.appendChild(row);
+      row.appendChild(re);
+      const rf = refineMiscButton(); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
+      list.appendChild(row);
     }
     col.appendChild(list);
     return col;

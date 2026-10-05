@@ -557,6 +557,8 @@
     let main = null, mm = 0;
     for (const mat in perMat) if ((GROUP[mat] || mat) === domG && perMat[mat].mass > mm) { mm = perMat[mat].mass; main = mat; }
     const klass = null;
+    // precious metals are bought by assay: a refiner pays for the metal, never a premium over it (#54)
+    if (loose && main && PRECIOUS.indexOf(main) >= 0 && grade > 1) grade = 1;
     let value = 0;
     for (const mat in perMat) {
       const D = MATERIALS[mat], p = perMat[mat].p80, lo = D.range[0], hi = D.range[1];

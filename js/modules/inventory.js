@@ -467,6 +467,7 @@
 
     /* the plant screen's bucket list sells one material at a time */
     Inv.sellMat = function (mat) { sellMat(mat); };
+    Inv.quote = function (mat) { return stock[mat] && stock[mat].t > 0 ? lotValue(stock, mat, mv(), marketMul()) : 0; };   // what SELL would pay now (#44)
 
     /* hooks */
     API.on('veto:autoSell', function () { return 'inventory'; });

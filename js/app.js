@@ -684,6 +684,7 @@
     renderRunState(); renderBank(); API.emit('batchStart', { run: S.run });
   }
   function stopRun(why) {
+    why = why || 'stopped';   // public API: callers may leave the reason out
     const r = S.run; if (!r) return;
     S.run = null;
     const dt = S.clock - r.t0, powerC = r.kwh * Sim.prices.power;
@@ -935,7 +936,8 @@
       if (S.run) { stepRun(dt); acc += dt; if (acc > 0.25) { acc = 0; renderTelemetry(); renderPlant(); renderLine(); } renderHeader(); }
       API.emit('tick', { dt, dh: (S.clock - clockBefore) / 3600 });
       if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0) hideCard(); }
-      const st = camState(); cam.setState(st); cam.frame(dt);
+      const st = camState(); cam.setState(st);
+      if (cam.cv.getClientRects().length) cam.frame(dt);   // not drawn while its station view is closed (#45)
       if (st) Audio.setHum(st.M.scene, st.running ? 0.5 + 0.5 * st.load : 0); else Audio.setHum('jaw', 0);
       requestAnimationFrame(tick);
     }

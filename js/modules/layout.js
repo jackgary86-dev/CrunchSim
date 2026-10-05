@@ -205,6 +205,8 @@
       const bad = inf.warnings.filter((w) => w.level === 'bad').length, wn = inf.warnings.filter((w) => w.level === 'warn').length;
       if (bad) warn = '<div class="fn-w bad">' + bad + ' fault' + (bad > 1 ? 's' : '') + '</div>'; else if (wn) warn = '<div class="fn-w warn">' + wn + ' warning' + (wn > 1 ? 's' : '') + '</div>';
     }
+    const lim = S.mr && S.mr.limiter && S.mr.limiter.uid === n.uid ? S.mr.limiter : null;
+    if (lim && inf && inf.inKg > 1e-6) warn += '<div class="fn-w neck" title="This station sets the rate of the whole line. Level it up or service it at its station, or add a second unit.">BOTTLENECK · ' + esc(lim.why) + (S.mr.R > 0 ? ' · ' + S.mr.R.toFixed(1) + ' t/h' : '') + '</div>';
     if (!owned) warn = '<div class="fn-w bad">not owned · buy it at its station</div>';
     const entry = S.feedOpts && S.feedOpts.entry != null ? S.feedOpts.entry : null;
     const skipped = entry != null && n.uid !== entry && inf && !(inf.inKg > 1e-6);   // ahead of a re-run's entry station (#42)
@@ -310,6 +312,17 @@
     }
     setTimeout(() => renderFlow(true), 0);
   }
+  /* the market's word on a material this round (#44): HOT or COLD with the factor and the reason, else the price trend */
+  function marketTag(m) {
+    const Mk = CS.Market; if (!Mk || !Mk.state) return '';
+    const hot = Mk.hot(), cold = Mk.cold();
+    if (hot && hot.mat === m) return '<span class="mk hot" title="' + esc(hot.why) + '">HOT ×' + hot.mul.toFixed(2) + '</span> ';
+    if (cold && cold.mat === m) return '<span class="mk cold" title="' + esc(cold.why) + '">COLD ×' + cold.mul.toFixed(2) + '</span> ';
+    const v = Mk.view(), t = v.trend[m] || 0, f = v.drift[m] || 1;
+    const arrow = t > 0.0005 ? '&#9650;' : t < -0.0005 ? '&#9660;' : '';
+    if (!arrow && Math.abs(f - 1) < 0.03) return '';   // a flat, ordinary price: nothing to say
+    return '<span class="mk' + (t > 0.0005 ? ' up' : t < -0.0005 ? ' down' : '') + '" title="Market factor this round, and its move since the last round">' + arrow + '×' + f.toFixed(2) + '</span> ';
+  }
   function bucketsCol() {
     const col = el('div', 'fcol buckets'), b = buckets(), Inv = CS.Inventory;
     col.appendChild(el('div', 'fn-k', 'END RESULT IN BUCKETS'));
@@ -317,8 +330,9 @@
     if (!b.clean.length && !(b.misc.t > 0)) list.appendChild(el('div', 'small', 'Run a batch: what comes out lands here, ready to sell or run again.'));
     b.clean.forEach((x) => {
       const D = MATERIALS[x.m], row = el('div', 'bk');
-      row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + x.t.toFixed(1) + ' t · ' + Math.round(x.purity * 100) + '% pure · ' + app.fmtMoney(x.value) + '</span></span>';
-      const sell = el('button', 'buy', 'SELL'); sell.type = 'button'; sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
+      const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
+      row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + x.t.toFixed(1) + ' t · ' + Math.round(x.purity * 100) + '% pure</span></span>';
+      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + x.t.toFixed(1) + ' t now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase()));
       row.appendChild(sell); row.appendChild(re); list.appendChild(row);
     });

@@ -356,3 +356,7 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .fcol.skipped .fn-camwrap { filter: grayscale(1); }
 .fn-k.entry { color: var(--amber); }
 .flow-entry select { margin-left: 4px; max-width: 260px; }
+.mk { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; color: var(--muted); white-space: nowrap; }
+.mk.hot { color: var(--green); } .mk.cold { color: var(--red); }
+.mk.up { color: var(--green); } .mk.down { color: var(--amber); }
+.fn-w.neck { color: var(--amber); border: 1px solid var(--amber); border-radius: 2px; padding: 1px 4px; align-self: center; }

@@ -352,3 +352,7 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .fbin.pure .fbin-t span { color: var(--green); }
 .fnext { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 4px; align-items: start; margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line-2); text-align: left; font-size: 12px; }
 .fnext-a { color: var(--cyan); font-size: 16px; line-height: 1; }
+.fcol.skipped { opacity: .45; }
+.fcol.skipped .fn-camwrap { filter: grayscale(1); }
+.fn-k.entry { color: var(--amber); }
+.flow-entry select { margin-left: 4px; max-width: 260px; }

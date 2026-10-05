@@ -27,11 +27,17 @@
   }
   /* what RE-RUN would load: the bucket's blend as fractions, and whole tonnes capped by the batch limit and the stock */
   function rerunPlan(stock, mats, cap) {
-    const comp = {}; let tot = 0;
-    mats.forEach((m) => { const t = stock && stock[m] ? stock[m].t : 0; if (t > 0) { comp[m] = t; tot += t; } });
+    const comp = {}, sizes = {}; let tot = 0;
+    mats.forEach((m) => { const e = stock && stock[m], t = e ? e.t : 0; if (t > 0) { comp[m] = t; tot += t; if (e.p80 > 0) sizes[m] = e.p80; } });
     if (tot < 1) return { error: 'small', tot };
     for (const m in comp) comp[m] /= tot;
-    return { comp, tot, tons: Math.max(1, Math.min(Math.floor(tot), cap)) };
+    return { comp, sizes, tot, tons: Math.max(1, Math.min(Math.floor(tot), cap)) };   // sizes: the recorded p80 of each material (#41)
+  }
+  /* where a re-run bucket goes in: the first station that is not a shredder or crusher; null (the head feed, station 1)
+   * when that is station 1 or the line is all size reduction (#42) */
+  function defaultEntry(line, machines) {
+    const k = line.findIndex((n) => machines[n.m] && machines[n.m].kind !== 'comminution');
+    return k > 0 ? line[k].uid : null;
   }
   /* one station's work on a batch of `tons`: the bins it fills (its unconnected outputs) and what moves on to which
    * stations (1-based placement numbers) */
@@ -55,7 +61,7 @@
     bins.sort((a, b) => b.tons - a.tons);
     return { bins, next };
   }
-  CS.Layout = { SORTED, splitBuckets, rerunPlan, stationFlow, topMats };
+  CS.Layout = { SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats };
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
@@ -200,7 +206,11 @@
       if (bad) warn = '<div class="fn-w bad">' + bad + ' fault' + (bad > 1 ? 's' : '') + '</div>'; else if (wn) warn = '<div class="fn-w warn">' + wn + ' warning' + (wn > 1 ? 's' : '') + '</div>';
     }
     if (!owned) warn = '<div class="fn-w bad">not owned · buy it at its station</div>';
-    col.innerHTML = '<div class="fn-k">STATION ' + (i + 1) + '</div><div class="fn-camwrap"></div><div class="fn-n">' + esc(M.name) + '</div><div class="fn-s">' + esc(status) + '</div>' + warn;
+    const entry = S.feedOpts && S.feedOpts.entry != null ? S.feedOpts.entry : null;
+    const skipped = entry != null && n.uid !== entry && inf && !(inf.inKg > 1e-6);   // ahead of a re-run's entry station (#42)
+    if (skipped) { col.classList.add('skipped'); status = 'skipped this batch'; warn = ''; }
+    const head = n.uid === entry ? '&#9654; ENTRY · STATION ' + (i + 1) : 'STATION ' + (i + 1) + (skipped ? ' · SKIPPED' : '');
+    col.innerHTML = '<div class="fn-k' + (n.uid === entry ? ' entry' : '') + '">' + head + '</div><div class="fn-camwrap"></div><div class="fn-n">' + esc(M.name) + '</div><div class="fn-s">' + esc(status) + '</div>' + warn;
     const mini = miniFor(n.uid);
     if (mini) col.querySelector('.fn-camwrap').appendChild(mini.cv);
     const f = stationFlow(S.ev, S.line, S.tons, n.uid);
@@ -248,14 +258,23 @@
     if (S.feedPrepaid && !loaded) { app.log('A prepaid lot is already loaded as the feed. Run it first, or change the feed by hand to put it back in the yard.', 'warn'); return; }
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
     if (plan.error) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
-    const comp = plan.comp, tot = plan.tot, tons = plan.tons;
+    const comp = plan.comp, tot = plan.tot, tons = plan.tons, entry = defaultEntry(S.line, MACHINES);
+    const prev = loaded ? loaded.prev : (FEEDS[S.feedPreset] ? { preset: S.feedPreset, tons: S.tons } : null);   // the feed to go back to after the batch
     loaded = null;   // setFeed renders before the flag is set
     app.setFeed(comp, 'custom', tons);
-    loaded = { comp: Object.assign({}, S.comp), label };
+    loaded = { comp: Object.assign({}, S.comp), label, sizes: plan.sizes, entry, prev };
     S.feedPrepaid = true;
+    S.feedOpts = { sizes: plan.sizes, entry };   // it goes in as the shred it already is (#41), past the shredders (#42)
     app.markDirty(true);
-    app.log('Loaded the ' + label + ' bucket as the feed: ' + tons + ' t per batch, no feed cost.' + (tot > tons ? ' The rest stays in the bucket (batch limit ' + cap + ' t).' : '') + ' Set up the machines, then press RUN BATCH.', 'ok');
+    const k = entry == null ? 0 : S.line.findIndex((n) => n.uid === entry);
+    offset = Math.max(0, k);   // page the plant screen to the entry station
+    app.log('Loaded the ' + label + ' bucket as the feed: ' + tons + ' t per batch, no feed cost, entering at station ' + (k + 1) + '.' + (tot > tons ? ' The rest stays in the bucket (batch limit ' + cap + ' t).' : '') + ' Pick another entry station above the plant if you like, then press RUN BATCH.', 'ok');
     renderFlow(true);
+  }
+  function setEntry(uid) {
+    if (!loaded || app.S.run) return;
+    loaded.entry = uid; app.S.feedOpts = { sizes: loaded.sizes, entry: uid };
+    app.markDirty(true); renderFlow(true);
   }
   /* drop the loaded bucket when the feed no longer matches it, or another module took the prepaid flag away */
   function guardLoaded() {
@@ -269,16 +288,27 @@
     if (S.run) return;
     const label = loaded.label; loaded = null;
     // the flag was ours: app.setFeed renders before another module (auction, intake) sets its own flag, so clearing it here never takes theirs
-    S.feedPrepaid = false;
+    S.feedPrepaid = false; S.feedOpts = null;
     app.log('The ' + label + ' bucket is no longer loaded: the feed was changed, so it stays in the bucket and the feed is charged at the normal price.', 'warn');
     app.markDirty();   // the feed cost and projected margin change with the flag
   }
   function onBatchStart(p) {
     if (!loaded) return;
     const S = app.S, Inv = CS.Inventory, l = loaded; loaded = null;
-    if (app.contract() || !sameComp(S.comp, l.comp)) return;
+    if (app.contract() || !sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
     const tons = p && p.run && p.run.total ? p.run.total : S.tons;
     for (const m in l.comp) Inv.withdraw(m, tons * l.comp[m]);
+    rerunActive = l.prev || true;   // the sizes and entry station hold for this batch, then the feed is ordinary again
+  }
+  let rerunActive = false;
+  function onBatchComplete() {
+    if (rerunActive) {
+      const prev = rerunActive; rerunActive = false; app.S.feedOpts = null;
+      // the bucket's blend is not left behind as a feed to buy at the market price: back to the feed you had before
+      if (prev.preset && FEEDS[prev.preset] && !app.contract()) { app.applyFeedPreset(prev.preset); if (prev.tons) { app.S.tons = Math.min(prev.tons, app.plantValue('logistics')); app.syncFeedRows(); } }
+      app.markDirty(true);
+    }
+    setTimeout(() => renderFlow(true), 0);
   }
   function bucketsCol() {
     const col = el('div', 'fcol buckets'), b = buckets(), Inv = CS.Inventory;
@@ -308,10 +338,23 @@
     const seq = S.line.map((n, i) => ({ n, i })).concat([{ add: true }]);
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t)]);
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t)]);
     if (!force && sig === lastSig) return; lastSig = sig;
-    const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0;
-    $('#flow-feed').innerHTML = 'FEED &#9654; <b>' + esc(F ? F.name : 'Custom mix') + '</b> · ' + S.tons + ' t · ' + (S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
+    const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
+    const name = loaded ? 'Re-run: ' + loaded.label + ' bucket' : F ? F.name : 'Custom mix';
+    ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b> · ' + S.tons + ' t · ' + (S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
+    const entry = S.feedOpts && S.feedOpts.entry != null ? S.feedOpts.entry : null;
+    if (loaded && !S.run && S.line.length) {
+      // the re-run bucket can go in at any station (#42)
+      const lab = el('label', 'flow-entry', ' · enters at ');
+      const sel = el('select'); sel.setAttribute('aria-label', 'Station the bucket enters at');
+      S.line.forEach((n, k) => { const o = el('option', null, 'station ' + (k + 1) + ' · ' + esc(MACHINES[n.m].name)); o.value = String(n.uid); if (n.uid === (entry == null ? S.line[0].uid : entry)) o.selected = true; sel.appendChild(o); });
+      sel.addEventListener('change', () => { const u = Number(sel.value); setEntry(u === S.line[0].uid ? null : u); });
+      lab.appendChild(sel); ff.appendChild(lab);
+    } else if (entry != null) {
+      const k = S.line.findIndex((n) => n.uid === entry);
+      if (k >= 0) ff.appendChild(el('span', null, ' · enters at station ' + (k + 1)));
+    }
     const box = $('#flow-nodes'); box.innerHTML = '';
     seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : machineCol(x.n, x.i)));
     for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
@@ -332,9 +375,19 @@
     });
     app.on('batchStart', onBatchStart);
     app.on('render', () => { guardLoaded(); pruneMinis(); renderFlow(false); if (stationOpen && !app.node(app.S.sel)) closeStation(); });
-    app.on('batchComplete', () => setTimeout(() => renderFlow(true), 0));
+    app.on('batchComplete', onBatchComplete);
+    // a loaded bucket survives a reload: it is restored as the prepaid feed while the feed panel still shows its blend
+    app.on('save', () => ({ layout: { loaded, rerunActive } }));
+    const restore = (ext) => {
+      const d = ext && ext.layout, S = app.S; loaded = null; rerunActive = false;
+      if (!d || !S) return;
+      if (d.loaded && !S.run && !S.contract && sameComp(S.comp, d.loaded.comp)) {
+        loaded = d.loaded; S.feedPrepaid = true; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
+      } else if (d.rerunActive && S.feedOpts) S.feedOpts = null;
+    };
+    app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
-    app.on('newgame', () => { offset = 0; loaded = null; closeDrawer(); closeStation(); renderFlow(true); });
+    app.on('newgame', () => { offset = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
   }
   if (CS.app) init();

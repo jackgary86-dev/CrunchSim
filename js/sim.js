@@ -78,7 +78,9 @@
     for (const mat in st.m) addArr(o, mat, st.m[mat], k);
     return o;
   }
-  function makeFeed(comp, kg) {
+  /* sizes (optional): { mat: p80 mm } for feed that is already broken, such as a re-run bucket of shred (#41); the
+   * spread and the top-size ratio stay those of the material's own feed */
+  function makeFeed(comp, kg, sizes) {
     kg = kg || 1000;
     const st = newStream(0);
     let tot = 0; for (const k in comp) tot += comp[k] > 0 ? comp[k] : 0;
@@ -86,7 +88,8 @@
     for (const mat in comp) {
       const f = comp[mat] / tot; if (!(f > 0)) continue;
       const D = MATERIALS[mat]; if (!D) continue;
-      addArr(st, mat, makePSD(D.feed.p80, D.feed.n, D.feed.top), f * kg);
+      const p80 = sizes && sizes[mat] > 0 ? Math.min(sizes[mat], D.feed.p80) : D.feed.p80;
+      addArr(st, mat, makePSD(p80, D.feed.n, D.feed.top * p80 / D.feed.p80), f * kg);
     }
     return st;
   }
@@ -456,15 +459,20 @@
 
   /* ======================= flowsheet evaluation ======================= */
   /* line: [{uid, m, settings, wear, src: 'feed' | {uid, port}}]. comp: {mat: fraction}. */
-  function evalLine(line, comp) {
-    const head = makeFeed(comp, 1000);
+  /* opts (optional): sizes { mat: p80 } for already-broken feed (#41); entry: uid of the station the feed enters at
+   * (#42). With an entry, that station takes the whole head feed and the head-fed stations ahead of it get nothing. */
+  function evalLine(line, comp, opts) {
+    const sizes = opts && opts.sizes, entry = opts && opts.entry != null && line.some(function (n) { return n.uid === opts.entry; }) ? opts.entry : null;
+    const head = makeFeed(comp, 1000, sizes);
     const ports = {}, consumed = {}, nodes = [], index = {}, users = {};
-    line.forEach(function (n) { if (n.src && n.src !== 'feed') { const key = n.src.uid + ':' + n.src.port; users[key] = (users[key] || 0) + 1; } });
-    let headUsers = 0; line.forEach(function (n) { if (!n.src || n.src === 'feed') headUsers++; });
+    line.forEach(function (n) { if (n.uid !== entry && n.src && n.src !== 'feed') { const key = n.src.uid + ':' + n.src.port; users[key] = (users[key] || 0) + 1; } });
+    let headUsers = 0; line.forEach(function (n) { if (entry == null && (!n.src || n.src === 'feed')) headUsers++; });
     for (let k = 0; k < line.length; k++) {
       const node = line[k]; index[node.uid] = k;
       let inS = head, share = headUsers;
-      if (node.src && node.src !== 'feed') {
+      if (entry != null && node.uid === entry) { share = 1; }
+      else if (entry != null && (!node.src || node.src === 'feed')) { inS = newStream(0); share = 1; }
+      else if (node.src && node.src !== 'feed') {
         const key = node.src.uid + ':' + node.src.port;
         inS = ports[key] || newStream(0); consumed[key] = true; share = users[key];
       }

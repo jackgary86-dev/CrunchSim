@@ -72,5 +72,39 @@ for (const [lineId, feedId] of [['starter', 'elv'], ['car', 'elv'], ['universal'
 }
 check(L.stationFlow(null, [], 30, 1).bins.length === 0, 'no evaluation yet: an empty station');
 
+/* ---- #41: a re-run bucket goes in at its recorded shred size ---- */
+{
+  const st = { steel: { t: 10, purity: 0.9, p80: 80 }, plastic: { t: 2, purity: 0.5 } };
+  const pl = L.rerunPlan(st, ['steel', 'plastic'], 30);
+  check(pl.sizes.steel === 80 && !('plastic' in pl.sizes), 'the plan carries each material\'s recorded p80 (none when unknown)');
+  const line = Sim.buildLine(LINES.car), comp = FEEDS.elv.comp;
+  const raw = Sim.evalLine(line, comp), shred = Sim.evalLine(line, comp, { sizes: { steel: 80, aluminum: 60, plastic: 40, rubber: 40 } });
+  check(shred.nodes[0].ePerHead < raw.nodes[0].ePerHead * 0.5, 'the shredder spends far less energy on feed that is already shred');
+  check(Sim.binStats({ steel: shred.head.m.steel }).p80 < Sim.binStats({ steel: raw.head.m.steel }).p80 / 2, 'the head feed carries the recorded size, not the raw lump size');
+  check(near(Sim.streamMass(shred.head), 1000, 1e-9), 'sized feed keeps its mass');
+  const big = Sim.evalLine(line, comp, { sizes: { steel: 5000 } });
+  check(near(Sim.binStats({ steel: big.head.m.steel }).p80, Sim.binStats({ steel: raw.head.m.steel }).p80, 1e-6), 'a recorded size never makes feed coarser than the raw material');
+}
+
+/* ---- #42: the entry station ---- */
+{
+  const line = Sim.buildLine(LINES.car);
+  const k = line.findIndex((nd) => nd.m === 'air');
+  check(L.defaultEntry(line, globalThis.CS.MACHINES) === line[k].uid, 'a bucket enters at the first station that is not a shredder');
+  const lone = Sim.buildLine(LINES.starter);
+  check(L.defaultEntry(lone, globalThis.CS.MACHINES) === null, 'a line of shredders only: the bucket enters at station 1');
+  const comp = FEEDS.elv.comp, mag = line.findIndex((nd) => nd.m === 'magnet');
+  const ev = Sim.evalLine(line, comp, { entry: line[mag].uid });
+  check(ev.nodes.slice(0, mag).every((nd) => !(nd.inKg > 1e-9)), 'stations ahead of the entry get nothing');
+  check(near(ev.nodes[mag].inKg, 1000, 1e-9), 'the entry station takes the whole feed');
+  const tk = ev.terminals.reduce((a, t) => a + Sim.streamMass(t.stream), 0);
+  check(near(tk, 1000, 1e-6), 'mass is conserved through the shortened line');
+  check(Sim.maxRate(ev.nodes, line).R > Sim.maxRate(Sim.evalLine(line, comp).nodes, line).R, 'skipping the shredder lifts the plant rate');
+  const bad = Sim.evalLine(line, comp, { entry: 999999 }), plain = Sim.evalLine(line, comp);
+  check(near(bad.nodes[0].inKg, plain.nodes[0].inKg, 1e-9), 'an entry station that is not in the line is ignored');
+  const flows = line.map((nd) => L.stationFlow(ev, line, 20, nd.uid));
+  check(flows.slice(0, mag).every((f) => !f.bins.length && !f.next.length), 'skipped stations fill no bins and send nothing on');
+}
+
 console.log('\n' + (n - fails) + '/' + n + ' checks passed');
 process.exit(fails ? 1 : 0);

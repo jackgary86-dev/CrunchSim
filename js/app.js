@@ -203,7 +203,7 @@
   /* ---------------- evaluation ---------------- */
   function recompute() {
     syncLevels();
-    S.ev = Sim.evalLine(S.line, S.comp);
+    S.ev = Sim.evalLine(S.line, S.comp, S.feedOpts);   // feedOpts: a re-run bucket's shred sizes and entry station (layout module, #41 #42)
     S.mr = Sim.maxRate(S.ev.nodes, S.line);
     dirty = false;
   }
@@ -480,7 +480,7 @@
    */
   const TRIAL_MACHINES = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen', 'cone', 'jaw'];
   function lineMarginNoFeed(line) {
-    const ev = Sim.evalLine(line, S.comp), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
+    const ev = Sim.evalLine(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
     if (!(R > 0)) return -Infinity;
     let P = 0, extra = 0, wearC = 0, rev = 0;
     ev.nodes.forEach((n) => { P += Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
@@ -869,7 +869,7 @@
     S.money = START_BANK; S.tonnes = 0; S.kwh = 0; S.batches = 0; S.lifetime = 0;
     S.owned = new Set(STARTER_MACHINES); S.units = unitsFrom(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
     S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
-    S.clock = 0; S.contract = null; S.contracts = {}; S.lastSpec = null; S.feedPrepaid = false; S.ext = {};
+    S.clock = 0; S.contract = null; S.contracts = {}; S.lastSpec = null; S.feedPrepaid = false; S.feedOpts = null; S.ext = {};
     Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
     API.emit('load', S.ext);
     setFeedLock(false); applyPlant(); renderFeedSelect();

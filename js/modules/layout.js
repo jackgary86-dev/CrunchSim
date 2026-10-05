@@ -2,7 +2,7 @@
  *
  * Main screen: the Feed panel on the left; on the right the plant as four sections divided by vertical lines: three
  * machines in the order they were placed (arrows page through longer lines) and, always last, the end result in buckets.
- * Every bucket can be sold, or re-run as the next batch's feed. Material that is not yet separated (held at under 90%
+ * Every bucket can be sold, or re-run as the next batch's feed. Material that is not yet separated (held at under 60%
  * purity) collects in a MISC bucket, to be re-run through different machines.
  * Everything else lives behind toolbar buttons that open it in a drawer with a CLOSE button. Clicking a machine sits you
  * down at its station: the machine cam, its settings and its telemetry, also with a CLOSE button.
@@ -24,7 +24,8 @@
     ['log', 'Event log', ['log-panel']]
   ];
   const MACHINE_COLS = 3;          // three machine sections, then the buckets section
-  const CLEAN = 0.9;               // a bucket at 90% purity or better is a sellable grade; below that it goes to MISC
+  const CLEAN = 0.9;               // a station bin at 90% purity or better is a straight grade (drawn green)
+  const SORTED = 0.6;              // held stock at 60% or better has been sorted out: its own end bucket; below that it goes to MISC (inventory merges each material across bins, so stray bits lower the figure)
   let app = null, offset = 0, openDrawer = null, stationOpen = false, lastSig = '';
   const $ = (s) => document.querySelector(s);
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -95,26 +96,67 @@
   }
   function closeStation() { if (!stationOpen) return; $('#station').classList.add('hidden'); stationOpen = false; renderFlow(true); }
 
-  /* ---------------- machine drawings (line shapes, as in the sketch) ---------------- */
-  const SHAPE = {
-    hammer: 'circle', tub: 'circle', vsi: 'circle', cryo: 'circle', ball: 'circle', chipper: 'circle', granulator: 'circle', single: 'circle',
-    jaw: 'hopper', cone: 'hopper', roll: 'pair', hpgr: 'pair', twin: 'pair',
-    magnet: 'bar', eddy: 'bar', screen: 'bar', sensor: 'bar', air: 'column',
-    sinkfloat: 'tank', freezer: 'tank', colloid: 'tank', homog: 'tank', atomizer: 'tank', omni: 'tank',
-    induction: 'furnace', arc: 'furnace', kiln: 'furnace'
-  };
-  function shapeSvg(m, running) {
-    const c = running ? 'var(--cyan)' : 'var(--text)', st = 'fill="none" stroke="' + c + '" stroke-width="5" stroke-linejoin="round"';
-    const body = {
-      circle: '<ellipse cx="100" cy="70" rx="44" ry="54" ' + st + '/>',
-      bar: '<rect x="20" y="56" width="160" height="34" ' + st + '/>',
-      tank: '<rect x="25" y="38" width="150" height="72" rx="24" ' + st + '/>',
-      hopper: '<path d="M40 25 H160 L120 115 H80 Z" ' + st + '/>',
-      pair: '<circle cx="68" cy="72" r="34" ' + st + '/><circle cx="132" cy="72" r="34" ' + st + '/>',
-      column: '<rect x="75" y="15" width="50" height="115" ' + st + '/><path d="M85 110 L115 90 L85 70 L115 50 L85 30" fill="none" stroke="' + c + '" stroke-width="3"/>',
-      furnace: '<path d="M45 125 V55 Q100 10 155 55 V125 Z" ' + st + '/><rect x="80" y="80" width="40" height="28" rx="4" fill="var(--amber)" opacity=".7"/>'
-    }[SHAPE[m] || 'tank'];
-    return '<svg viewBox="0 0 200 140" class="fn-shape" aria-hidden="true">' + body + '</svg>';
+  /* ---------------- live machine cams (the station cam's own scenes, small and cropped onto the machine) ---------------- */
+  const minis = new Map();   // uid -> { cv, cam }
+  const VIEW = null;   // the whole scene: every separator draws its own drop bins at the sides
+  function miniFor(uid) {
+    let m = minis.get(uid);
+    if (!m && CS.Cam) {
+      const cv = el('canvas', 'fn-cam'); cv.setAttribute('aria-hidden', 'true');
+      const cam = new CS.Cam(cv); cam.view = VIEW;
+      m = { cv, cam }; minis.set(uid, m);
+    }
+    return m;
+  }
+  let lastT = 0;
+  function miniLoop(now) {
+    const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016; lastT = now;
+    if (!stationOpen && !openDrawer && !document.hidden && app && app.S) {
+      minis.forEach((m, uid) => {
+        if (!m.cv.isConnected) return;
+        const r = m.cv.getBoundingClientRect();
+        if (Math.abs(r.width - m.cam.W) > 1 || Math.abs(r.height - m.cam.H) > 1) m.cam.resize();
+        const st = app.camState(uid); if (!st) return;
+        m.cam.setState(st); m.cam.frame(dt);
+      });
+    }
+    requestAnimationFrame(miniLoop);
+  }
+  function pruneMinis() { const live = new Set(app.S.line.map((n) => n.uid)); minis.forEach((m, uid) => { if (!live.has(uid)) minis.delete(uid); }); }
+
+  /* ---------------- what each station does with the material ---------------- */
+  const PORT_NAME = { extract: 'pulled out', residue: 'rest', product: 'product', fines: 'fines', oversize: 'oversize', melt: 'melt', dross: 'dross' };
+  function mainMat(st) { let best = null, bm = 0; for (const m in st.perMat) if (st.perMat[m].mass > bm) { bm = st.perMat[m].mass; best = m; } return best; }
+  function topMats(st, k) { return Object.keys(st.perMat).sort((a, b) => st.perMat[b].mass - st.perMat[a].mass).slice(0, k); }
+  /* one bin graphic: an open-top bin filled to its share of the batch, striped by the top materials in it */
+  function binHtml(st, tons, port) {
+    const mm = mainMat(st), D = mm ? MATERIALS[mm] : null, tops = topMats(st, 3);
+    let bands = '', acc = 0;
+    tops.forEach((m) => { const f = st.perMat[m].mass / st.total; bands += '<i style="flex:' + f.toFixed(3) + ';background:' + MATERIALS[m].color + '"></i>'; acc += f; });
+    if (acc < 0.999) bands += '<i style="flex:' + (1 - acc).toFixed(3) + ';background:#5a6573"></i>';
+    const pure = st.share >= CLEAN;
+    return '<div class="fbin' + (pure ? ' pure' : '') + '" title="' + esc((PORT_NAME[port] || port) + ': ' + tops.map((m) => MATERIALS[m].name + ' ' + Math.round(100 * st.perMat[m].mass / st.total) + '%').join(', ')) + '">' +
+      '<div class="fbin-box"><div class="fbin-fill">' + bands + '</div></div>' +
+      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span></div></div>';
+  }
+  function stationFlow(n) {
+    const S = app.S, ev = S.ev; if (!ev) return { bins: [], next: [] };
+    const bins = [], next = [];
+    ev.terminals.forEach((t) => {
+      if (t.uid !== n.uid) return;
+      const st = Sim.binStats(t.stream.m, t.form); if (st.total < 0.5) return;
+      bins.push({ st, port: t.port, tons: st.total / 1000 * S.tons });
+    });
+    for (const key in ev.ports) {
+      const [u, port] = key.split(':'); if (Number(u) !== n.uid) continue;
+      const users = S.line.filter((x) => x.src && x.src !== 'feed' && x.src.uid === n.uid && x.src.port === port);
+      if (!users.length) continue;
+      const kg = Sim.streamMass(ev.ports[key]); if (kg < 0.5) continue;
+      const st = Sim.binStats(ev.ports[key].m);
+      next.push({ port, tons: kg / 1000 * S.tons, to: users.map((x) => S.line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()) });
+    }
+    bins.sort((a, b) => b.tons - a.tons);
+    return { bins, next };
   }
 
   /* ---------------- sections ---------------- */
@@ -126,13 +168,25 @@
     if (inf) {
       const R = S.run ? S.run.rate : (S.mr ? S.mr.R : 0);
       if (inf.kind === 'separator') status = Math.round(100 * Sim.streamMass(S.ev.ports[n.uid + ':extract']) / Math.max(inf.inKg, 1e-9)) + '% pulled out';
-      else status = inf.ratio > 1.05 ? 'down to ' + fmtSz(inf.P80) : 'passes through';
+      else if (inf.kind === 'comminution') status = 'shreds to ' + fmtSz(inf.P80);
+      else status = M.cat.toLowerCase();
       status += ' · ' + (R * inf.flowAcc).toFixed(1) + ' t/h';
       const bad = inf.warnings.filter((w) => w.level === 'bad').length, wn = inf.warnings.filter((w) => w.level === 'warn').length;
       if (bad) warn = '<div class="fn-w bad">' + bad + ' fault' + (bad > 1 ? 's' : '') + '</div>'; else if (wn) warn = '<div class="fn-w warn">' + wn + ' warning' + (wn > 1 ? 's' : '') + '</div>';
     }
     if (!owned) warn = '<div class="fn-w bad">not owned · buy it at its station</div>';
-    col.innerHTML = '<div class="fn-k">' + (i + 1) + '</div>' + shapeSvg(n.m, !!S.run) + '<div class="fn-n">' + esc(M.name) + '</div><div class="fn-s">' + esc(status) + '</div>' + warn;
+    col.innerHTML = '<div class="fn-k">STATION ' + (i + 1) + '</div><div class="fn-camwrap"></div><div class="fn-n">' + esc(M.name) + '</div><div class="fn-s">' + esc(status) + '</div>' + warn;
+    const mini = miniFor(n.uid);
+    if (mini) col.querySelector('.fn-camwrap').appendChild(mini.cv);
+    const f = stationFlow(n);
+    const binsBox = el('div', 'fbins');
+    binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port)).join('') : '<div class="small">None: everything moves on.</div>');
+    col.appendChild(binsBox);
+    f.next.forEach((x) => {
+      const nx = el('div', 'fnext');
+      nx.innerHTML = '<span class="fnext-a">&#10140;</span><span><b>' + x.tons.toFixed(1) + ' t</b> ' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
+      col.appendChild(nx);
+    });
     const open = () => showStation(n.uid);
     col.addEventListener('click', open);
     col.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -153,7 +207,7 @@
     const clean = [], misc = { t: 0, comp: {} };
     MAT_ORDER.forEach((m) => {
       const e = stock[m]; if (!e || !(e.t > 0.05)) return;
-      if ((e.purity || 0) >= CLEAN) clean.push({ m, t: e.t, purity: e.purity, value: e.t * MATERIALS[m].sell * Sim.prices.market * ((Sim.prices.perMat && Sim.prices.perMat[m]) || 1) * (e.grade == null ? 1 : e.grade) * (e.sf == null ? 1 : e.sf) });
+      if ((e.purity || 0) >= SORTED) clean.push({ m, t: e.t, purity: e.purity, value: e.t * MATERIALS[m].sell * Sim.prices.market * ((Sim.prices.perMat && Sim.prices.perMat[m]) || 1) * (e.grade == null ? 1 : e.grade) * (e.sf == null ? 1 : e.sf) });
       else { misc.t += e.t; misc.comp[m] = e.t; }
     });
     return { clean, misc };
@@ -251,7 +305,7 @@
   function init() {
     app = CS.app; if (!app || app.layoutStarted) return; app.layoutStarted = true;
     app.on('boot', () => {
-      build(); renderFlow(true);
+      build(); renderFlow(true); requestAnimationFrame(miniLoop);
       // hand edits on the feed panel only do a light refresh (no render event): check the loaded bucket right after them,
       // and again just before RUN BATCH prices the feed
       const fp = $('#feed-panel'), chk = () => setTimeout(() => { guardLoaded(); renderFlow(false); }, 0);
@@ -259,7 +313,7 @@
       document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#btn-run')) guardLoaded(); }, true);
     });
     app.on('batchStart', onBatchStart);
-    app.on('render', () => { guardLoaded(); renderFlow(false); if (stationOpen && !app.node(app.S.sel)) closeStation(); });
+    app.on('render', () => { guardLoaded(); pruneMinis(); renderFlow(false); if (stationOpen && !app.node(app.S.sel)) closeStation(); });
     app.on('batchComplete', () => setTimeout(() => renderFlow(true), 0));
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
     app.on('newgame', () => { offset = 0; loaded = null; closeDrawer(); closeStation(); renderFlow(true); });

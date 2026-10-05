@@ -798,8 +798,8 @@
   function hideCard() { $('#scorecard').classList.add('hidden'); cardTimer = 0; }
 
   /* ---------------- cam state ---------------- */
-  function camState() {
-    const n = node(S.sel); if (!n || !S.ev) return null;
+  function camState(uid) {   // the selected machine by default; the plant screen asks for each machine by uid
+    const n = node(uid || S.sel); if (!n || !S.ev) return null;
     const inf = info(n.uid); if (!inf) return null;
     const M = MACHINES[n.m], R = S.run ? S.run.rate : 0;
     const comp = []; const inS = inf.inStream;

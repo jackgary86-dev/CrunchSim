@@ -247,7 +247,9 @@
     for (let x = 0; x < W; x += 30) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); }
     for (let y = 0; y < H; y += 30) { ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); }
     ctx.stroke();
-    const k = Math.min(W / VW, H / VH), ox = (W - VW * k) / 2, oy = (H - VH * k) / 2;
+    // view: an optional crop of the 900 x 380 scene (the plant screen's small cams zoom onto the machine)
+    const V = this.view || { x: 0, y: 0, w: VW, h: VH };
+    const k = Math.min(W / V.w, H / V.h), ox = (W - V.w * k) / 2 - V.x * k, oy = (H - V.h * k) / 2 - V.y * k;
     ctx.setTransform(d * k, 0, 0, d * k, d * ox, d * oy);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, VW, VH); ctx.clip();

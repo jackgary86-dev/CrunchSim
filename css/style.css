@@ -333,3 +333,22 @@ body.lay #scorecard { position: fixed; z-index: 50; }
   .station-b { grid-template-columns: minmax(0, 1fr); }
   .overlay { padding: 8px; }
 }
+
+/* plant stations: live cam, the bins each station fills, and what moves on */
+.fcol.mach { justify-content: flex-start; align-items: stretch; text-align: center; gap: 5px; }
+.fn-camwrap { position: relative; width: 100%; aspect-ratio: 900 / 380; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; background: #0b1018; flex: none; }
+.fn-cam { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.fcol.mach:hover .fn-camwrap { border-color: var(--cyan); }
+.fn-sub { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); margin: 6px 0 2px; text-align: left; }
+.fbins { display: flex; flex-direction: column; gap: 5px; text-align: left; }
+.fbin { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 7px; align-items: center; }
+.fbin-box { height: 30px; border: 2px solid #5d6b7b; border-top: 0; border-radius: 0 0 4px 4px; padding: 2px; display: flex; align-items: flex-end; background: #0b1018; }
+.fbin.pure .fbin-box { border-color: var(--green); }
+.fbin-fill { width: 100%; height: 80%; display: flex; flex-direction: column-reverse; border-radius: 1px; overflow: hidden; }
+.fbin-fill i { display: block; min-height: 2px; }
+.fbin-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.fbin-t b { font-weight: 500; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fbin-t span { font-size: 11px; color: var(--muted); }
+.fbin.pure .fbin-t span { color: var(--green); }
+.fnext { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 4px; align-items: start; margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line-2); text-align: left; font-size: 12px; }
+.fnext-a { color: var(--cyan); font-size: 16px; line-height: 1; }

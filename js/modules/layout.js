@@ -180,7 +180,7 @@
   function mainMat(st) { let best = null, bm = 0; for (const m in st.perMat) if (st.perMat[m].mass > bm) { bm = st.perMat[m].mass; best = m; } return best; }
   function topMats(st, k) { return Object.keys(st.perMat).sort((a, b) => st.perMat[b].mass - st.perMat[a].mass).slice(0, k); }
   /* one bin graphic: an open-top bin filled to its share of the batch, striped by the top materials in it */
-  function binHtml(st, tons, port) {
+  function binHtml(st, tons, port, verdict) {
     const mm = mainMat(st), D = mm ? MATERIALS[mm] : null, tops = topMats(st, 3);
     let bands = '', acc = 0;
     tops.forEach((m) => { const f = st.perMat[m].mass / st.total; bands += '<i style="flex:' + f.toFixed(3) + ';background:' + MATERIALS[m].color + '"></i>'; acc += f; });
@@ -188,8 +188,48 @@
     const pure = st.share >= CLEAN;
     return '<div class="fbin' + (pure ? ' pure' : '') + '" title="' + esc((PORT_NAME[port] || port) + ': ' + tops.map((m) => MATERIALS[m].name + ' ' + Math.round(100 * st.perMat[m].mass / st.total) + '%').join(', ')) + '">' +
       '<div class="fbin-box"><div class="fbin-fill">' + bands + '</div></div>' +
-      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span></div></div>';
+      '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + tons.toFixed(1) + ' t</span>' + (verdict || '') + '</div></div>';
   }
+  /* ---------------- contract on the plant screen (#47) ---------------- */
+  let spec = null;   // Score.evalContract for the active contract, refreshed each plant render
+  function contractSpec() {
+    const S = app.S, C = app.contract && app.contract(); if (!C || !app.Score) return null;
+    const cs = app.Score.evalContract(C, S.line, S.run ? { kwh: S.run.kwh, done: S.run.done } : null); cs.C = C;
+    return cs;
+  }
+  /* a station bin that holds the contract's target material either ships or is off spec, and says why */
+  function binVerdict(key) {
+    if (!spec) return '';
+    const b = spec.bins.find((x) => x.key === key); if (!b || !(b.st.total > 0.5) || !(b.tMass / b.st.total > 0.02)) return '';
+    const C = spec.C;
+    if (b.shippable) return '<em class="ship ok">SHIPS</em>';
+    let why = '';
+    if (b.purity < C.purityMin) why = Math.round(b.purity * 100) + '% pure, needs ' + Math.round(C.purityMin * 100) + '%';
+    else if (b.p80 > C.p80[1]) why = 'P80 ' + app.Score.fmtMm(b.p80) + ', max ' + app.Score.fmtMm(C.p80[1]);
+    else if (b.p80 < C.p80[0]) why = 'P80 ' + app.Score.fmtMm(b.p80) + ', min ' + app.Score.fmtMm(C.p80[0]);
+    return '<em class="ship bad" title="Off spec: this bin stays home">OFF-SPEC · ' + esc(why) + '</em>';
+  }
+  function contractStrip() {
+    if (!spec) return null;
+    const C = spec.C, d = el('div', 'flow-contract');
+    const lim = C.label + ' ≥ ' + Math.round(C.purityMin * 100) + '% pure · P80 ' + (C.p80[0] > 0 ? app.Score.fmtMm(C.p80[0]) + '–' : '≤ ') + app.Score.fmtMm(C.p80[1]) + ' · ≤ ' + C.kwhCap + ' kWh/t · recovery ≥ ' + Math.round(C.recMin * 100) + '%';
+    d.innerHTML = 'CONTRACT &#9654; <b>' + esc(C.name) + '</b> for ' + esc(C.client) + ' · ' + esc(lim) +
+      '<span class="cs-res"> · projected <span class="stars' + (spec.stars ? ' got' : '') + '">' + app.starsText(spec.stars) + '</span> · fee ' + app.fmtMoney(spec.fee) + ' · ' + esc(spec.reason) + '</span>';
+    return d;
+  }
+
+  /* ---------------- where the feed comes from (#46) ---------------- */
+  function feedSource() {
+    const S = app.S, C = app.contract && app.contract();
+    if (C) return { name: C.client + ' feed · ' + (FEEDS[C.feed] ? FEEDS[C.feed].name : 'client material'), note: 'supplied by the client' };
+    if (loaded) return { name: 'Re-run: ' + loaded.label + ' bucket', note: 'already yours' };
+    const A = CS.Auction && CS.Auction.live, P = A && A.pending ? A.pending() : null;
+    if (P && S.feedPrepaid && P.truth && CS.Auction.sameComp(S.comp, P.truth)) return { name: 'Auction lot #' + P.id + (P.headline ? ' · ' + P.headline : ''), sub: P.seller ? 'from ' + P.seller : '', note: 'paid at auction' };
+    const I = CS.Intake && CS.Intake.live, pile = I && I.loaded ? I.loaded() : null;
+    if (pile && S.feedPrepaid) return { name: pile.name + ' stockpile', sub: Math.round(pile.t) + ' t on the pile', note: 'prepaid' };
+    return null;
+  }
+
   /* ---------------- sections ---------------- */
   function machineCol(n, i) {
     const M = MACHINES[n.m], inf = app.info(n.uid), S = app.S, owned = app.nodeOwned ? app.nodeOwned(n) : true;
@@ -217,7 +257,7 @@
     if (mini) col.querySelector('.fn-camwrap').appendChild(mini.cv);
     const f = stationFlow(S.ev, S.line, S.tons, n.uid);
     const binsBox = el('div', 'fbins');
-    binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port)).join('') : '<div class="small">None: everything moves on.</div>');
+    binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port, binVerdict(n.uid + ':' + b.port))).join('') : '<div class="small">None: everything moves on.</div>');
     col.appendChild(binsBox);
     f.next.forEach((x) => {
       const nx = el('div', 'fnext');
@@ -352,11 +392,11 @@
     const seq = S.line.map((n, i) => ({ n, i })).concat([{ add: true }]);
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t)]);
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t)]);
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
-    const name = loaded ? 'Re-run: ' + loaded.label + ' bucket' : F ? F.name : 'Custom mix';
-    ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b> · ' + S.tons + ' t · ' + (S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
+    const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';
+    ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b>' + (src && src.sub ? ' <span class="small">' + esc(src.sub) + '</span>' : '') + ' · ' + S.tons + ' t · ' + (src ? esc(src.note) : S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
     const entry = S.feedOpts && S.feedOpts.entry != null ? S.feedOpts.entry : null;
     if (loaded && !S.run && S.line.length) {
       // the re-run bucket can go in at any station (#42)
@@ -369,6 +409,9 @@
       const k = S.line.findIndex((n) => n.uid === entry);
       if (k >= 0) ff.appendChild(el('span', null, ' · enters at station ' + (k + 1)));
     }
+    spec = contractSpec();
+    const old = $('#flow-contract'); if (old) old.remove();
+    const strip = contractStrip(); if (strip) { strip.id = 'flow-contract'; ff.after(strip); }
     const box = $('#flow-nodes'); box.innerHTML = '';
     seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : machineCol(x.n, x.i)));
     for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));

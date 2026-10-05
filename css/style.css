@@ -360,3 +360,8 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .mk.hot { color: var(--green); } .mk.cold { color: var(--red); }
 .mk.up { color: var(--green); } .mk.down { color: var(--amber); }
 .fn-w.neck { color: var(--amber); border: 1px solid var(--amber); border-radius: 2px; padding: 1px 4px; align-self: center; }
+.flow-contract { font-family: var(--mono); font-size: 12px; letter-spacing: 1px; color: var(--muted); padding: 0 2px 10px; }
+.flow-contract b { color: var(--cyan); font-weight: 400; }
+.flow-contract .stars { color: var(--muted); } .flow-contract .stars.got { color: var(--amber); }
+.ship { display: inline-block; font-style: normal; font-family: var(--mono); font-size: 10px; letter-spacing: 1px; margin-top: 2px; }
+.ship.ok { color: var(--green); } .ship.bad { color: var(--red); }

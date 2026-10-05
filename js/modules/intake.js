@@ -130,6 +130,8 @@
     app.on('load', restore);
     if (app.booted && app.S && app.S.ext) restore(app.S.ext);   // registered after boot: the 'load' event has already gone by
     app.on('save', function () { return { intake: serialize(st) }; });
+    // the plant screen names the loaded pile on its feed line (#46)
+    CS.Intake.live = { loaded: function () { const p = st.loaded && st.piles[st.loaded]; return p ? { key: st.loaded, name: p.name, t: p.t } : null; } };
 
     /* what can be bought: every preset with a supplier contract at its market price, and the current hand mix */
     function presetCost(id) { const q = { id: id, cost: FEEDS[id].cost }; app.emit('feedCost', q); return q.cost; }

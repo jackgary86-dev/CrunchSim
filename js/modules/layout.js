@@ -238,7 +238,12 @@
     closeStation(); closeDrawer();
     const d = DRAWERS.find((x) => x[0] === key); if (!d) return;
     const body = $('#drawer-body');
-    d[2].forEach((id) => { const s = document.getElementById(id); if (s) body.appendChild(s); });
+    d[2].forEach((id) => {
+      const s = document.getElementById(id); if (!s) return;
+      // #78: the old stockpile panel only shows while a pile bought before the auction-only rule is still in the yard
+      if (id === 'intake-panel' && CS.Intake && CS.Intake.live && CS.Intake.live.piles && !(CS.Intake.live.piles() > 0)) return;
+      body.appendChild(s);
+    });
     $('#drawer-title').textContent = d[1].toUpperCase();
     $('#drawer').classList.remove('hidden'); openDrawer = key;
     document.querySelectorAll('#toolbar .tool').forEach((b) => b.classList.toggle('on', b.dataset.key === key));

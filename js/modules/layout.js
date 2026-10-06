@@ -724,11 +724,43 @@
     return b;
   }
   /* a held lot drawn as what it is stored in: bale, big bag, bin, drum or bar, sized by tonnes (#68) */
+  /* #124: a bucket looks like what a yard ships it as: steel, non-ferrous and plastic in strapped bales, wood as a chip pile,
+   * glass as cullet, stone as a pile, rubber as crumb, refined metal as ingots and bars, liquids in drums, fines in sacks */
+  const FORM = { wood: 'chips', glass: 'cullet', granite: 'pile', limestone: 'pile', rubber: 'crumb', gold: 'bars', silver: 'bars', gel: 'drum', water: 'drum' };
+  function formOf(m, unitName) {
+    if (/bar|ingot/.test(unitName)) return 'bars';   // refined metal
+    if (FORM[m]) return FORM[m];                       // bulk materials keep their own look whatever they are bagged in
+    if (/drum/.test(unitName)) return 'drum';
+    if (/bag|sack/.test(unitName)) return 'bag';      // fines
+    return 'bale';
+  }
+  function shade(hex, k) {   // darker (k < 1) or lighter (k > 1) of a #rrggbb colour
+    const n = parseInt(hex.slice(1), 16), c = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+    return 'rgb(' + c(n >> 16) + ',' + c((n >> 8) & 255) + ',' + c(n & 255) + ')';
+  }
+  function unitSvg(form, col) {
+    col = col || '#8a97a6';
+    const d = shade(col, 0.62), l = shade(col, 1.25);
+    const mound = (piece) => { let h = ''; const pts = [[8, 33], [15, 34], [22, 34], [29, 33], [11, 27], [18, 27], [25, 27], [32, 32], [15, 21], [22, 21], [19, 15], [26, 26]]; pts.forEach((q, i) => { h += piece(q[0], q[1], i); }); return h; };
+    switch (form) {
+      case 'bale': return '<path d="M6 14 L20 8 L34 14 L34 30 L20 36 L6 30 Z" fill="' + col + '"/><path d="M6 14 L20 20 L34 14 M20 20 L20 36" stroke="' + d + '" stroke-width="1.2" fill="none"/><path d="M6 14 L20 20 L20 36 L6 30 Z" fill="' + d + '" opacity=".35"/>' +
+        '<path d="M11 12 L25 18 L25 34 M27 10 L13 16 L13 32" stroke="#2b3138" stroke-width="1.3" fill="none" opacity=".8"/><path d="M9 20 l6 2 M24 24 l6 -2 M10 26 l5 2" stroke="' + l + '" stroke-width=".8" opacity=".7"/>';
+      case 'chips': return '<path d="M3 36 Q20 6 37 36 Z" fill="' + d + '"/>' + mound((x, y, i) => '<rect x="' + (x - 3) + '" y="' + (y - 1) + '" width="6" height="2" fill="' + (i % 3 ? col : l) + '" transform="rotate(' + (i * 37 % 90 - 45) + ' ' + x + ' ' + y + ')"/>');
+      case 'cullet': return '<path d="M3 36 Q20 8 37 36 Z" fill="' + d + '" opacity=".6"/>' + mound((x, y, i) => '<path d="M' + x + ' ' + (y - 3) + ' l3 4 l-5 1 Z" fill="' + (i % 2 ? col : l) + '" opacity=".9"/>');
+      case 'pile': return '<path d="M3 36 Q20 6 37 36 Z" fill="' + d + '"/>' + mound((x, y, i) => '<path d="M' + (x - 3) + ' ' + y + ' l2 -3 l3 1 l1 3 l-4 1 Z" fill="' + (i % 2 ? col : l) + '"/>');
+      case 'crumb': return '<path d="M3 36 Q20 10 37 36 Z" fill="' + d + '"/>' + mound((x, y, i) => '<circle cx="' + x + '" cy="' + y + '" r="1.6" fill="' + (i % 2 ? '#5a5f68' : col) + '"/>');
+      case 'bars': return '<path d="M5 34 L9 27 L19 27 L23 34 Z M17 34 L21 27 L31 27 L35 34 Z" fill="' + col + '"/><path d="M11 26 L15 19 L25 19 L29 26 Z" fill="' + l + '"/><path d="M9 27 L19 27 M21 27 L31 27 M15 19 L25 19" stroke="#fff" stroke-width=".8" opacity=".6"/>';
+      case 'drum': return '<rect x="10" y="8" width="20" height="28" rx="3" fill="' + col + '"/><ellipse cx="20" cy="9" rx="10" ry="2.5" fill="' + l + '"/><path d="M10 17 H30 M10 27 H30" stroke="' + d + '" stroke-width="1.5"/>';
+      case 'bag': return '<path d="M11 12 Q20 6 29 12 L32 34 Q20 38 8 34 Z" fill="' + col + '"/><path d="M14 12 Q20 9 26 12" stroke="' + d + '" stroke-width="1.5" fill="none"/>';
+      case 'skip': return '<path d="M3 16 H37 L33 34 H7 Z" fill="#5e6b78"/><path d="M3 16 H37" stroke="#8a97a6" stroke-width="1.5"/>' +
+        '<rect x="8" y="9" width="7" height="7" fill="#9aa4ad" transform="rotate(-12 11 12)"/><rect x="17" y="7" width="6" height="9" fill="#b98a54"/><circle cx="28" cy="12" r="3.5" fill="#3c3f46"/><path d="M24 15 l4 -6 l3 6 Z" fill="#9ad9c9"/>';
+    }
+    return '';
+  }
   function unitPic(m, t, p80) {
     const I = CS.Inventory, U = I && I.unitFor ? I.unitFor(m, p80) : { name: 'bale' }, D = MATERIALS[m];
-    const kind = /bag/.test(U.name) ? 'bag' : /bin/.test(U.name) ? 'bin' : /drum/.test(U.name) ? 'drum' : /bar/.test(U.name) ? 'bar' : 'bale';
-    const sz = Math.round(18 + 20 * Math.min(1, Math.sqrt(t / 40)));
-    return '<span class="unit ' + kind + '" style="--uc:' + D.color + ';--us:' + sz + 'px" title="' + esc(U.name) + 's of ' + esc(D.name.toLowerCase()) + '"></span>';
+    const form = formOf(m, U.name || ''), sz = Math.round(26 + 18 * Math.min(1, Math.sqrt(t / 40)));
+    return '<span class="unit svg" style="--us:' + sz + 'px" title="' + esc(U.name) + 's of ' + esc(D.name.toLowerCase()) + '"><svg viewBox="0 0 40 40" aria-hidden="true">' + unitSvg(form, D.color) + '</svg></span>';
   }
   /* money that flies from a button to the bank (#68) */
   function flyMoney(a, amount) {   // a: the button's rectangle, taken before the click redrew it
@@ -762,7 +794,7 @@
     if (b.misc.t > 0) {
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
-      row.innerHTML = '<span class="unit heap" style="--us:' + Math.round(18 + 20 * Math.min(1, Math.sqrt(b.misc.t / 40))) + 'px"></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
+      row.innerHTML = '<span class="unit svg" style="--us:' + Math.round(26 + 18 * Math.min(1, Math.sqrt(b.misc.t / 40))) + 'px" title="a skip of mixed material"><svg viewBox="0 0 40 40" aria-hidden="true">' + unitSvg('skip') + '</svg></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
       const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re);
       const rf = refineMiscButton(); if (rf) { row.classList.add('rf'); row.appendChild(rf); }

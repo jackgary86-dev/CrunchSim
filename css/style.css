@@ -716,3 +716,7 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 /* #123: THE BIN is a heap of shred on a canvas */
 .bigbin canvas.heap { display: block; width: 100%; height: 100%; }
 .bigbin { padding: 0 2px; }
+
+/* #124: product forms */
+.unit.svg { background: none; box-shadow: none; clip-path: none; width: var(--us); height: var(--us); }
+.unit.svg svg { display: block; width: 100%; height: 100%; }

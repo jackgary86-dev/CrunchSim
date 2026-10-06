@@ -15,14 +15,14 @@ Each mode keeps its own save; switch any time from the toolbar (the first launch
 
 ![From auction to sale: buy lots, haul in, offload, shred, sort into buckets, smelt and sell](docs/process.svg)
 
-- **The plant screen.** The main screen holds only the feed and the plant. A PROJECTED line above the stations shows the margin per tonne and for the batch, and what your last change did to it; every station has a − / + row per setting, so you can tune the whole line against profit without opening each station (click a station for its full view). Your stations run left to right in the order you placed them, three at a time with arrows for longer lines. Each one shows its machine at work in a live cam, the bins it fills (striped by material, green at 90% purity) and what is left over moving on to the next station. The last section is the end result in buckets: a material held at 60% purity or better has its own bucket to SELL or RE-RUN as the next batch's feed, and everything not yet separated sits in a MISC bucket to re-run through different machines. A re-run goes in as the shred it already is (its recorded size, so shredders do not bill for breaking lumps again) and enters at the first station that is not a shredder; pick any other entry station above the plant, and the stations ahead of it sit that batch out. After the batch the feed goes back to what you had before. Click a station to sit down at it (machine cam, settings, upgrades, telemetry). Everything else opens from the toolbar in a drawer with a CLOSE button: Flowsheet, Auction, Market, Contracts & jobs, Bank & upgrades, Rivals, Plant report and Event log.
+- **The plant screen.** The main screen holds only the feed and the plant. A PROJECTED line above the stations shows the margin per tonne and for the batch, and what your last change did to it; every station has a − / + row per setting, so you can tune the whole line against profit without opening each station (click a station for its full view). Your stations run left to right in the order you placed them, three at a time with arrows for longer lines. Each one shows its machine at work in a live cam, the bins it fills (striped by material, green at 90% purity) and what is left over moving on to the next station. The last section is the end result in buckets: a material held at 60% purity or better has its own bucket to SELL or RE-RUN as the next batch's feed, and everything not yet separated sits in a MISC bucket to re-run through different machines. A re-run goes in as the shred it already is (its recorded size, so shredders do not bill for breaking lumps again) and enters at the first station that is not a shredder; pick any other entry station above the plant, and the stations ahead of it sit that batch out. After the batch the feed goes back to what you had before. Click a station to sit down at it (machine cam, settings, upgrades, telemetry). Everything else opens from the toolbar in a drawer with a CLOSE button: Auction, Plant (bank, upgrades, the flowsheet), Sell (inventory, jobs, market) and Records (rivals, milestones, plant report, event log).
 - **Sorter slots.** The sorting hall holds five sorters to start (grinders and furnaces do not count). Slots six to ten are bought one at a time in Bank & upgrades for $25k, $75k, $200k, $500k and $1.2M; the day-one plant hall (16 x 10 m) fits a grinder and five sorters.
 - **Refine for the big paydays.** The Refinery in Bank & upgrades starts with a smelting furnace ($25,000) that melts a sorted base-metal bucket into ingots or billet: paid at the ingot price for the metal in it, less melt loss and the energy to melt it, which beats selling scrap (10 t of 94% aluminum: $12,100 raw, $21,000 as ingots). The precious-metals refinery ($250,000) refines gold and silver into bars and buys a rich MISC concentrate by assay, paying 92% of the gold and silver in it less a treatment charge, the way e-scrap refiners do. REFINE sits next to SELL on the bucket list.
 - **Start small.** You own a hammermill shredder, a magnetic drum and $2,800. Everything must be sorted to be sold: a bucket sells only when one material makes up 90% or more of it, and cleaner buckets pay a premium (85% of list price at 90% pure, list at 95%, 125% at 99%). The magnet pulls the steel out clean; everything still mixed lands in the MISC bucket, which never sells and waits to be re-run through other sorters. One more sorter on the magnet's leftovers rarely makes anything pure on its own, so NEXT PURCHASE in Bank & upgrades ranks pairs as well: an eddy current separator pulls the mixed metals and a sink-float tank then floats the aluminum out clean.
 - **Buy at auction.** Material comes only from the scrap auction, or from re-running your MISC bucket: there is no buying feed by the tonne. The board always shows six lots, one per price tier ($1k, $3k, $8k, $20k, $50k, $100k), each about that much money's worth at its asking price; the cheap tiers are skips of mixed junk, the dear ones carry zorba, circuit boards and gold-plated pins. Rival yards bid against you. A won lot waits in the yard and feeds batch after batch until it runs out; several can wait, and LOAD picks the next. Each batch pays for power and consumables; the products go to the end buckets to sell, refine or re-run.
-- **Buy and upgrade.** Twenty-five more machines can be bought from the Flowsheet drawer. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Supplier contracts unlock richer feeds such as tires, zorba and quarry rubble. The Facility & office section (Bank & upgrades) sells a trading desk, a sampling lab, a control room, a weighbridge, a maintenance bay, a power substation, dust and water treatment and a nitrogen tank farm; the site drawing fills in as you buy them.
-- **Take contracts.** Clients post jobs with a spec sheet: target material, purity, recovery, a size window and an energy cap. They supply the feed. Bins that meet the spec ship, stars decide the fee, and every job hides a machine that looks right but is wrong for that material.
-- **Beat the rival yards.** Up to four named yards compete with you: a volume buyer, a bargain hunter, a copper specialist and a late sniper, entering over the first days of plant time with credit that grows as the game goes on. They bid on auction lots from the seller's declaration through their own bias and chase the market's HOT material, so you BID in 5% steps or BUY NOW at a 15% premium, and the high bid at the timer takes the lot. A contract or job you leave untaken for a shift of plant time goes to tender: rivals whose own flowsheets meet the spec quote, the client weighs fee, reputation and delivery time, and the winner holds the work until it delivers. The Rivals drawer keeps a league table (tonnes delivered, average stars, reputation) with your rank; lose one contract three times to the same rival and the log tells you what their plant has. A sandbox switch turns rivals off.
+- **Buy and upgrade.** Twenty-five more machines can be bought from the Flowsheet drawer. Each machine type can be raised five levels for more capacity, efficiency, liner life and power. Plant upgrades raise the batch size, cut the power price, lift product prices and cut liquid nitrogen cost. Richer feeds such as tires and zorba come from the dearer auction tiers. The Facility & office section (Bank & upgrades) sells a trading desk, a sampling lab, a control room, a weighbridge, a maintenance bay, a power substation, dust and water treatment and a nitrogen tank farm; the site drawing fills in as you buy them.
+- **Take jobs.** From Recycler rank, clients post large jobs on the Missions board: so many tonnes of a scarce non-ferrous metal at a purity, inside a delivery window, at a premium over spot. Product bins that meet the spec count toward the job from every batch, and reputation rises with deliveries and unlocks bigger jobs.
+- **Beat the rival yards.** Up to four named yards compete with you: a volume buyer, a bargain hunter, a copper specialist and a late sniper, entering over the first days of plant time with credit that grows as the game goes on. They bid on auction lots from the seller's declaration through their own bias and chase the market's HOT material, so you BID in 5% steps or BUY NOW at a 15% premium, and the high bid at the timer takes the lot. A job you leave untaken for a shift of plant time goes to tender: rivals whose own flowsheets meet the spec quote, the client weighs fee, reputation and delivery time, and the winner holds the work until it delivers. The Rivals panel (Records) keeps a league table (tonnes delivered, reputation) with your rank. A sandbox switch turns rivals off.
 - **Rank up.** Net worth is bank plus everything you own. It moves you from Scrapyard through Recycler, Processor, Plant operator and Industrial group to Mega-plant.
 
 Preset lines act as blueprints: loading one you cannot afford shows what to buy. Progress is saved in your browser; New Game in Bank & upgrades wipes it.
@@ -42,7 +42,7 @@ Preset lines act as blueprints: loading one you cannot afford shows what to buy.
 | Separation | Magnetic drum, eddy current separator, zig-zag air classifier, vibrating screen, sink-float tank, sensor sorter (XRT / LIBS) |
 | Smelting | Induction furnace, electric arc furnace, reverberatory kiln |
 
-**End game:** the Omniprocessor is the one fantasy machine. It unlocks at Mega-plant rank or once every contract has three stars, takes any feed down to a target size and sorts every material into a bin of its own. Its price, power, capacity and footprint are those of a real mega-shredder plant with its separation hall; its first completed batch shows an end-game card with the final score.
+**End game:** the Omniprocessor is the one fantasy machine. It unlocks at Mega-plant rank, takes any feed down to a target size and sorts every material into a bin of its own. Its price, power, capacity and footprint are those of a real mega-shredder plant with its separation hall; its first completed batch shows an end-game card with the final score.
 
 **Physics in the numbers:**
 
@@ -65,7 +65,7 @@ python -m http.server 8000
 
 Then browse to <http://localhost:8000>. On GitHub, enable Pages (Settings → Pages → deploy from the `main` branch, root folder) to host it.
 
-**Controls:** Space runs or stops a batch, 1/2/3 sets simulation speed, M toggles sound, ? opens help. Click a flowsheet node to see it in the cam and edit its settings. Click a material name for its properties. Progress is saved in your browser.
+**Controls:** Space runs or stops a batch, 1/2/3 sets simulation speed (4 jumps to the Control room's top speed once you own it), M toggles sound, ? opens help. Esc closes the topmost open layer (help, the station, settings, a drawer). Keys leave typing in a field, a focused button or link, Ctrl/Meta/Alt combinations and anything behind an open modal alone; Space still runs the batch from the RUN button. Click a flowsheet node to see it in the cam and edit its settings. Click a material name for its properties. Progress is saved in your browser.
 
 **Plant floor in 3D:** `plant3d.html` lays a flowsheet out as a plant hall: an intake hopper that swallows a car, chair, tire or rock depending on the feed, labelled machine blocks along striped conveyors, and bins that fill with the sim's steady-state product masses. Fragments shrink at crushers and are routed at separators with the same partition curves the game uses, so moving a settings slider changes the traffic at once. Pick a preset feed and line or press "use my plant" to load the line saved by the game. It loads three.js r128 from cdnjs; drag to orbit, wheel to zoom, right-drag to pan.
 
@@ -80,43 +80,59 @@ js/cam.js         animated machine cam engine and particle system
 js/scenes-a.js    cam scenes: compression, rotor, shear, cutting, tumbling machines
 js/scenes-b.js    cam scenes: hydraulic machines, freezer, separators
 js/audio.js       synthesized sound (Web Audio)
-js/score.js       contracts: spec sheets, shipping rule, stars and fees (no DOM)
-js/app.js         UI, run loop, telemetry, game layer (bank, ownership, upgrades, contracts), persistence
+js/score.js       plant measures: energy per tonne, line signature, size format (no DOM)
+js/app.js         UI, run loop, telemetry, game layer (bank, ownership, upgrades), persistence
 plant3d.html      standalone 3D plant floor demo (three.js r128 from cdnjs; shares data, sim and score)
 js/plant3d.js     plant-floor layout (pure, tested in Node) and the three.js renderer and controls
 gallery.html      developer page: every machine cam scene running live
 tools/build.py    bundles the game into one file for hosts that only allow inline code
-tests/            Node scripts that exercise the physics core
+tests/            Node scripts that exercise the physics core and the game modules
 ```
 
-Run the physics and contract checks with:
+Run the checks with (`tests/app-env.js` is a shared DOM stub, not a test):
 
 ```bash
-node tests/lines.js
-```
-
-```bash
-node tests/contracts.js
-```
-
-```bash
-node tests/sensor.js
-node tests/furnace.js
-node tests/plant3d-layout.js
-node tests/facility.js
-node tests/rivals.js
-node tests/playtest.js
+node tests/app-run.js
+node tests/auction.js
+node tests/audio-idle.js
+node tests/blueprints.js
+node tests/cam-resize.js
+node tests/economics.js
 node tests/endgame.js
-node tests/layout.js
-node tests/precious.js
-node tests/refinery.js
-node tests/slots.js
-node tests/round.js
-node tests/rivals-match.js
-node tests/milestones.js
-node tests/saveio.js
+node tests/facility.js
+node tests/floor.js
+node tests/furnace.js
 node tests/guide.js
+node tests/hotkeys.js
+node tests/inventory.js
+node tests/layout.js
+node tests/lines.js
+node tests/market.js
+node tests/milestones.js
+node tests/missions.js
+node tests/modes.js
+node tests/networth-stock.js
+node tests/onboarding.js
+node tests/overlays.js
+node tests/plant3d-layout.js
+node tests/playbooks.js
+node tests/playtest.js
+node tests/precious.js
+node tests/probe.js
+node tests/progression.js
+node tests/readme.js
+node tests/refinery.js
+node tests/rivals-match.js
+node tests/rivals.js
+node tests/round.js
+node tests/saveio.js
+node tests/sensor.js
+node tests/slots.js
+node tests/universal.js
+node tests/valuation.js
 ```
+
+Or all at once: `for t in tests/*.js; do node $t; done`.
 
 ## Sources
 

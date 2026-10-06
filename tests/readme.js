@@ -1,0 +1,15 @@
+// The README's test list and retired-feature text stay true (#238). Run: node tests/readme.js
+const fs = require('fs'), path = require('path');
+const root = path.join(__dirname, '..');
+const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+let fails = 0, n = 0;
+function check(ok, msg) { n++; console.log((ok ? '  ok   ' : '  FAIL ') + msg); if (!ok) fails++; }
+const listed = (readme.match(/node tests\/[\w-]+\.js/g) || []).map((s) => s.slice('node tests/'.length));
+const real = fs.readdirSync(__dirname).filter((f) => f.endsWith('.js') && f !== 'app-env.js');   // app-env.js is a helper, not a test
+const missing = listed.filter((f) => !fs.existsSync(path.join(__dirname, f)));
+const unlisted = real.filter((f) => listed.indexOf(f) < 0);
+check(!missing.length, 'every test the README runs exists' + (missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''));
+check(!unlisted.length, 'every tests/*.js is in the README list' + (unlisted.length ? ' (unlisted: ' + unlisted.join(', ') + ')' : ''));
+check(!/Take contracts|every contract has three stars|supplier contracts unlock|Supplier contracts unlock/i.test(readme), 'no text for the contracts retired in #78');
+console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' readme checks pass');
+process.exit(fails ? 1 : 0);

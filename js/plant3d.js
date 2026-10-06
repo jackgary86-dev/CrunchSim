@@ -124,7 +124,7 @@
     return { x: pts[0][0], z: pts[0][1], dx: 1, dz: 0 };
   }
 
-  CS.Plant3D = { layout: layout, beltPoint: beltPoint, primaryPort: primaryPort, portsOf: portsOf, PITCH: PITCH, LANE_W: LANE_W, BELT_Y: BELT_Y, BELT_W: BELT_W, BELT_SPEED: BELT_SPEED, SIZE: SIZE, BIN_SIZE: BIN_SIZE, HOPPER_SIZE: HOPPER_SIZE };
+  CS.Plant3D = { layout: layout, beltPoint: beltPoint, wheelZoom: wheelZoom, primaryPort: primaryPort, portsOf: portsOf, PITCH: PITCH, LANE_W: LANE_W, BELT_Y: BELT_Y, BELT_W: BELT_W, BELT_SPEED: BELT_SPEED, SIZE: SIZE, BIN_SIZE: BIN_SIZE, HOPPER_SIZE: HOPPER_SIZE };
 
   /* ================= everything below needs a browser ================= */
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -133,6 +133,13 @@
   const MAX_FRAG = 400;
   const $ = function (s) { return document.querySelector(s); };
   const clamp = function (v, a, b) { return v < a ? a : (v > b ? b : v); };
+  /* Camera distance after one wheel event. Chrome reports pixels (a notch is ~100), Firefox reports lines (~3) or pages,
+   * so deltaY is normalised to pixels first: DOM_DELTA_LINE (1) is about 33 px, DOM_DELTA_PAGE (2) about 100 px. */
+  function wheelZoom(r, deltaY, deltaMode) {
+    const px = deltaY * (deltaMode === 1 ? 33 : deltaMode === 2 ? 100 : 1);
+    return Math.max(6, Math.min(150, r * Math.exp(px * 0.001)));
+  }
+
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function fmtNum(x, d) { if (x == null || !isFinite(x)) return '--'; const f = d == null ? (Math.abs(x) >= 100 ? 0 : Math.abs(x) >= 10 ? 1 : 2) : d; return x.toLocaleString('en-US', { minimumFractionDigits: f, maximumFractionDigits: f }); }
@@ -382,6 +389,8 @@
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     canvas.addEventListener('pointerdown', function (e) { drag = { b: e.button === 2 || e.shiftKey ? 'pan' : 'rot', x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); cam.goal = null; });
     canvas.addEventListener('pointerup', function () { drag = null; });
+    canvas.addEventListener('pointercancel', function () { drag = null; });          // a cancelled touch must not leave the drag set
+    canvas.addEventListener('lostpointercapture', function () { drag = null; });
     canvas.addEventListener('pointermove', function (e) {
       if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
       if (drag.b === 'rot') { cam.theta -= dx * 0.005; cam.phi = clamp(cam.phi - dy * 0.005, 0.12, 1.5); }
@@ -391,7 +400,24 @@
         cam.target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
       }
     });
-    canvas.addEventListener('wheel', function (e) { e.preventDefault(); cam.r = clamp(cam.r * Math.exp(e.deltaY * 0.001), 6, 150); }, { passive: false });
+    canvas.addEventListener('wheel', function (e) { e.preventDefault(); cam.r = wheelZoom(cam.r, e.deltaY, e.deltaMode); }, { passive: false });
+    // keyboard camera: arrows orbit, + / - zoom (the canvas is focusable so this works without a mouse)
+    canvas.tabIndex = 0; canvas.setAttribute('aria-label', '3D plant floor. Arrow keys rotate the view, plus and minus zoom.');
+    canvas.addEventListener('keydown', function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'ArrowLeft') cam.theta += 0.08;
+      else if (e.key === 'ArrowRight') cam.theta -= 0.08;
+      else if (e.key === 'ArrowUp') cam.phi = clamp(cam.phi - 0.06, 0.12, 1.5);
+      else if (e.key === 'ArrowDown') cam.phi = clamp(cam.phi + 0.06, 0.12, 1.5);
+      else if (e.key === '+' || e.key === '=') cam.r = clamp(cam.r * 0.9, 6, 150);
+      else if (e.key === '-' || e.key === '_') cam.r = clamp(cam.r * 1.1, 6, 150);
+      else return;
+      e.preventDefault(); cam.goal = null;
+    });
+    // a lost WebGL context draws nothing; preventDefault lets the browser restore it, and three.js re-uploads on restore
+    let ctxLost = false;
+    canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); ctxLost = true; });
+    canvas.addEventListener('webglcontextrestored', function () { ctxLost = false; resize(); });
     function resize() { const w = wrap.clientWidth || 1, h = wrap.clientHeight || 1; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
     window.addEventListener('resize', resize); resize();
 
@@ -717,7 +743,7 @@
       drawFragments(); drawBins(dtReal);
       if (cam.goal) { cam.target.lerp(cam.goal, Math.min(1, dtReal * 4)); if (cam.target.distanceTo(cam.goal) < 0.05) cam.goal = null; }
     }
-    function frame() { applyCam(); renderer.render(scene, camera); }
+    function frame() { if (ctxLost) return; applyCam(); renderer.render(scene, camera); }
     function focus(x, z) { cam.goal = new THREE.Vector3(x, 0.8, z); if (cam.r > 30) cam.r = 24; }
 
     return { build: build, setTargets: setTargets, step: step, frame: frame, focus: focus, clearFragments: clearFragments, fragCount: function () { return aliveCount; }, setDropKind: function (k) { dropKind = k; } };

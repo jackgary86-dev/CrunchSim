@@ -292,6 +292,7 @@ body.lay #center { overflow-y: auto; }
 .fcol:last-child { border-right: 0; }
 .fcol.mach, .fcol.add { cursor: pointer; }
 .fcol.mach:hover, .fcol.mach:focus-visible, .fcol.add:hover, .fcol.add:focus-visible { background: #14202c; outline: none; }
+.fcol.mach:focus-visible, .fcol.add:focus-visible { outline: 2px solid var(--cyan); outline-offset: -4px; }   /* #255: the outline:none above left the focused column with only a faint tint; inset so the grid border does not clip it */
 .fcol.mach:hover .fn-n { color: var(--cyan); }
 .fcol.unowned { opacity: .6; }
 .fn-k { font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); }

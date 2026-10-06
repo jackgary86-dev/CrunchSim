@@ -53,5 +53,8 @@ check(/'overlays', 'layout'/.test(build), 'the single-file bundle loads it in th
 check(/id="log"[^>]*aria-live="polite"/.test(html) && /id="scorecard"[^>]*aria-live/.test(html), 'the event log and the score card are live regions');
 check(['btn-mute', 'btn-settings', 'btn-help', 'btn-help-close'].every((id) => new RegExp('id="' + id + '"[^>]*aria-label=').test(html)), 'the icon-only buttons carry an aria-label');
 
+const focusRule = (fs.readFileSync(__dirname + '/../css/style.css', 'utf8').match(/^[.]fcol[.]mach:focus-visible, [.]fcol[.]add:focus-visible [{][^}]*[}]/m) || [''])[0];
+check(/outline: 2px solid var[(]--cyan[)]/.test(focusRule), '#255: the focusable station columns (machine, add) get a visible cyan focus ring, not just a background tint');
+
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' overlays checks pass'));
 process.exit(fails ? 1 : 0);

@@ -177,7 +177,7 @@
   function cleanJob(j) {
     if (!validJob(j)) return null;
     return { id: Math.floor(+j.id) || 0, mat: j.mat, tier: clamp(Math.floor(+j.tier) || 0, 0, TIERS.length - 1), batches: Math.max(1, Math.floor(+j.batches) || 1), tons: +j.tons,
-      purity: clamp(+j.purity, 0, 1), mult: Math.max(1, +j.mult), windowH: +j.windowH, offerExpiresH: +j.offerExpiresH || 0, client: String(j.client || CLIENTS[0]),
+      purity: clamp(+j.purity, 0, 1), mult: clamp(+j.mult, 1, JOB.mult[1]), windowH: +j.windowH, offerExpiresH: +j.offerExpiresH || 0, client: String(j.client || CLIENTS[0]),
       state: ['offered', 'active', 'done', 'failed', 'dropped'].indexOf(j.state) >= 0 ? j.state : 'offered', t: clamp(+j.t || 0, 0, +j.tons), paid: +j.paid || 0,
       acceptedH: j.acceptedH != null && isFinite(+j.acceptedH) ? +j.acceptedH : null, deadlineH: j.deadlineH != null && isFinite(+j.deadlineH) ? +j.deadlineH : null };
   }

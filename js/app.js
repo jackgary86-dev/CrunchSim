@@ -839,14 +839,22 @@
 
   /* ---------------- persistence ---------------- */
   function collectExt() { const ext = {}; (hooks.save || []).forEach((fn) => { try { Object.assign(ext, fn() || {}); } catch (e) { console.error('module save', e); } }); return ext; }
+  /* #194: each save carries a revision. A tab that loaded revision N only writes N+1 while storage still holds N; if another
+   * tab has saved since (storage holds more), this tab is stale and stops writing, so an idle tab cannot undo a busy one. */
+  let loadedRev = 0, staleWarned = false;
+  function warnStale() { if (staleWarned) return; staleWarned = true; log('Another tab has saved this game, so this tab stopped saving. Reload the page to pick up that progress.', 'warn'); }
   function save() {
     try {
-      localStorage.setItem(saveKey(), JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() }));
+      const key = saveKey();
+      if (CS.SaveIO.isNewer(localStorage.getItem(key), loadedRev)) { warnStale(); return; }
+      loadedRev++;
+      localStorage.setItem(key, JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() }));
     } catch (e) { /* storage unavailable */ }
   }
   function load() {
     try {
       const d = JSON.parse(localStorage.getItem(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
+      loadedRev = Math.max(0, Math.floor(+d.rev) || 0); staleWarned = false;
       S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
       S.line = d.line.filter((n) => MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed', autoService: !!n.autoService }));
       const uids = new Set(S.line.map((n) => n.uid));
@@ -1012,6 +1020,8 @@
     document.addEventListener('visibilitychange', () => { lastRealT = performance.now(); gen++; next(); });
     next();
     setInterval(save, 15000);
+    // another tab saved this mode's game: say so at once, not at the next timer
+    window.addEventListener('storage', (e) => { if (e.key === saveKey() && CS.SaveIO.isNewer(e.newValue, loadedRev)) warnStale(); });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })(typeof window !== 'undefined' ? window : globalThis);

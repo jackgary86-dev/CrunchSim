@@ -14,5 +14,7 @@ check(!IO.decode('hello').ok && /not a CrunchSim/.test(IO.decode('hello').why), 
 check(!IO.decode(IO.PREFIX + 'not-base64!!').ok, 'a damaged code is refused');
 check(!IO.decode(IO.encode({ progress: '{"money":1}', rivals: null })).ok, 'a save that is not a game is refused');
 check(!IO.decode(IO.encode({ progress: null, rivals: null })).ok, 'an empty code is refused');
+check(IO.isNewer('{"rev":5,"line":[]}', 4) && !IO.isNewer('{"rev":4,"line":[]}', 4) && !IO.isNewer('{"line":[]}', 0), 'a stored save is newer only when its revision is higher (older saves count as 0)');
+check(!IO.isNewer(null, 3) && !IO.isNewer('garbage', 3), 'no save, or an unreadable one, never blocks a write');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' save-code checks pass');
 process.exit(fails ? 1 : 0);

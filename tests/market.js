@@ -93,5 +93,11 @@ check(JSON.stringify(M.serialize(a)) !== JSON.stringify(M.serialize(c)), 'differ
   Sim.prices.perMat = {};
 }
 
+/* ---- #213: trivial batches do not close a round ---- */
+check(M.countsAsRound({ done: 40, total: 40 }, 'complete') && M.countsAsRound({ done: 0.2, total: 0.2 }, 'complete'), 'a completed batch closes a round');
+check(!M.countsAsRound({ done: 0, total: 40 }, 'stopped') && !M.countsAsRound(null, 'stopped'), 'a batch that did nothing does not');
+check(!M.countsAsRound({ done: 0.5, total: 40 }, 'stopped') && !M.countsAsRound({ done: 5, total: 40 }, 'stopped'), 'a start-then-STOP (under 1 t or under a quarter) does not');
+check(M.countsAsRound({ done: 10, total: 40 }, 'stopped') && M.countsAsRound({ done: 12, total: 40 }, 'halted'), 'a batch stopped after a quarter of its tonnes still does');
+
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' market checks pass'));
 process.exit(fails ? 1 : 0);

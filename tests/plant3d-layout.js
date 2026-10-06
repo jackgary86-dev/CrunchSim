@@ -110,5 +110,12 @@ const broken = Sim.buildLine(LINES.car); broken[2].src = { uid: 999999, port: 'p
 const bl = layout(broken);
 check(bl.nodes[2].src === 'feed' && bl.belts.some((b) => b.from === 'feed' && b.to.uid === broken[2].uid), 'an unknown source is treated as head feed');
 
+// wheel zoom: one Firefox notch (3 lines) must zoom about as much as one Chrome notch (100 px), and pages more
+const { wheelZoom } = Plant3D;
+const chrome = wheelZoom(40, 100, 0), ff = wheelZoom(40, 3, 1), pg = wheelZoom(40, 1, 2);
+check(Math.abs(ff - chrome) / chrome < 0.05, 'a Firefox line-mode notch zooms like a Chrome pixel-mode notch (' + ff.toFixed(2) + ' vs ' + chrome.toFixed(2) + ')');
+check(Math.abs(pg - chrome) < 1e-9, 'a page-mode wheel step is 100 px');
+check(wheelZoom(40, -1e6, 0) === 6 && wheelZoom(40, 1e6, 0) === 150, 'wheel zoom stays within 6..150 m');
+
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall layout checks pass');
 process.exit(fails ? 1 : 0);

@@ -126,7 +126,7 @@
 
   const DRAWERS = [
     ['flowsheet', 'Flowsheet', ['line-panel', 'blueprint-panel', 'playbook-panel']],
-    ['auction', 'Auction', ['auction-panel', 'intake-panel']],
+    ['auction', 'Auction', ['auction-panel']],
     ['sales', 'Market', ['inventory-panel', 'market-panel']],
     ['jobs', 'Jobs', ['missions-panel']],
     ['bank', 'Bank & upgrades', ['bank-panel', 'milestones-panel', 'slots-panel', 'refinery-panel', 'facility-panel', 'saveio-panel']],
@@ -194,7 +194,6 @@
     const tonsRow = $('#feed-tons') && $('#feed-tons').closest('.row'); if (tonsRow) { tonsRow.classList.add('lot-tons'); lc.appendChild(tonsRow); }
     const fp = $('#feed-panel'); if (fp) stash.appendChild(fp);
     DRAWERS.forEach(([, , ids]) => ids.forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); }));
-    ['contract-panel'].forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); });   // #57: clients no longer send feed, so no contracts
     drawer.addEventListener('click', (e) => { if (e.target === drawer) closeDrawer(); });
     station.addEventListener('click', (e) => { if (e.target === station) closeStation(); });
     $('#drawer-close').addEventListener('click', closeDrawer);
@@ -230,7 +229,7 @@
     const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 0.05);
     if (S.run) return ['shred', 'sort'];
     if (S.mode === 'rivals' && CS.Round && CS.Round.live && CS.Round.live.miscAllowed() && CS.Inventory.miscTotal(CS.Inventory.misc()) >= 1) return ['shred'];   // no bin this round: run your MISC
-    if (!S.feedPrepaid && !(app.contract && app.contract())) return held ? ['sell', 'auction'] : ['auction'];
+    if (!S.feedPrepaid) return held ? ['sell', 'auction'] : ['auction'];
     return held ? ['shred', 'sell'] : ['shred'];
   }
   function showDrawer(key) {
@@ -238,12 +237,7 @@
     closeStation(); closeDrawer();
     const d = DRAWERS.find((x) => x[0] === key); if (!d) return;
     const body = $('#drawer-body');
-    d[2].forEach((id) => {
-      const s = document.getElementById(id); if (!s) return;
-      // #78: the old stockpile panel only shows while a pile bought before the auction-only rule is still in the yard
-      if (id === 'intake-panel' && CS.Intake && CS.Intake.live && CS.Intake.live.piles && !(CS.Intake.live.piles() > 0)) return;
-      body.appendChild(s);
-    });
+    d[2].forEach((id) => { const s = document.getElementById(id); if (s) body.appendChild(s); });
     $('#drawer-title').textContent = d[1].toUpperCase();
     $('#drawer').classList.remove('hidden'); openDrawer = key;
     document.querySelectorAll('#toolbar .tool').forEach((b) => b.classList.toggle('on', b.dataset.key === key));
@@ -309,49 +303,27 @@
       '<div class="fbin-box"><div class="fbin-fill"' + (runProg >= 0 ? ' style="height:' + Math.round(10 + 75 * runProg) + '%"' : '') + '>' + bands + '</div></div>' +
       '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + fmtW(tons) + '</span>' + (verdict || (pure ? '<em class="ship ok">SELLS</em>' : '<em class="ship bad" title="Mixed: under 90% of one material. It cannot be sold; it goes to the MISC bucket to re-run.">TO MISC</em>')) + '</div></div>';
   }
-  /* ---------------- contract on the plant screen (#47) ---------------- */
-  let spec = null;   // Score.evalContract for the active contract, refreshed each plant render
-  function contractSpec() {
-    const S = app.S, C = app.contract && app.contract(); if (!C || !app.Score) return null;
-    const cs = app.Score.evalContract(C, S.line, S.run ? { kwh: S.run.kwh, done: S.run.done } : null); cs.C = C;
-    return cs;
-  }
-  /* a station bin that holds the contract's target material either ships or is off spec, and says why */
-  function binVerdict(key) {
-    if (!spec) return '';
-    const b = spec.bins.find((x) => x.key === key); if (!b || !(b.st.total > 0.5) || !(b.tMass / b.st.total > 0.02)) return '';
-    const C = spec.C;
-    if (b.shippable) return '<em class="ship ok">SHIPS</em>';
-    let why = '';
-    if (b.purity < C.purityMin) why = Math.round(b.purity * 100) + '% pure, needs ' + Math.round(C.purityMin * 100) + '%';
-    else if (b.p80 > C.p80[1]) why = 'P80 ' + app.Score.fmtMm(b.p80) + ', max ' + app.Score.fmtMm(C.p80[1]);
-    else if (b.p80 < C.p80[0]) why = 'P80 ' + app.Score.fmtMm(b.p80) + ', min ' + app.Score.fmtMm(C.p80[0]);
-    return '<em class="ship bad" title="Off spec: this bin stays home">OFF-SPEC · ' + esc(why) + '</em>';
-  }
-  function contractStrip() {
-    if (!spec) return null;
-    const C = spec.C, d = el('div', 'flow-contract');
-    const lim = C.label + ' ≥ ' + Math.round(C.purityMin * 100) + '% pure · P80 ' + (C.p80[0] > 0 ? app.Score.fmtMm(C.p80[0]) + '–' : '≤ ') + app.Score.fmtMm(C.p80[1]) + ' · ≤ ' + C.kwhCap + ' kWh/t · recovery ≥ ' + Math.round(C.recMin * 100) + '%';
-    d.innerHTML = 'CONTRACT &#9654; <b>' + esc(C.name) + '</b> for ' + esc(C.client) + ' · ' + esc(lim) +
-      '<span class="cs-res"> · projected <span class="stars' + (spec.stars ? ' got' : '') + '">' + app.starsText(spec.stars) + '</span> · fee ' + app.fmtMoney(spec.fee) + ' · ' + esc(spec.reason) + '</span>';
-    return d;
-  }
-
   /* ---------------- where the feed comes from (#46) ---------------- */
+  /* A batch takes its lot's tonnes (and clears the prepaid flag) when it starts, and the flag comes back when it ends: while a
+   * batch runs, the source is the one it started with. */
+  let runSrc = null;
   function feedSource() {
-    const S = app.S, C = app.contract && app.contract();
-    if (C) return { name: C.client + ' feed · ' + (FEEDS[C.feed] ? FEEDS[C.feed].name : 'client material'), note: 'supplied by the client' };
+    const S = app.S;
+    if (S.run) return runSrc;
+    runSrc = sourceNow();
+    return runSrc;
+  }
+  function sourceNow() {
+    const S = app.S;
     if (loaded) return { name: 'Re-run: ' + loaded.label + ' bucket', note: 'already yours' };
     const A = CS.Auction && CS.Auction.live, P = A && A.pending ? A.pending() : null;
     if (P && S.feedPrepaid && P.truth && CS.Auction.sameComp(S.comp, P.truth)) return { name: 'Auction lot #' + P.id + (P.headline ? ' · ' + P.headline : ''), sub: P.seller ? 'from ' + P.seller : '', note: 'paid at auction' };
-    const I = CS.Intake && CS.Intake.live, pile = I && I.loaded ? I.loaded() : null;
-    if (pile && S.feedPrepaid) return { name: pile.name + ' stockpile', sub: Math.round(pile.t) + ' t on the pile', note: 'prepaid' };
     return null;
   }
 
   /* ---------------- the lot card (#64) and the idle plant (#65) ---------------- */
   let idleNow = false, runProg = -1, pureSeen = null, lastNote = null;
-  function isIdle() { const S = app.S; return !S.feedPrepaid && !(app.contract && app.contract()); }
+  function isIdle() { return !app.S.feedPrepaid && !app.S.run; }
   function compBars(c, n) {
     const e = Object.entries(c || {}).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]);
     const bar = '<div class="lc-comp">' + e.map((x) => '<i style="flex:' + x[1].toFixed(4) + ';background:' + MATERIALS[x[0]].color + '"></i>').join('') + '</div>';
@@ -437,7 +409,7 @@
       col.appendChild(binsBox);
     } else {
       const f = stationFlow(S.ev, S.line, S.tons, n.uid);
-      binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port, binVerdict(n.uid + ':' + b.port))).join('') : '<div class="small">None: everything moves on.</div>');
+      binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port)).join('') : '<div class="small">None: everything moves on.</div>');
       col.appendChild(binsBox);
       f.next.forEach((x) => {
         const nx = el('div', 'fnext');
@@ -504,7 +476,7 @@
     return b;
   }
   /* RE-RUN: the bucket becomes the feed, prepaid because the material is already yours. Nothing leaves the bucket until
-   * the batch starts, so changing the feed by hand just puts the bucket back. Same pattern as the intake stockpiles. */
+   * the batch starts, so changing the feed by hand just puts the bucket back.  */
   let loaded = null;   // { comp, label } of the bucket currently loaded as the feed
   function sameComp(a, b) {
     a = a || {}; b = b || {};
@@ -517,7 +489,6 @@
     const S = app.S, stock = srcMap(src);
     if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log('In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.', 'warn'); return; }
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
-    if (app.contract && app.contract()) { app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return; }
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
     if (plan.error) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
     const comp = plan.comp, tot = plan.tot, tons = plan.tons, entry = defaultEntry(S.line, MACHINES);
@@ -542,7 +513,7 @@
   function guardLoaded() {
     if (!loaded) return;
     const S = app.S, stock = srcMap(loaded.src);
-    if (!S.run && S.feedPrepaid && S.feedOwner === 'rerun' && !app.contract() && sameComp(S.comp, loaded.comp)) {
+    if (!S.run && S.feedPrepaid && S.feedOwner === 'rerun' && sameComp(S.comp, loaded.comp)) {
       let have = 0; for (const m in loaded.comp) have += stock[m] ? stock[m].t : 0;   // never run more than the bucket holds
       if (S.tons > have && have >= 1) { S.tons = Math.floor(have); app.syncFeedRows(); }
       return;
@@ -557,7 +528,7 @@
   function onBatchStart(p) {
     if (!loaded) return;
     const S = app.S, Inv = CS.Inventory, l = loaded; loaded = null;
-    if (app.contract() || !sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
+    if (!sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
     const tons = p && p.run && p.run.total ? p.run.total : S.tons;
     for (const m in l.comp) { if (l.src === 'misc' && Inv.withdrawMisc) Inv.withdrawMisc(m, tons * l.comp[m]); else Inv.withdraw(m, tons * l.comp[m]); }
     if (l.src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live) CS.Round.live.useMisc();
@@ -719,11 +690,11 @@
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';
-    if (!src && !S.feedPrepaid && !(app.contract && app.contract())) {   // #57: nothing is bought by the tonne
+    if (!src && !S.feedPrepaid && !S.run) {   // #57: nothing is bought by the tonne
       ff.innerHTML = 'FEED &#9654; <b>nothing loaded</b> · win a lot in the <a href="#" id="ff-auction">Auction</a>, or RE-RUN a bucket';
       const a = ff.querySelector('#ff-auction'); if (a) a.addEventListener('click', (e) => { e.preventDefault(); showDrawer('auction'); });
     } else {
@@ -741,9 +712,6 @@
       const k = S.line.findIndex((n) => n.uid === entry);
       if (k >= 0) ff.appendChild(el('span', null, ' · enters at station ' + (k + 1)));
     }
-    spec = contractSpec();
-    const old = $('#flow-contract'); if (old) old.remove();
-    const strip = contractStrip(); if (strip) { strip.id = 'flow-contract'; ff.after(strip); }
     // #81: a chime when a change makes a station bin pure enough to sell
     if (!idleNow && S.ev) {
       const pure = new Set(); S.ev.terminals.forEach((t) => { const b = Sim.binStats(t.stream.m, t.form); if (b.sellable && Sim.binMatters(b)) pure.add(t.key + ':' + b.main); });
@@ -786,7 +754,7 @@
     const restore = (ext) => {
       const d = ext && ext.layout, S = app.S; loaded = null; rerunActive = false;
       if (!d || !S) return;
-      if (d.loaded && !S.run && !S.contract && sameComp(S.comp, d.loaded.comp)) {
+      if (d.loaded && !S.run && sameComp(S.comp, d.loaded.comp)) {
         loaded = d.loaded; S.feedPrepaid = true; S.feedOwner = 'rerun'; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
       } else if (d.rerunActive && S.feedOpts) S.feedOpts = null;
     };

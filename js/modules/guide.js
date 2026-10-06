@@ -1,11 +1,11 @@
 /* CrunchSim module: the guided first lot (#79). Instead of a tour of panels, a new Progress game walks you through your
  * first lot on the real screen, one prompt at a time; each prompt waits for you to do the thing:
- *   1 buy the car-hulk lot in the $1k tier (dealt for the lesson, never a padded trap)
+ *   1 buy the pallet lot in the $1k tier (dealt for the lesson, never a padded trap)
  *   2 look at THE BIN: everything the grinder breaks falls in there, mixed
  *   3 press RUN BATCH
- *   4 the buckets: the magnet's steel is pure, so it SELLS; the rest is mixed, so it waits in MISC
- *   5 sell the steel
- *   6 MISC needs more sorters: NEXT PURCHASE in Bank & upgrades says which pair pulls something pure out of it
+ *   4 the buckets: the wood comes out pure, so it SELLS; the magnet's nails carry splinters, so they wait in MISC
+ *   5 sell the wood
+ *   6 the first sorter to buy: a sink-float (water) tank, for the windows lots: wood floats, glass sinks
  *   7 the rest of the lot: RUN THE LOT, then bigger lots
  * It can be skipped, and replayed from the help. Steps and their checks are pure (CS.Guide) for tests/guide.js.
  */
@@ -13,12 +13,12 @@
   'use strict';
   const CS = G.CS; if (!CS) return;
   const STEPS = [
-    { id: 'buy', title: 'BUY YOUR FIRST LOT', text: 'Material only comes from the scrap auction. Open the Auction and buy the car hulks in the $1k tier: a small lot your hammermill and magnet can handle.', target: '#tool-auction', wait: (s) => s.loaded },
-    { id: 'bin', title: 'THE BIN', text: 'The hammermill breaks the cars and everything falls into THE BIN: steel, plastic, rubber, aluminum, glass, all mixed. Mixed material sells for nothing. Sorting is how you make money.', target: '.fcol.bincol', next: true },
-    { id: 'run', title: 'RUN A BATCH', text: 'Press RUN BATCH. The magnet pulls the steel out of the BIN while the batch runs.', target: '#btn-run', wait: (s) => s.batches >= 1 },
-    { id: 'buckets', title: 'PURE SELLS, MIXED WAITS', text: 'The magnet\'s steel is 99% pure, so it sells. Everything else is still mixed: it waits in the MISC bucket until you have sorters that can separate it.', target: '.fcol.buckets', next: true },
-    { id: 'sell', title: 'SELL THE STEEL', text: 'Press SELL on the steel bucket. Pure material pays a premium: the cleaner the bucket, the higher the price.', target: '.bk.shelf', wait: (s) => s.sold >= 1 },
-    { id: 'pair', title: 'MISC NEEDS MORE SORTERS', text: 'One more sorter rarely gets anything pure out of MISC on its own. NEXT PURCHASE in Bank & upgrades ranks pairs: an eddy current separator pulls the mixed metals, a sink-float tank then floats the aluminum out clean. Save up for them, then RE-RUN your MISC through them.', target: '#tool-bank', next: true },
+    { id: 'buy', title: 'BUY YOUR FIRST LOT', text: 'Material only comes from the scrap auction. Open the Auction and buy the pallets in the $1k tier: wood with nails in it, a lot your hammermill and magnet can handle.', target: '#tool-auction', wait: (s) => s.loaded },
+    { id: 'bin', title: 'THE BIN', text: 'The hammermill breaks the pallets and everything falls into THE BIN: wood, nails and a little plastic, all mixed. Mixed material sells for nothing. Sorting is how you make money.', target: '.fcol.bincol', next: true },
+    { id: 'run', title: 'RUN A BATCH', text: 'Press RUN BATCH. The magnet pulls the nails out of the BIN while the batch runs, and the wood goes on past it.', target: '#btn-run', wait: (s) => s.batches >= 1 },
+    { id: 'buckets', title: 'PURE SELLS, MIXED WAITS', text: 'With the nails out, the wood is 98% pure, so it sells. The nails came off with splinters stuck to them: under 90% steel, so they wait in the MISC bucket until a sorter can clean them.', target: '.fcol.buckets', next: true },
+    { id: 'sell', title: 'SELL THE WOOD', text: 'Press SELL on the wood bucket. Pure material pays a premium: the cleaner the bucket, the higher the price.', target: '.bk.shelf', wait: (s) => s.sold >= 1 },
+    { id: 'pair', title: 'YOUR FIRST SORTER', text: 'The $1k board also deals old windows: wood, glass and steel. A sink-float (water) tank splits them: set its density under 2.5 and the wood floats while the glass sinks. Bank & upgrades sells it, and NEXT PURCHASE ranks what each sorter would add. Each richer tier on the board needs the next machine.', target: '#tool-bank', next: true },
     { id: 'lot', title: 'RUN THE REST', text: 'RUN THE LOT runs batch after batch until a lot is used up. Then buy bigger lots, sell what is pure, and grow the plant. That is the game.', target: '#btn-runlot', next: true, last: true }
   ];
   /* the step to show: the first one not done; a waiting step is done when its check passes on the snapshot */
@@ -40,7 +40,7 @@
     function begin() {
       if (app.S.mode !== 'progress') return;
       g = { on: true, done: {}, finished: false }; sold = 0;
-      const A = CS.Auction && CS.Auction.live; if (A && A.dealTier) A.dealTier(0, 'elv');
+      const A = CS.Auction && CS.Auction.live; if (A && A.dealTier) A.dealTier(0, 'pallets');
       app.save(); show();
     }
     function stop(why) { g.on = false; if (why === 'finished' || why === 'skipped') g.finished = true; if (layer) { layer.remove(); layer = null; } app.save(); }

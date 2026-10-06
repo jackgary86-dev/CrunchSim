@@ -45,16 +45,6 @@ check(junk.nodes[3].src === 'feed', 'wrong port falls back to feed');
 check(BP.sanitise({ nodes: [{ m: 'nope' }] }) === null && BP.sanitise(null) === null && BP.deserialise('x').length === 0, 'nothing usable gives null / empty line');
 check(Sim.evalLine(BP.deserialise(junk), FEEDS.elv.comp).terminals.length > 0, 'the sanitised junk still evaluates');
 
-console.log('=== per-contract best');
-const C = Score.CONTRACTS.find((c) => c.id === 'ferrous');
-const starter = Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }, { m: 'screen', s: { aperture: 40 }, src: '2:residue' }] });   // the old starter yard: TWIN>MAG>SCRN
-const best = {};
-check(BP.recordBest(best, { C, stars: 0, kwhT: 5 }, starter, 'elv') === false && !best.ferrous, 'zero stars is not kept');
-check(BP.recordBest(best, { C, stars: 2, kwhT: 5.2, fee: 700 }, starter, 'elv') === true && best.ferrous.stars === 2 && best.ferrous.sig === 'TWIN>MAG>SCRN', 'two stars stored with signature');
-check(BP.recordBest(best, { C, stars: 2, kwhT: 4 }, car, 'elv') === false && best.ferrous.sig === 'TWIN>MAG>SCRN', 'equal stars do not replace');
-check(BP.recordBest(best, { C, stars: 3, kwhT: 4 }, car, 'elv') === true && best.ferrous.stars === 3 && best.ferrous.sig === 'HAMM>AIR>MAG>ECS>SINK', 'more stars replace');
-check(Score.evalContract(C, BP.deserialise(best.ferrous.def), null).ev.nodes.length === 5, 'the stored best rebuilds and scores');
-
 console.log('=== auto-offer ordering');
 const saved = [
   { id: 'a', name: 'rock', feed: 'quarry', contract: null, def: BP.serialise(Sim.buildLine(LINES.quarry)) },
@@ -62,11 +52,11 @@ const saved = [
   { id: 'c', name: 'steel job', feed: 'elv', contract: 'ferrous', def },
   { id: 'd', name: 'mulch job', feed: 'pallets', contract: 'mulch', def: BP.serialise(Sim.buildLine(LINES.wood)) }
 ];
-let rows = BP.offer(saved, { contract: 'ferrous', contractFeed: 'elv', feedPreset: 'elv' });
-check(rows.map((r) => r.bp.id).join('') === 'bcad' && rows[0].fit && rows[1].fit && !rows[2].fit, 'contract active: lines on its feed first, stable order (' + rows.map((r) => r.bp.id + (r.fit ? '*' : '')).join(' ') + ')');
-rows = BP.offer(saved, { contract: null, feedPreset: 'pallets' });
-check(rows[0].bp.id === 'd' && rows[0].fit && rows.filter((r) => r.fit).length === 1, 'no contract: feed preset match first');
-rows = BP.offer(saved, { contract: null, feedPreset: 'custom' });
+let rows = BP.offer(saved, { feedPreset: 'elv' });
+check(rows.map((r) => r.bp.id).join('') === 'bcad' && rows[0].fit && rows[1].fit && !rows[2].fit, 'lines on the feed first, stable order (' + rows.map((r) => r.bp.id + (r.fit ? '*' : '')).join(' ') + ')');
+rows = BP.offer(saved, { feedPreset: 'pallets' });
+check(rows[0].bp.id === 'd' && rows[0].fit && rows.filter((r) => r.fit).length === 1, 'feed preset match first');
+rows = BP.offer(saved, { feedPreset: 'custom' });
 check(rows.every((r) => !r.fit) && rows.map((r) => r.bp.id).join('') === 'abcd', 'custom feed: nothing tagged, original order');
 
 console.log('=== persisted state is validated');
@@ -75,10 +65,10 @@ const st = BP.sanitiseState({ saved: [
   { id: 'y', name: 'no def', feed: 'elv', def: { nodes: [{ m: 'nope' }] } },
   { id: 'z', name: '', feed: 'elv', def },
   'garbage'
-], best: { ferrous: { stars: 9, def, feed: 'elv' }, bogus: { stars: 2, def }, mulch: { stars: 0, def } } });
-check(st.saved.length === 1 && st.saved[0].name === 'keep me' && st.saved[0].sig === 'HAMM>AIR>MAG>ECS>SINK' && st.saved[0].contract === 'ferrous', 'one valid blueprint kept, name trimmed, signature recomputed');
-check(Object.keys(st.best).join() === 'ferrous' && st.best.ferrous.stars === 3, 'best clamped to 3 stars, unknown contract and 0-star entries dropped');
-check(same(BP.sanitiseState(null), { saved: [], best: {} }) && same(BP.sanitiseState('x'), { saved: [], best: {} }), 'missing state gives empty shelves');
+], best: { ferrous: { stars: 3, def, feed: 'elv' } } });
+check(st.saved.length === 1 && st.saved[0].name === 'keep me' && st.saved[0].sig === 'HAMM>AIR>MAG>ECS>SINK' && !('contract' in st.saved[0]), 'one valid blueprint kept, name trimmed, signature recomputed, old contract tag dropped');
+check(!('best' in st), 'the old per-contract bests are dropped');
+check(same(BP.sanitiseState(null), { saved: [] }) && same(BP.sanitiseState('x'), { saved: [] }), 'missing state gives an empty shelf');
 
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nblueprints round-trip');
 process.exit(fails ? 1 : 0);

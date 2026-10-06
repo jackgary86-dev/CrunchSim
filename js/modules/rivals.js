@@ -1,4 +1,4 @@
-/* CrunchSim module: rivals. Rival bidders at the scrap auction and rival plants on the contract and job boards (tickets #31, #32).
+/* CrunchSim module: rivals. Rival bidders at the scrap auction and rival plants on the job board (tickets #31, #32).
  *
  * Bidders (#31): up to four named yards, each with a personality: a volume buyer, a copper specialist, a bargain hunter and a
  * late sniper. They enter the market over the first days of plant time and their credit grows with game time. Each reads a
@@ -9,15 +9,12 @@
  * lot at a time) or BUY NOW at a premium over the standing price. At the timer the high bid takes the lot; the board lists the
  * results with the price paid.
  *
- * Plants (#32): every rival owns real flowsheets (preset or test-proven lines). A contract the operator has not taken goes out
- * to tender after a shift of plant time; every rival whose flowsheet meets the spec (Score.evalContract on its own line) quotes,
- * the operator's current line counts too when it meets the spec, and the client weighs fee, reputation and delivery time. A
- * rival that wins holds the contract until it delivers. Offered jobs on the missions board are tendered the same way, scored on
- * the rival's real product bins. Rivals' deliveries feed a league table (tonnes delivered, average stars, reputation) with the
- * operator's rank; losing the same contract three times to one rival logs what their plant has that the spec needs. A sandbox
- * switch turns all of it off.
+ * Plants (#32): every rival owns real flowsheets (preset or test-proven lines). An offered job on the missions board that the
+ * operator leaves untaken for a shift of plant time goes to tender, scored on each rival's real product bins against the operator's
+ * line; the client weighs fee, reputation and delivery time. Deliveries feed a league table (tonnes delivered, reputation) with the
+ * operator's rank. A sandbox switch turns all of it off. (Client-contract tendering went with the contracts in #78.)
  *
- * The pure parts (roster, valuation, bidding, the gavel, tender scoring, capability, claims, league, serialization) live on
+ * The pure parts (roster, valuation, bidding, the gavel, tender scoring, capability, league, serialization) live on
  * CS.Rivals and touch no DOM, so tests/rivals.js can run them in Node. The page wiring registers through CS.app hooks only and
  * reads the auction board and the missions job board through CS.Auction.live and CS.Missions.live.
  */
@@ -50,11 +47,10 @@
   const MOBILISE_H = 2;        // a toll processor needs about two hours to truck in the client's feed and set its line
   const SLIP = 0.12, SLIP_X = 1.5;   // shredder plants run 85-90% available: one job in eight hits a breakdown, delivers 50% later and a star down
   const W = { fee: 0.5, rep: 0.3, time: 0.2 };   // MEAT tender scoring: price usually carries 40-60% of the weight, quality record and delivery the rest
-  const HINT_AT = 3;           // ticket #32: the third loss of one contract to one rival tells the operator what that rival has
   const RESULTS_KEEP = 8, NEWS_KEEP = 12;
   const REP_D = { start: 0, onTime: 3, late: 1, fail: -5, job: [6, 10, 15] };   // fallback when the missions module is absent; same scale as its REP
 
-  /* ---------------- rival flowsheets: preset lines and the intended lines measured in tests/contracts.js ---------------- */
+  /* ---------------- rival flowsheets: preset lines and test-proven lines ---------------- */
   const RLINES = {
     car: LINES.car, quarry: LINES.quarry, wood: LINES.wood, tire: LINES.tire, hydro: LINES.hydro, ingot: LINES.ingot,
     ferrous: { name: 'Shear, magnet and screen', feed: 'elv', nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'magnet', s: { field: 250 }, src: '1:product' }, { m: 'screen', s: { aperture: 40 }, src: '2:residue' }] },
@@ -67,7 +63,7 @@
   /* ---------------- the roster ----------------
    * appetite: what share of the going yard rate (0.6 x product value x the feed's yard ratio, as auction.js prices lots) the yard
    * will pay for what it believes is in the lot. trust: how much of a seller's payable-metal claim it believes. rate: bids per hour
-   * on a lot it wants. quote: its contract fee as a share of the list fee. rep: its record on the missions reputation scale (0-100).
+   * on a lot it wants. quote: its fee on a job as a share of the list premium. rep: its record on the missions reputation scale (0-100).
    */
   const ROSTER = [
     { id: 'ironside', name: 'Ironside Shredding', kind: 'volume', label: 'volume buyer', seed: 1,
@@ -171,20 +167,8 @@
   function buyNowPrice(L) { const A = CS.Auction; return Math.ceil((A ? A.minBid(L) : L.ask) * (1 + BUY_NOW)); }
 
   /* ---------------- capability (#32): what each rival's own flowsheets really make ---------------- */
-  const built = {}, binCache = {}, capCache = {};
+  const built = {}, binCache = {};
   function builtLine(lid) { const D = RLINES[lid]; if (!D || !CS.Sim) return null; return built[lid] || (built[lid] = CS.Sim.buildLine(D)); }
-  /* the best of R's lines on contract C: most stars, then fastest. null when none meets the spec. */
-  function contractCap(R, C) {
-    const key = R.id + '|' + C.id; if (key in capCache) return capCache[key];
-    let best = null;
-    if (CS.Score) R.lines.forEach((lid) => {
-      const line = builtLine(lid); if (!line) return;
-      const cs = CS.Score.evalContract(C, line, null);
-      if (!(cs.stars > 0) || !(cs.R > 0)) return;
-      if (!best || cs.stars > best.stars || (cs.stars === best.stars && cs.R > best.R)) best = { line: lid, stars: cs.stars, R: cs.R, kwhT: cs.kwhT, deliveredT: cs.deliveredT, hours: C.tons / cs.R + MOBILISE_H };
-    });
-    return (capCache[key] = best);
-  }
   /* a line's product bins on its own feed, in the shape app.binList() gives ({ st, form }), and its head rate */
   function lineBins(lid) {
     if (lid in binCache) return binCache[lid];
@@ -207,22 +191,6 @@
     R.lines.forEach((lid) => { const b = lineBins(lid); if (!b) return; const hrs = jobHoursOn(j, b.bins, b.R); if (isFinite(hrs) && hrs > 0 && (!best || hrs + MOBILISE_H < best.hours)) best = { line: lid, hours: hrs + MOBILISE_H }; });
     return best;
   }
-  function settingText(m, s) {
-    const M = MACHINES[m]; if (!M || !s) return '';
-    const parts = Object.keys(s).map((k) => { const d = (M.settings || []).find((x) => x.id === k); const v = s[k]; return d && typeof v === 'number' ? d.label.toLowerCase() + ' ' + v + (d.unit ? ' ' + d.unit : '') : (typeof v === 'string' ? k + ' ' + v : ''); }).filter(Boolean);
-    return parts.length ? ' (' + parts.join(', ') + ')' : '';
-  }
-  /* what to tell the operator after the third loss: the rival's flowsheet, its result, and the machines the operator lacks */
-  function hintText(R, C, count, owned) {
-    const cap = contractCap(R, C); if (!cap) return '';
-    const D = RLINES[cap.line];
-    const flow = D.nodes.map((n) => MACHINES[n.m].name + settingText(n.m, n.s)).join(' > ');
-    const ids = D.nodes.map((n) => n.m).filter((m, i, a) => a.indexOf(m) === i);
-    const lack = owned ? ids.filter((m) => !owned.has(m)).map((m) => MACHINES[m].name) : [];
-    return R.name + ' has taken ' + C.name + ' from you ' + count + ' times. Their ' + (D.name || 'line') + ' runs ' + flow + ': ' + cap.stars + ' star' + (cap.stars === 1 ? '' : 's') + ' at ' + (isFinite(cap.kwhT) ? cap.kwhT.toFixed(1) : '--') + ' kWh/t and ' + cap.R.toFixed(1) + ' t/h. ' +
-      (lack.length ? 'You do not own: ' + lack.join(', ') + '. ' : 'You own every machine it uses: build that flowsheet and accept before the tender. ') + C.hint;
-  }
-
   /* ---------------- tenders (#32) ---------------- */
   /* Customers weigh fee, reputation and delivery time. cands: [{ who, fee, rep, hours }]. The cheapest fee and the fastest delivery score
    * full marks on their criteria and the others pro rata; reputation scores on its 0-100 scale. A tie stays with the first candidate
@@ -239,51 +207,15 @@
   /* ---------------- state ---------------- */
   function newRival(R) { return { rep: R.rep, tonnes: 0, starsSum: 0, starsN: 0, lots: 0, lotT: 0, spent: 0, deliveries: 0 }; }
   function newState() {
-    const st = { on: true, rivals: {}, you: { tonnes: 0, starsSum: 0, starsN: 0 }, claims: {}, rjobs: [], open: {}, seen: {}, losses: {}, results: [], news: [], mine: [], rngState: SEED };
+    const st = { on: true, rivals: {}, you: { tonnes: 0, starsSum: 0, starsN: 0 }, rjobs: [], seen: {}, results: [], news: [], mine: [], rngState: SEED };
     ROSTER.forEach((R) => { st.rivals[R.id] = newRival(R); });
     return st;
   }
   function repOf(st, id) { const r = st.rivals[id]; return r ? r.rep : 0; }
-  function repStep() { const M = CS.Missions; return M && M.REP ? { onTime: M.REP.contractOnTime, late: M.REP.contractLate, fail: M.REP.contractFail, job: M.REP.jobDone } : REP_D; }
+  function repStep() { const M = CS.Missions; return M && M.REP ? { onTime: REP_D.onTime, late: REP_D.late, fail: REP_D.fail, job: M.REP.jobDone } : REP_D; }
   function tierOf(rep) { const M = CS.Missions; return M && M.tierOf ? M.tierOf(rep) : 0; }
   function bumpRep(rs, d) { rs.rep = clamp(Math.round((rs.rep + d) * 10) / 10, 0, 100); }
 
-  /* Tender every open contract whose window has run out. env: { contracts, held: id the operator has accepted, you(C) -> candidate or null }.
-   * Mutates st (open, claims, losses). Returns events: { type: 'claim' | 'held', C, R, claim, count, hint } */
-  function tenderContracts(st, h, rng, env) {
-    const out = [];
-    (env.contracts || []).forEach((C) => {
-      if (env.held === C.id) { st.open[C.id] = h; return; }   // the operator's own contract: the window restarts when they release it
-      if (st.claims[C.id]) return;
-      if (st.open[C.id] == null || st.open[C.id] > h) { st.open[C.id] = h; return; }
-      if (h - st.open[C.id] < TENDER_H) return;
-      st.open[C.id] = h;
-      const rivals = activeAt(h).map((R) => { const cap = contractCap(R, C); return cap ? { who: R.id, fee: Math.round(C.fee * R.quote * 100) / 100, rep: repOf(st, R.id), hours: cap.hours, cap } : null; }).filter(Boolean);
-      if (!rivals.length) return;
-      const you = env.you ? env.you(C) : null;
-      const t = tender((you ? [you] : []).concat(rivals)); if (!t) return;
-      if (t.winner.who === 'you') { out.push({ type: 'held', C, t, you }); return; }
-      const R = rivalById(t.winner.who), cap = t.winner.cap, slip = rng() < SLIP;
-      const stars = Math.max(0, cap.stars - (slip ? 1 : 0));
-      const claim = { by: R.id, fromH: h, untilH: h + cap.hours * (slip ? SLIP_X : 1), stars, t: stars > 0 ? cap.deliveredT : 0, slip, fee: t.winner.fee };
-      st.claims[C.id] = claim;
-      const L = st.losses[C.id] || (st.losses[C.id] = {}); L[R.id] = (L[R.id] || 0) + 1;
-      out.push({ type: 'claim', C, R, claim, t, you, count: L[R.id], hint: L[R.id] === HINT_AT });
-    });
-    return out;
-  }
-  /* claims whose delivery time has come: the rival delivers, its record moves, the contract reopens. Returns [{ id, R, claim }] */
-  function settleClaims(st, h) {
-    const out = [], D = repStep();
-    Object.keys(st.claims).forEach((id) => {
-      const c = st.claims[id]; if (!(h >= c.untilH)) return;
-      const R = rivalById(c.by), rs = st.rivals[c.by];
-      if (rs) { rs.starsSum += c.stars; rs.starsN++; rs.tonnes += c.t; rs.deliveries++; bumpRep(rs, c.stars > 0 ? (c.slip ? D.late : D.onTime) : D.fail); }
-      delete st.claims[id]; st.open[id] = h;
-      out.push({ id, R, claim: c });
-    });
-    return out;
-  }
   /* Tender the offered jobs that have waited a window. J: the missions job state ({ board, active }). env: { you(j) -> candidate or null }.
    * A rival that wins takes the job off the board. Returns events: { type: 'claim' | 'held', job, R, rj } */
   function tenderJobs(st, h, rng, J, env) {
@@ -334,7 +266,7 @@
   /* ---------------- persistence ---------------- */
   const num = (v, d) => isFinite(+v) ? +v : d;
   function serialize(st, rngState) {
-    return { on: st.on, rivals: st.rivals, you: st.you, claims: st.claims, rjobs: st.rjobs, open: st.open, seen: st.seen, losses: st.losses, results: st.results, news: st.news, mine: st.mine, rngState: rngState == null ? st.rngState : rngState };
+    return { on: st.on, rivals: st.rivals, you: st.you, rjobs: st.rjobs, seen: st.seen, results: st.results, news: st.news, mine: st.mine, rngState: rngState == null ? st.rngState : rngState };
   }
   function deserialize(d) {
     const st = newState();
@@ -348,20 +280,9 @@
       r.spent = Math.max(0, num(s.spent, 0)); r.deliveries = Math.max(0, Math.floor(num(s.deliveries, 0)));
     });
     if (d.you && typeof d.you === 'object') { st.you.tonnes = Math.max(0, num(d.you.tonnes, 0)); st.you.starsN = Math.max(0, Math.floor(num(d.you.starsN, 0))); st.you.starsSum = clamp(num(d.you.starsSum, 0), 0, 3 * st.you.starsN); }
-    const ids = CS.Score ? CS.Score.CONTRACTS.map((C) => C.id) : [];
-    for (const id in (d.claims || {})) {
-      const c = d.claims[id];
-      if (ids.indexOf(id) < 0 || !c || !rivalById(c.by) || !isFinite(+c.untilH)) continue;
-      st.claims[id] = { by: c.by, fromH: num(c.fromH, 0), untilH: +c.untilH, stars: clamp(Math.floor(num(c.stars, 0)), 0, 3), t: Math.max(0, num(c.t, 0)), slip: !!c.slip, fee: Math.max(0, num(c.fee, 0)) };
-    }
     st.rjobs = (Array.isArray(d.rjobs) ? d.rjobs : []).filter((rj) => rj && rivalById(rj.by) && rj.job && MATERIALS[rj.job.mat] && isFinite(+rj.job.tons) && isFinite(+rj.untilH))
       .map((rj) => ({ by: rj.by, job: { id: Math.floor(num(rj.job.id, 0)), mat: rj.job.mat, tons: +rj.job.tons, purity: clamp(num(rj.job.purity, 0.9), 0, 1), tier: clamp(Math.floor(num(rj.job.tier, 0)), 0, 2), client: String(rj.job.client || ''), mult: Math.max(1, num(rj.job.mult, 1)) }, fromH: num(rj.fromH, 0), untilH: +rj.untilH, slip: !!rj.slip }));
-    for (const id in (d.open || {})) if (ids.indexOf(id) >= 0 && isFinite(+d.open[id])) st.open[id] = +d.open[id];
     for (const id in (d.seen || {})) if (isFinite(+d.seen[id])) st.seen[id] = +d.seen[id];
-    for (const id in (d.losses || {})) {
-      if (ids.indexOf(id) < 0 || !d.losses[id] || typeof d.losses[id] !== 'object') continue;
-      st.losses[id] = {}; for (const r in d.losses[id]) if (rivalById(r)) st.losses[id][r] = Math.max(0, Math.floor(num(d.losses[id][r], 0)));
-    }
     st.results = (Array.isArray(d.results) ? d.results : []).filter((x) => x && isFinite(+x.id)).slice(0, RESULTS_KEEP)
       .map((x) => ({ id: +x.id, headline: String(x.headline || ''), tons: num(x.tons, 0), by: x.by === 'you' || rivalById(x.by) ? x.by : null, perT: Math.max(0, num(x.perT, 0)), h: num(x.h, 0), bids: Math.max(0, Math.floor(num(x.bids, 0))), def: !!x.def }));
     st.news = (Array.isArray(d.news) ? d.news : []).filter((x) => x && typeof x.text === 'string').slice(0, NEWS_KEEP).map((x) => ({ h: num(x.h, 0), text: x.text, cls: typeof x.cls === 'string' ? x.cls : '' }));
@@ -371,9 +292,9 @@
   }
 
   CS.Rivals = {
-    ROSTER, RLINES, BUY_NOW, SNIPE_H, SNIPE_RATE, NOISE, DOUBLE_H, HOT_SHARE, HOT_RATE, TENDER_H, MOBILISE_H, SLIP, SLIP_X, W, HINT_AT, mulberry32,
+    ROSTER, RLINES, BUY_NOW, SNIPE_H, SNIPE_RATE, NOISE, DOUBLE_H, HOT_SHARE, HOT_RATE, TENDER_H, MOBILISE_H, SLIP, SLIP_X, W, mulberry32,
     rivalById, activeAt, budgetAt, perceive, valuation, nextBidFor, bidStep, closeLot, buyNowPrice,
-    contractCap, lineBins, jobCap, jobHoursOn, hintText, tender, tenderContracts, settleClaims, tenderJobs, settleJobs, league,
+    lineBins, jobCap, jobHoursOn, tender, tenderJobs, settleJobs, league,
     newState, serialize, deserialize
   };
 
@@ -453,25 +374,13 @@
       render();
     });
 
-    /* ---- contracts and jobs: the operator as a bidder ---- */
-    function youContract(C) {
-      const s = S(); if (!s || !s.line || !s.line.length || !CS.Score) return null;
-      if (s.owned && s.line.some((n) => !s.owned.has(n.m))) return null;
-      const cs = CS.Score.evalContract(C, s.line, null);
-      return cs.stars > 0 && cs.R > 0 ? { who: 'you', fee: C.fee, rep: youRep(), hours: C.tons / cs.R + MOBILISE_H } : null;
-    }
+    /* ---- jobs: the operator as a bidder ---- */
     function youJob(j) {
       const M = CS.Missions, L = jobsLive(), s = S(); if (!M || !L || !s) return null;
       const J = L.jobs(); if ((j.tier || 0) > M.tierOf(L.rep()) || J.active.length >= M.JOB.maxActive) return null;
       const hrs = jobHoursOn(j, typeof app.binList === 'function' ? app.binList() : [], s.mr ? s.mr.R : 0);
       return isFinite(hrs) && hrs > 0 ? { who: 'you', fee: j.mult, rep: L.rep(), hours: hrs + MOBILISE_H } : null;
     }
-    app.on('veto:acceptContract', (p) => {
-      if (!st.on || !p) return '';
-      const c = st.claims[p.id]; if (!c) return '';
-      return (p.C ? p.C.name : p.id) + ' is with ' + nameOf(c.by) + ', who won the tender. It reopens when they deliver, in about ' + fmtH(Math.max(0, c.untilH - clockH())) + ' of plant time.';
-    });
-
     function step(dh) {
       const h = clockH(); let changed = false;
       // the auction: rivals raise on the open lots
@@ -482,17 +391,7 @@
         redrawAuction();
       }
       // deliveries that are due
-      settleClaims(st, h).forEach((d) => { changed = true; const C = CS.Score.CONTRACTS.find((x) => x.id === d.id); news(d.R.name + ' delivered ' + (C ? C.name : d.id) + ': ' + d.claim.stars + ' star' + (d.claim.stars === 1 ? '' : 's') + (d.claim.slip ? ', late' : '') + '. It is open again.', d.claim.stars ? '' : 'ok'); });
       settleJobs(st, h).forEach((d) => { changed = true; news(d.R.name + ' delivered ' + fnum(d.rj.job.tons, 1) + ' t of ' + MATERIALS[d.rj.job.mat].name.toLowerCase() + ' to ' + d.rj.job.client + (d.rj.slip ? ', late' : '') + '.'); });
-      // tenders
-      if (CS.Score) tenderContracts(st, h, rng, { contracts: CS.Score.CONTRACTS, held: S().contract || null, you: youContract }).forEach((e) => {
-        changed = true;
-        if (e.type === 'held') { news(e.C.client + ' kept ' + e.C.name + ' open for you: your line beat the rival quotes.', 'ok'); log(e.C.client + ' tendered ' + e.C.name + ' and your line scored best on fee, reputation and delivery: it stays open for you.', 'ok'); return; }
-        const why = e.you ? ' Their quote ' + money(e.claim.fee) + '/t vs your ' + money(e.C.fee) + '/t, reputation ' + Math.round(repOf(st, e.R.id)) + ' vs ' + Math.round(e.you.rep) + ', ' + fmtH(e.t.winner.hours) + ' vs ' + fmtH(e.you.hours) + '.' : ' Your current line cannot meet the spec.';
-        log(e.C.client + ' gave ' + e.C.name + ' to ' + e.R.name + ' (' + e.R.label + ').' + why + ' Back in about ' + fmtH(e.claim.untilH - h) + '.', 'warn');
-        news(e.R.name + ' won ' + e.C.name + ' at ' + money(e.claim.fee) + '/t', 'warn');
-        if (e.hint) { const t = hintText(e.R, e.C, e.count, S().owned); if (t) log('HINT: ' + t, 'warn'); }
-      });
       const L = jobsLive();
       if (L) {
         const ej = tenderJobs(st, h, rng, L.jobs(), { you: youJob });
@@ -515,7 +414,6 @@
     app.on('batchStart', () => { const L = jobsLive(); jobSnap = {}; if (L) L.jobs().active.forEach((j) => { jobSnap[j.id] = j.t; }); });
     app.on('batchComplete', (p) => {
       if (!p || !p.r) return;
-      if (p.cs) { st.you.starsSum += p.cs.stars || 0; st.you.starsN++; if (p.cs.stars > 0) st.you.tonnes += p.cs.deliveredT || 0; }
       const L = jobsLive();
       if (L && jobSnap) { const J = L.jobs(); J.active.concat(J.done).forEach((j) => { if (j.id in jobSnap) st.you.tonnes += Math.max(0, j.t - jobSnap[j.id]); }); }
       jobSnap = null;
@@ -526,9 +424,9 @@
       st.on = !!on;
       if (!st.on) {
         board().forEach((L) => { delete L.bid; });
-        st.claims = {}; st.rjobs = []; st.open = {}; st.seen = {}; st.mine = [];
-        log('Sandbox: rivals are off. No rival bids, no tenders; lots sell at the ask and every contract stays open.', 'ok');
-      } else log('Rivals are back in the market. Open lots take bids again and untaken contracts go to tender after ' + TENDER_H + ' h of plant time.', 'warn');
+        st.rjobs = []; st.seen = {}; st.mine = [];
+        log('Sandbox: rivals are off. No rival bids, no tenders; lots sell at the ask and every job stays open.', 'ok');
+      } else log('Rivals are back in the market. Open lots take bids again and untaken jobs go to tender after ' + TENDER_H + ' h of plant time.', 'warn');
       redrawAuction(); if (typeof app.renderAll === 'function') app.renderAll(); render(); save();
     }
 
@@ -553,20 +451,18 @@
         '#rivals-panel .rv{font-size:11px;color:var(--muted);padding:3px 0;border-bottom:1px dotted var(--line);line-height:1.35}#rivals-panel .rv b{color:var(--text);font-weight:400}#rivals-panel .rv .k{color:var(--amber);font-family:var(--mono);font-size:10px;letter-spacing:1px}' +
         '#rivals-panel .wire div{font-family:var(--mono);font-size:10px;color:var(--muted);padding:1px 0}#rivals-panel .wire div.warn{color:var(--amber)}#rivals-panel .wire div.ok{color:var(--green)}#rivals-panel .tog{margin-top:8px;width:100%}' +
         '#auction-panel .rbtns{grid-column:2;grid-row:1/span 4;display:flex;flex-direction:column;gap:4px;align-self:center}#auction-panel .rbtns button{grid-column:auto;grid-row:auto}' +
-        '#auction-panel .rbid{color:var(--cyan)}#auction-panel .rbid.you{color:var(--green)}#auction-panel .rres{font-family:var(--mono);font-size:10px;color:var(--muted);padding:1px 0}#auction-panel .rres b{color:var(--amber);font-weight:400}' +
-        '#contracts .rival-cd{font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted)}#contracts .rival-cd.bad{color:var(--red)}';
+        '#auction-panel .rbid{color:var(--cyan)}#auction-panel .rbid.you{color:var(--green)}#auction-panel .rres{font-family:var(--mono);font-size:10px;color:var(--muted);padding:1px 0}#auction-panel .rres b{color:var(--amber);font-weight:400}';
       panel.appendChild(css);
       els = { ro, lg, roster, held, wire, tog, tag: panel.querySelector('h2 .tag') };
     }
     function render() {
-      renderRows();
       if (!els) return;
       const h = clockH(), act = activeAt(h);
       els.tag.textContent = st.on ? act.length + ' IN THE MARKET' : 'SANDBOX';
       els.tog.textContent = st.on ? 'SANDBOX: TURN RIVALS OFF' : 'TURN RIVALS ON';
       els.tog.className = 'tog' + (st.on ? ' danger' : ' primary');
       const rows = league(st, youRep(), h), me = rows.find((r) => r.id === 'you');
-      const nHeld = Object.keys(st.claims).length + st.rjobs.length;
+      const nHeld = st.rjobs.length;
       els.ro.innerHTML = app.ro('YOUR RANK', me.rank + '/' + rows.length, me.rank === 1 ? 'TOP' : 'BY TONNES', me.rank === 1 ? 'good' : '') + app.ro('HELD BY RIVALS', nHeld, nHeld === 1 ? 'JOB' : 'JOBS', nHeld ? 'hi' : '');
       els.lg.innerHTML = '<div class="r h"><span>#</span><span>YARD</span><span>TONNES</span><span>STARS</span><span>REP</span></div>' + rows.map((r) => '<div class="r' + (r.id === 'you' ? ' you' : '') + '"><span>' + r.rank + '</span><span>' + esc(r.name) + '</span><span>' + fnum(r.tonnes, 1) + '</span><span>' + (r.stars == null ? '--' : r.stars.toFixed(1)) + '</span><span>' + Math.round(r.rep) + '</span></div>').join('');
       els.roster.innerHTML = ROSTER.map((R) => {
@@ -574,25 +470,9 @@
         return '<div class="rv"><span class="k">' + esc(R.label.toUpperCase()) + '</span> <b>' + esc(R.name) + '</b>' + (inn ? ' · credit ' + money(budgetAt(R, h)) + ' a lot · ' + rs.lots + ' lot' + (rs.lots === 1 ? '' : 's') + ' won' + (rs.lotT ? ', ' + fnum(rs.lotT, 0) + ' t' : '') : ' · enters at T+' + fmtH(R.entersH)) + '<br>' + esc(R.blurb) + '</div>';
       }).join('');
       let hb = '';
-      Object.keys(st.claims).forEach((id) => { const c = st.claims[id], C = CS.Score.CONTRACTS.find((x) => x.id === id); hb += '<div class="rv"><b>' + esc(C ? C.name : id) + '</b> · ' + esc(nameOf(c.by)) + ' · back in ' + fmtH(Math.max(0, c.untilH - h)) + '</div>'; });
       st.rjobs.forEach((rj) => { hb += '<div class="rv"><b>Job #' + rj.job.id + '</b> ' + fnum(rj.job.tons, 1) + ' t ' + esc(MATERIALS[rj.job.mat].name.toLowerCase()) + ' · ' + esc(nameOf(rj.by)) + ' · due in ' + fmtH(Math.max(0, rj.untilH - h)) + '</div>'; });
-      els.held.innerHTML = st.on ? (hb || '<div class="small">Nothing. A contract you leave untaken for ' + TENDER_H + ' h of plant time goes to tender; so does an offered job.</div>') : '<div class="small">Sandbox: no rival bids and no tenders. Lots sell at the ask and every contract stays open.</div>';
+      els.held.innerHTML = st.on ? (hb || '<div class="small">Nothing. An offered job you leave untaken for ' + TENDER_H + ' h of plant time goes to tender.</div>') : '<div class="small">Sandbox: no rival bids and no tenders. Lots sell at the ask and every contract stays open.</div>';
       els.wire.innerHTML = st.news.length ? st.news.map((n) => '<div class="' + esc(n.cls) + '">' + (typeof app.fmtClock === 'function' ? app.fmtClock(n.h * 3600) + ' ' : '') + esc(n.text) + '</div>').join('') : '<div>Quiet so far.</div>';
-    }
-    /* the contract rows: who holds a contract, or when it goes to tender */
-    function renderRows() {
-      if (!hasDom || !CS.Score) return;
-      const rows = document.querySelectorAll('#contracts .crow'); if (!rows.length) return;
-      const h = clockH(), held = S().contract;
-      CS.Score.CONTRACTS.forEach((C, i) => {
-        const row = rows[i]; if (!row) return;
-        let cd = row.querySelector('.rival-cd');
-        if (!st.on || held === C.id) { if (cd) cd.remove(); return; }
-        if (!cd) { cd = app.el('div', 'cd rival-cd', ''); const btn = row.querySelector('button'); if (btn) row.insertBefore(cd, btn); else row.appendChild(cd); }
-        const c = st.claims[C.id], btn = row.querySelector('button');
-        if (c) { cd.className = 'cd rival-cd bad'; cd.textContent = 'WITH ' + nameOf(c.by).toUpperCase() + ' · REOPENS IN ' + fmtH(Math.max(0, c.untilH - h)).toUpperCase(); if (btn) { btn.disabled = true; btn.title = 'A rival yard holds this contract'; } }
-        else { const o = st.open[C.id] == null ? h : st.open[C.id]; cd.className = 'cd rival-cd'; cd.textContent = 'UNTAKEN · GOES TO TENDER IN ' + fmtH(Math.max(0, o + TENDER_H - h)).toUpperCase(); }
-      });
     }
     /* the auction board: bid state and a BID button on each lot, buy-now on the BUY button, closed lots at the bottom */
     app.on('auctionRender', (p) => {
@@ -600,7 +480,7 @@
       const A = CS.Auction, h = clockH(), lead = leading(), P = auction() && auction().pending();
       p.box.querySelectorAll('.crow[data-lot]').forEach((row) => {
         const L = board().find((x) => String(x.id) === row.dataset.lot); if (!L) return;
-        const buy = row.querySelector('button'), next = A.minBid(L), mine = L.bid && L.bid.by === 'you';
+        const buy = row.querySelector('button.buy'), next = A.minBid(L), mine = L.bid && L.bid.by === 'you';
         const info = app.el('div', 'cd rbid' + (mine ? ' you' : ''), L.bid ? (mine ? 'YOU LEAD at ' : 'HIGH BID ') + money(L.bid.perT) + '/t' + (mine ? '' : ' · ' + esc(nameOf(L.bid.by))) + ' · ' + L.bid.n + ' bid' + (L.bid.n === 1 ? '' : 's') + ' · next ' + money(next) + '/t' : 'NO BIDS · bidding opens at the ask, ' + money(L.ask) + '/t');
         const wrap = app.el('div', 'rbtns');
         const b = document.createElement('button'); b.type = 'button';
@@ -610,9 +490,10 @@
           b.title = 'Commit ' + money(next * L.tons) + ' for ' + L.tons + ' t. The high bid at the timer takes the lot; it comes into the yard when it closes.';
           b.addEventListener('click', () => raise(L.id));
         }
-        if (buy) { row.insertBefore(info, buy); buy.textContent = 'BUY NOW ' + money(buyNowPrice(L) * L.tons); buy.title = (buy.title ? buy.title + '. ' : '') + 'Buy now at ' + money(buyNowPrice(L)) + '/t: ' + Math.round(BUY_NOW * 100) + '% over the next bid, and the lot is yours at once'; }
+        const col = row.querySelector('.cbtns');
+        if (buy) { row.insertBefore(info, col || buy); buy.textContent = 'BUY NOW ' + money(buyNowPrice(L) * L.tons); buy.title = (buy.title ? buy.title + '. ' : '') + 'Buy now at ' + money(buyNowPrice(L)) + '/t: ' + Math.round(BUY_NOW * 100) + '% over the next bid, and the lot is yours at once'; }
         else row.appendChild(info);
-        wrap.appendChild(b); if (buy) wrap.appendChild(buy); row.appendChild(wrap);
+        if (col) col.insertBefore(b, buy || null); else { wrap.appendChild(b); if (buy) wrap.appendChild(buy); row.appendChild(wrap); }
       });
       if (st.results.length) {
         p.box.appendChild(app.el('div', 'small', 'CLOSED LOTS'));

@@ -31,12 +31,10 @@
   const S = {
     comp: {}, tons: 15, line: [], sel: null,
     money: START_BANK, tonnes: 0, kwh: 0, batches: 0, lifetime: 0,
-    owned: new Set(STARTER_MACHINES), units: unitsFrom(STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0 }, suppliers: new Set(),
+    owned: new Set(STARTER_MACHINES), units: unitsFrom(STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0 },
     speed: 1, muted: false, clock: 0, run: null,
-    feedPreset: 'elv', linePreset: 'starter', ev: null, mr: null,
-    contract: null, contracts: {}, lastSpec: null
+    feedPreset: 'elv', linePreset: 'starter', ev: null, mr: null
   };
-  for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
   let cam = null, dirty = true, lastEval = 0, lastRealT = 0, cardTimer = 0;
   /* run-economics helpers (js/modules/economics.js, loaded after this file; every use is at render or run time) */
   const Eco = () => CS.Economics || null;
@@ -45,7 +43,7 @@
 
   /* ---------------- module interface ----------------
    * Feature modules live in js/modules/*.js, load after this file, and talk to the app only through CS.app.
-   * Events: 'boot' (after first render), 'render' (every full render), 'batchStart' {run}, 'batchComplete' {r, why, net, bins, cs},
+   * Events: 'boot' (after first render), 'render' (every full render), 'batchStart' {run}, 'batchComplete' {r, why, net, bins, powerC},
    * 'tick' {dt, dh} every frame (dh = sim hours advanced this frame, 0 when idle), 'save' (return an object to persist), 'load' (object persisted).
    * Queries (modules edit the payload): 'feedCost' {id, cost}, 'plantValue' {key, value} (add to a plant upgrade value), 'assetValue' {value} (add owned assets to net worth).
    */
@@ -83,7 +81,6 @@
     let v = 0;
     S.owned.forEach((m) => { if (MACHINES[m]) { v += MACHINES[m].price * Math.max(1, unitsOf(m)); for (let l = 0; l < levelOf(m); l++) v += levelCost(MACHINES[m], l); } });
     for (const k in PLANT_UPGRADES) for (let l = 0; l < S.plant[k]; l++) v += PLANT_UPGRADES[k].costs[l];
-    S.suppliers.forEach((f) => { if (FEEDS[f]) v += FEEDS[f].unlock; });
     const q = { value: v }; API.emit('assetValue', q);   // modules add what they sold the player (facility and office upgrades)
     return q.value;
   }
@@ -116,11 +113,6 @@
     S.plant[key] = lvl + 1; applyPlant(); Audio.ui('ok');
     log(U.name + ' level ' + (lvl + 1) + ': now ' + fmtPlant(key) + '.', 'ok'); checkRank(); return true;
   }
-  function unlockFeed(id) {
-    const F = FEEDS[id]; if (S.suppliers.has(id)) return true;
-    if (!spend(F.unlock, 'the ' + F.name + ' supplier contract')) return false;
-    S.suppliers.add(id); Audio.ui('ok'); log('Supplier contract signed: ' + F.name + ' can now be bought as feed.', 'ok'); checkRank(); return true;
-  }
   function fmtPlantVal(key, v) { const U = PLANT_UPGRADES[key]; return (key === 'market' ? v.toFixed(2) : key === 'logistics' ? String(v) : String(v)) + ' ' + U.unit; }
   function fmtPlant(key) { return fmtPlantVal(key, plantValue(key)); }
   let lastRankIdx = null;
@@ -130,8 +122,6 @@
     lastRankIdx = r.idx;
   }
 
-  /* ---------------- contracts ---------------- */
-  function contract() { return S.contract ? Score.CONTRACTS.find((c) => c.id === S.contract) || null : null; }
   function starsText(n) { return '\u2605\u2605\u2605'.slice(0, n) + '\u2606\u2606\u2606'.slice(0, 3 - n); }
   /* Material comes only from auction lots or a re-run bucket (#57): the mix sliders and the preset list are a read-out of what
    * is loaded. Only the batch size stays in the operator's hands. */
@@ -139,37 +129,8 @@
   function setFeedLock(on) {
     on = on || AUCTION_ONLY;
     document.querySelectorAll('#feed-comp input').forEach((r) => { r.disabled = on; });
-    $('#feed-preset').disabled = on; $('#feed-tons').disabled = !!S.contract;
+    $('#feed-preset').disabled = on;
     $('#feed-panel').classList.toggle('locked', on); $('#feed-lock').classList.toggle('hidden', !on);
-  }
-  function acceptContract(id) {
-    const C = Score.CONTRACTS.find((c) => c.id === id); if (!C) return;
-    if (AUCTION_ONLY) { Audio.ui('deny'); log('Clients no longer send their own feed: every tonne you run comes from the auction or your MISC bucket. Take Jobs instead: they buy sorted material from your stock.', 'warn'); return; }
-    if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch before changing contracts.', 'warn'); return; }
-    const why = API.veto('acceptContract', { id, C }); if (why) { Audio.ui('deny'); log(why, 'warn'); return; }   // rivals module: a contract a rival yard holds
-    S.contract = id; S.feedPreset = C.feed; S.comp = Object.assign({}, FEEDS[C.feed].comp); S.tons = C.tons;
-    const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons;
-    setFeedLock(true); renderFeedSelect(); syncFeedRows();
-    Audio.ui('ok');
-    log('Contract accepted: ' + C.name + ' for ' + C.client + '. They supply ' + C.tons + ' t of ' + FEEDS[C.feed].name + '. Spec: ' + C.label + ' purity \u2265 ' + Math.round(C.purityMin * 100) + '%, recovery \u2265 ' + Math.round(C.recMin * 100) + '%, P80 ' + (C.p80[0] > 0 ? Score.fmtMm(C.p80[0]) + ' to ' : '\u2264 ') + Score.fmtMm(C.p80[1]) + ', energy \u2264 ' + C.kwhCap + ' kWh/t.', 'ok');
-    markDirty(true);
-  }
-  function cancelContract() {
-    const C = contract(); if (!C) return;
-    if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch first.', 'warn'); return; }
-    log('Contract released: ' + C.name + '.'); S.contract = null; setFeedLock(AUCTION_ONLY); applyPlant(); renderFeedSelect(); markDirty(true);
-  }
-  function renderContracts() {
-    const box = $('#contracts'); box.innerHTML = '';
-    Score.CONTRACTS.forEach((C) => {
-      const best = S.contracts[C.id] || 0, active = S.contract === C.id;
-      const row = el('div', 'crow' + (active ? ' active' : ''), '<div class="ch"><b>' + esc(C.name) + '</b><span class="stars ' + (best ? 'got' : '') + '">' + starsText(best) + '</span></div><div class="cd">' + esc(C.client) + ' \u00b7 ' + esc(FEEDS[C.feed].name) + ', ' + C.tons + ' t supplied \u00b7 ' + fmtMoney(C.fee) + '/t of ' + esc(C.label) + '</div><div class="cd">' + esc(C.hint) + '</div>');
-      const b = document.createElement('button'); b.type = 'button';
-      if (active) { b.textContent = 'RELEASE'; b.className = 'danger'; b.addEventListener('click', cancelContract); }
-      else { b.textContent = 'ACCEPT'; b.className = 'buy'; b.addEventListener('click', () => acceptContract(C.id)); }
-      row.appendChild(b); box.appendChild(row);
-    });
-    const C = contract(); $('#contract-active').textContent = C ? 'ACTIVE: ' + C.name.toUpperCase() : '';
   }
   /* where did the value go (#22): the three materials with the largest gap between what the feed was worth and what the
    * bins sell for, each with its cause, and the cost each node adds per tonne. Returns an HTML block for the score card. */
@@ -194,7 +155,6 @@
   }
 
   function feedCostPerT() {
-    if (contract()) return 0;   // toll processing: the client supplies the feed
     if (S.feedPrepaid) return 0; // a lot bought at auction (modules set and clear this flag)
     const p = FEEDS[S.feedPreset];
     if (p && sameComp(p.comp, S.comp)) { const q = { id: S.feedPreset, cost: p.cost }; API.emit('feedCost', q); return q.cost; }   // modules may scale a preset's price (feed market)
@@ -233,33 +193,30 @@
   /* ---------------- feed UI ---------------- */
   function buildFeed() {
     const sel = $('#feed-preset');
-    sel.addEventListener('change', () => { if (S.contract) { renderFeedSelect(); return; } if (sel.value !== 'custom') applyFeedPreset(sel.value); else S.feedPreset = 'custom'; });
+    sel.addEventListener('change', () => { if (sel.value !== 'custom') applyFeedPreset(sel.value); else S.feedPreset = 'custom'; });
     const box = $('#feed-comp'); box.innerHTML = '';
     for (const id of MAT_ORDER) {
       const D = MATERIALS[id];
       const row = el('div', 'mat', '<span class="name"><i style="background:' + D.color + '"></i>' + esc(D.name) + '</span><input type="range" min="0" max="100" step="1" value="0"><span class="pct">0%</span>');
       row.dataset.mat = id;
       const r = row.querySelector('input'); r.id = 'mat-' + id;
-      r.addEventListener('input', () => { if (S.contract) { syncFeedRows(); return; } S.comp[id] = r.value / 100; S.feedPreset = 'custom'; sel.value = 'custom'; syncFeedRows(); markDirty(); });
+      r.addEventListener('input', () => { S.comp[id] = r.value / 100; S.feedPreset = 'custom'; sel.value = 'custom'; syncFeedRows(); markDirty(); });
       row.querySelector('.name').addEventListener('click', () => showMaterial(id));
       box.appendChild(row);
     }
     const tons = $('#feed-tons');
-    tons.addEventListener('input', () => { if (S.contract) { syncFeedRows(); return; } S.tons = +tons.value; $('#feed-tons-v').textContent = S.tons + ' t'; renderPlant(); });
+    tons.addEventListener('input', () => { S.tons = +tons.value; $('#feed-tons-v').textContent = S.tons + ' t'; renderPlant(); });
     renderFeedSelect(); syncFeedRows();
   }
   function renderFeedSelect() {
     const sel = $('#feed-preset'); sel.innerHTML = '';
     for (const id in FEEDS) {
-      const F = FEEDS[id], isContractFeed = !!(contract() && contract().feed === id), locked = !S.suppliers.has(id) && !isContractFeed;
-      const o = new Option(locked ? '🔒 ' + F.name + ' (contract ' + fmtMoney(F.unlock) + ')' : F.name, id); o.disabled = locked; sel.appendChild(o);
+      sel.appendChild(new Option(FEEDS[id].name, id));
     }
     sel.appendChild(new Option('Custom mix', 'custom'));
-    const C = contract();
-    sel.value = C ? C.feed : (FEEDS[S.feedPreset] && S.suppliers.has(S.feedPreset) ? S.feedPreset : 'custom');
+    sel.value = FEEDS[S.feedPreset] ? S.feedPreset : 'custom';
   }
   function applyFeedPreset(id) {
-    if (!S.suppliers.has(id)) { Audio.ui('deny'); log('No supplier contract for ' + FEEDS[id].name + ' yet. Sign one in Bank & upgrades.', 'warn'); renderFeedSelect(); return; }
     S.feedPreset = id; S.comp = {}; const p = FEEDS[id];
     for (const m in p.comp) S.comp[m] = p.comp[m];
     $('#feed-preset').value = id; syncFeedRows(); markDirty();
@@ -362,10 +319,8 @@
     const L = LINES[id];
     const why = API.veto('applyLine', { id, nodes: L.nodes }); if (why) { Audio.ui('deny'); log(why, 'bad'); $('#line-preset').value = LINES[S.linePreset] ? S.linePreset : 'custom'; return; }
     S.linePreset = id; S.line = Sim.buildLine(L); S.sel = S.line[0].uid;
-    if (contract()) { /* contract feed stays */ }
-    else if (L.feed && S.suppliers.has(L.feed)) applyFeedPreset(L.feed);
-    else if (L.feed) log('This line is designed for ' + FEEDS[L.feed].name + ', which needs a supplier contract (' + fmtMoney(FEEDS[L.feed].unlock) + ').', 'warn');
-    if (L.tons && !contract()) S.tons = Math.min(L.tons, plantValue('logistics'));
+    if (L.feed && FEEDS[L.feed]) applyFeedPreset(L.feed);
+    if (L.tons) S.tons = Math.min(L.tons, plantValue('logistics'));
     const c = unownedCost(S.line);
     if (c > 0) log('Blueprint loaded: ' + L.name + '. It uses ' + fmtMoney(c) + ' of machines you do not own yet. Buy them from the node panel to run it.', 'warn');
     $('#line-preset').value = id; syncFeedRows(); markDirty(true);
@@ -471,16 +426,6 @@
       if (maxed) { b.textContent = 'MAX'; b.className = 'buy max'; b.disabled = true; }
       else { b.textContent = fmtMoney(U.costs[lvl]); b.className = 'buy' + (S.money < U.costs[lvl] ? ' poor' : ''); b.addEventListener('click', () => { if (buyPlant(key)) markDirty(true); else renderBank(); }); }
       row.appendChild(b); pu.appendChild(row);
-    }
-    const sp = $('#suppliers'); sp.innerHTML = '';
-    for (const id in FEEDS) {
-      const F = FEEDS[id]; if (!F.unlock) continue;
-      const has = S.suppliers.has(id);
-      const row = el('div', 'urow', '<span class="ic">' + (has ? '✔' : '🔒') + '</span><span><div class="nm">' + esc(F.name) + '</div><div class="cur">' + esc(F.blurb) + ' · ' + (F.cost < 0 ? 'paid ' + fmtMoney(-F.cost) + '/t to take' : 'costs ' + fmtMoney(F.cost) + '/t') + '</div></span>');
-      const b = document.createElement('button'); b.type = 'button';
-      if (has) { b.textContent = 'SIGNED'; b.className = 'buy max'; b.disabled = true; }
-      else { b.textContent = fmtMoney(F.unlock); b.className = 'buy' + (S.money < F.unlock ? ' poor' : ''); b.addEventListener('click', () => { if (unlockFeed(id)) { renderFeedSelect(); markDirty(true); } else renderBank(); }); }
-      row.appendChild(b); sp.appendChild(row);
     }
     renderNextPurchase();
   }
@@ -626,14 +571,6 @@
     ['1µm', '10µm', '100µm', '1mm', '10mm', '100mm', '1m'].forEach((lab, i) => { const x = x0 + i / 6 * (x1 - x0); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); ctx.fillText(lab, x, H - 8); });
     ctx.textAlign = 'right';
     [0, 50, 80, 100].forEach((p) => { const y = y1 - p / 100 * (y1 - y0); ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.fillText(p + '%', x0 - 4, y + 3); });
-    const C = contract();
-    if (C) {
-      const lo = Math.max(C.p80[0], 0.001), hi = Math.min(C.p80[1], 1000);
-      ctx.fillStyle = 'rgba(255,178,92,0.10)'; ctx.fillRect(lx(lo), y0, lx(hi) - lx(lo), y1 - y0);
-      ctx.strokeStyle = 'rgba(255,178,92,0.6)'; ctx.setLineDash([4, 3]); ctx.beginPath();
-      if (C.p80[0] > 0) { ctx.moveTo(lx(lo), y0); ctx.lineTo(lx(lo), y1); } ctx.moveTo(lx(hi), y0); ctx.lineTo(lx(hi), y1); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(255,178,92,0.8)'; ctx.textAlign = 'left'; ctx.fillText('SPEC', lx(lo) + 3, y1 - 4);
-    }
     if (!inf) return;
     const inArr = Sim.aggregate(inf.inStream);
     const outKey = inf.kind === 'separator' ? 'extract' : 'product';
@@ -666,15 +603,6 @@
       ro('EARNING RATE', fmtMoney(m.margin * m.R), '/h', m.margin < 0 ? 'bad' : 'good') + ro('THIS BATCH', fmtMoney(m.margin * S.tons), 'net', m.margin < 0 ? 'bad' : 'good') +
       ro('WEAR COST', fmtMoney(m.wearC), '/t', m.wearC > 0.1 * Math.max(m.rev, 1) ? 'hi' : '');   // #20: liners and knives consumed per tonne, priced at the service bill
     renderRunProjection(m);
-    const specEl = $('#spec'), C = contract(); let shippedKeys = new Set();
-    if (C) {
-      const cs = Score.evalContract(C, S.line, S.run ? { kwh: S.run.kwh, done: S.run.done } : null); S.lastSpec = cs;
-      shippedKeys = new Set(cs.shipped.map((b) => b.key));
-      specEl.classList.remove('hidden');
-      specEl.innerHTML = '<div class="spec-h"><b>' + esc(C.name.toUpperCase()) + (S.run ? ' \u00b7 LIVE' : ' \u00b7 PROJECTED') + '</b><span class="stars">' + starsText(cs.stars) + '</span></div>' +
-        cs.checks.map((c) => '<div class="chk ' + (c.ok ? (c.great ? 'great' : 'ok') : 'bad') + '"><span>' + c.label + '</span><span>' + esc(c.text) + '</span><span>' + esc(c.need) + (c.goal ? ' \u00b7 goal ' + esc(c.goal) : '') + '</span></div>').join('') +
-        '<div class="spec-f">' + esc(cs.reason) + (cs.stars ? ' Fee ' + fmtMoney(cs.fee) + ' on ' + fmtNum(cs.deliveredT, 1) + ' t shipped.' : '') + '</div>';
-    } else { specEl.classList.add('hidden'); S.lastSpec = null; }
     const box = $('#bins'); box.innerHTML = '';
     const bins = binList();
     if (!bins.length) box.appendChild(el('div', 'empty', 'Nothing comes out yet.'));
@@ -682,7 +610,7 @@
       const st = b.st, comps = Object.entries(st.perMat).sort((x, y) => y[1].mass - x[1].mass), pr = Eco() ? Eco().binPricing(st, Sim.prices.market) : null;
       const name = b.M ? (b.idx + 1) + ' ' + b.M.short + ' / ' + (b.M.outs ? b.M.outs[b.port] : b.port) : b.key;
       const top = comps.slice(0, 3).map(([mm, v]) => esc(MATERIALS[mm].name) + ' ' + Math.round(100 * v.mass / st.total) + '%').join(', ');
-      const d = el('div', 'bin', '<div class="h"><b>' + esc(name.toUpperCase()) + (shippedKeys.has(b.key) ? '<span class="ship">SHIPPED</span>' : '') + '</b><span>' + fmtNum(st.total, 0) + ' kg</span></div>' +
+      const d = el('div', 'bin', '<div class="h"><b>' + esc(name.toUpperCase()) + '</b><span>' + fmtNum(st.total, 0) + ' kg</span></div>' +
         '<div class="comp">' + comps.map(([mm, v]) => '<i style="width:' + (100 * v.mass / st.total) + '%;background:' + MATERIALS[mm].color + '"></i>').join('') + '</div>' +
         '<div class="d"><span>' + top + '</span></div><div class="d"><span>P80 ' + fmtSize(st.p80) + ' · purity ' + Math.round(st.share * 100) + '% · price grade ' + Math.round(st.grade * 100) + '%' + (b.temp ? ' · frozen' : '') + (b.form ? ' · ' + esc(b.form) : '') + '</span><span class="val">' + fmtMoney(st.value) + '</span></div>' +
         (pr ? '<div class="d price"><span><b>' + fmtMoney(pr.perT) + '/t</b> · ' + esc(pr.name) + ' ' + esc(pr.text) + '</span></div>' : ''));   // #19: price per tonne and the two discounts
@@ -694,7 +622,7 @@
   function renderRunProjection(m) {
     if (S.run) return;
     const b = $('#btn-run'), rn = $('#run-net'), E = Eco();
-    const nothing = AUCTION_ONLY && !S.feedPrepaid && !contract();   // #65: no projection for material you do not have
+    const nothing = AUCTION_ONLY && !S.feedPrepaid;   // #65: no projection for material you do not have
     const pr = !nothing && E && m && S.line.length && m.R > 0 ? E.projectBatch(m, S.tons, S.ev.nodes) : null;
     b.innerHTML = '&#9654; RUN BATCH' + (pr ? '<small class="proj">' + (pr.net >= 0 ? '+' : '') + fmtMoney(pr.net) + '</small>' : '');
     b.classList.toggle('neg', !!(pr && pr.negative)); b.title = pr && pr.reason ? pr.reason : 'Run a batch (Space)';
@@ -718,15 +646,14 @@
     if (!(effRate() > 0)) { Audio.ui('deny'); log('The line cannot run: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no feed is accepted') + '.', 'bad'); return; }
     let tot = 0; for (const m in S.comp) tot += S.comp[m] > 0 ? S.comp[m] : 0;
     if (tot <= 0) { Audio.ui('deny'); log('The feed is empty.', 'bad'); return; }
-    const C = contract();
-    if (AUCTION_ONLY && !C && !S.feedPrepaid) { Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
-    const feedC = C ? 0 : feedCostPerT() * S.tons;
+    if (AUCTION_ONLY && !S.feedPrepaid) { Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
+    const feedC = feedCostPerT() * S.tons;
     if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) return;
     if (feedC <= 0) S.money -= feedC;   // paid to take it
     const proj = marginPerT();   // #18: the projection the score card compares the actual net with
     S.run = { total: S.tons, done: 0, rate: effRate(), kwh: 0, rev: 0, extra: 0, feedC, t0: S.clock, rankIdx: rankOf(netWorth()).idx, projPerT: proj.margin, serviceC: svcC, wearC: 0, perNode: {} };
     Audio.init(); Audio.ui('ok'); hideCard();
-    log('Batch start: ' + S.tons + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. ' + (C ? 'Contract feed, supplied by ' + C.client + '.' : 'Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.'), 'ok');
+    log('Batch start: ' + S.tons + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.', 'ok');
     S.ev.nodes.forEach((n, i) => n.warnings.forEach((w) => { if (w.level !== 'info') log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + w.text, w.level); }));
     renderRunState(); renderBank(); API.emit('batchStart', { run: S.run });
   }
@@ -741,16 +668,9 @@
     S.money += sold - powerC - r.extra; S.tonnes += r.done; S.kwh += r.kwh; S.batches++; S.lifetime += Math.max(0, sold - powerC - r.extra);
     log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + (r.held ? 'to ' + r.held + ' worth ' : '') + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + (r.serviceC > 0 ? ' · auto-service ' + fmtMoney(r.serviceC) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
     Audio.ui(why === 'complete' ? 'done' : 'click');
-    let cs = null; const C = contract();
-    if (C && why === 'complete') {
-      cs = Score.evalContract(C, S.line, { kwh: r.kwh, done: r.done }); cs.C = C;
-      if (cs.fee > 0) { S.money += cs.fee; S.lifetime += cs.fee; }
-      const best = S.contracts[C.id] || 0; if (cs.stars > best) S.contracts[C.id] = cs.stars; cs.newBest = cs.stars > best;
-      log('Contract ' + C.name + ': ' + cs.stars + ' star' + (cs.stars === 1 ? '' : 's') + '. ' + cs.reason + (cs.fee > 0 ? ' Fee ' + fmtMoney(cs.fee) + ' banked.' : ''), cs.stars ? 'ok' : 'bad');
-    } else if (C) log('Contract ' + C.name + ' not scored: the batch did not complete.', 'warn');
     const before = r.rankIdx; checkRank(); const after = rankOf(netWorth());
-    showCard(r, why, dt, powerC, net + (cs ? cs.fee : 0), after.idx > before ? after.name : null, cs);
-    API.emit('batchComplete', { r, why, net: net + (cs ? cs.fee : 0), bins: binList(), cs, powerC });
+    showCard(r, why, dt, powerC, net, after.idx > before ? after.name : null);
+    API.emit('batchComplete', { r, why, net, bins: binList(), powerC });
     renderRunState(); save(); renderAll();
   }
   function stepRun(realDt) {
@@ -804,7 +724,7 @@
   }
 
   /* ---------------- score card ---------------- */
-  function showCard(r, why, dt, powerC, net, rankUp, cs) {
+  function showCard(r, why, dt, powerC, net, rankUp) {
     const card = $('#scorecard');
     const bins = binList(); const best = bins.slice().sort((a, b) => b.st.value - a.st.value)[0];
     const lim = S.mr && S.mr.limiter;
@@ -827,20 +747,16 @@
         pt.extras.map((x) => '<span>' + (x.idx + 1) + ' ' + esc(x.short) + ' ' + esc(x.what) + '</span><span></span><span>' + (x.qty > 0 ? fmtNum(x.qty, 0) + ' ' + esc(x.unit) : '') + '</span><span>' + fmtMoney(x.cost) + '</span>').join('') + '</div>';
     }
     let head = '<h2>BATCH ' + esc(why.toUpperCase()) + '<span>' + fmtNum(r.done, 1) + ' t \u00b7 ' + fmtClock(dt).slice(2) + '</span></h2>';
-    if (cs) head = '<h2>CONTRACT \u00b7 ' + esc(cs.C.name.toUpperCase()) + '<span>' + fmtNum(r.done, 1) + ' t \u00b7 ' + fmtClock(dt).slice(2) + '</span></h2><div class="stars">' + starsText(cs.stars) + (cs.newBest && cs.stars ? ' <small class="ok">NEW BEST</small>' : '') + '</div><div class="reason">' + esc(cs.reason) + '</div>' +
-      '<div class="checks">' + cs.checks.map((c) => '<div class="chk ' + (c.ok ? (c.great ? 'great' : 'ok') : 'bad') + '"><span>' + c.label + '</span><span>' + esc(c.text) + '</span><span>' + esc(c.need) + '</span></div>').join('') + '</div>';
     card.innerHTML = '<div class="card">' + head +
       (r.held
         ? '<div class="net ' + (result >= 0 ? 'ok' : 'bad') + '"><small>BATCH RESULT · CASH PLUS STOCK</small>' + (result >= 0 ? '+' : '') + fmtMoney(result) + '</div><div class="small" style="margin:-6px 0 8px">Bank ' + (net >= 0 ? '+' : '') + fmtMoney(net) + ' now · ' + fmtMoney(r.rev) + ' of product in ' + esc(r.held) + ', sell it from the end buckets or the Market drawer</div>'
         : '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>') +
-      (cs ? '<dl><dt>Contract fee (' + fmtNum(cs.deliveredT, 1) + ' t of ' + esc(cs.C.label) + ' shipped)</dt><dd class="ok">' + fmtMoney(cs.fee) + '</dd></dl>' : '') +
       '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') + svcRow + wearRow + projRow +
       (best ? '<dt>Best product</dt><dd>' + esc(best.M ? best.M.short + ' / ' + (best.M.outs ? best.M.outs[best.port] : best.port) : '') + ' · ' + fmtMoney(best.st.value) + '/t</dd>' : '') +
       '<dt>Bank</dt><dd>' + fmtMoney(S.money) + '</dd><dt>Net worth (score)</dt><dd>' + fmtMoney(netWorth()) + '</dd></dl>' + power +
       (rankUp ? '<div class="rankup">RANK UP \u00b7 ' + esc(rankUp.toUpperCase()) + '</div>' : '') +
-      (cs ? '<div class="lesson">' + esc(cs.C.lesson) + '</div>' : '') +
       loss + hint +
-      '<div class="tip">' + esc(cs ? 'Retry for more stars or release the contract.' : tip) + ' Click to dismiss.</div></div>';
+      '<div class="tip">' + esc(tip) + ' Click to dismiss.</div></div>';
     card.classList.remove('hidden'); cardTimer = 12;
   }
   function hideCard() { $('#scorecard').classList.add('hidden'); cardTimer = 0; }
@@ -860,7 +776,7 @@
   function markDirty(structural) { dirty = true; if (structural) renderAll(); else { recompute(); renderLine(); renderTelemetry(); renderPlant(); updateFeedInfo(); renderHeader(); } }
   function renderAll() {
     if (dirty || !S.ev) recompute();
-    renderLineSelects(); renderLine(); renderMachine(); renderTelemetry(); renderPlant(); renderBank(); renderContracts(); updateFeedInfo(); renderHeader();
+    renderLineSelects(); renderLine(); renderMachine(); renderTelemetry(); renderPlant(); renderBank(); updateFeedInfo(); renderHeader();
     const n = node(S.sel);
     $('#cam-name').textContent = n ? MACHINES[n.m].name.toUpperCase() : 'NO MACHINE';
     $('#cam-cat').textContent = n ? MACHINES[n.m].cat.toUpperCase() + (nodeOwned(n) ? '' : ' · NOT OWNED') : 'ADD A MACHINE TO THE FLOWSHEET';
@@ -871,7 +787,7 @@
   function collectExt() { const ext = {}; (hooks.save || []).forEach((fn) => { try { Object.assign(ext, fn() || {}); } catch (e) { console.error('module save', e); } }); return ext; }
   function save() {
     try {
-      localStorage.setItem(saveKey(), JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts, ext: collectExt() }));
+      localStorage.setItem(saveKey(), JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() }));
     } catch (e) { /* storage unavailable */ }
   }
   function load() {
@@ -890,14 +806,24 @@
       if (d.units && typeof d.units === 'object') for (const m in d.units) if (S.owned.has(m)) S.units[m] = clamp(Math.floor(+d.units[m] || 1), 1, 99);
       S.levels = {}; for (const k in (d.levels || {})) if (MACHINES[k]) S.levels[k] = clamp(Math.floor(+d.levels[k] || 0), 0, LEVEL_MAX);
       S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 }; for (const k in PLANT_UPGRADES) if (d.plant && isFinite(+d.plant[k])) S.plant[k] = clamp(Math.floor(+d.plant[k]), 0, PLANT_UPGRADES[k].costs.length);
-      S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id); (d.suppliers || []).forEach((f) => { if (FEEDS[f]) S.suppliers.add(f); });
       S.speed = [1, 10, 60].includes(+d.speed) ? +d.speed : 1; S.muted = !!d.muted; S.clock = +d.clock || 0;
       S.feedPreset = d.feedPreset || 'custom'; S.linePreset = d.linePreset || 'custom';
-      S.contract = !AUCTION_ONLY && d.contract && Score.CONTRACTS.find((c) => c.id === d.contract) ? d.contract : null;   // #57: no client feed
-      S.contracts = {}; for (const k in (d.contracts || {})) if (Score.CONTRACTS.find((c) => c.id === k)) S.contracts[k] = clamp(Math.floor(+d.contracts[k] || 0), 0, 3);
       S.ext = d.ext && typeof d.ext === 'object' ? d.ext : {};
+      S.money += retiredRefund(d);
       return true;
     } catch (e) { return false; }
+  }
+  /* #78: supplier contracts and the intake stockpiles are gone. An older save gets back what it paid for both, once (the
+   * fields are not written again). */
+  const OLD_UNLOCK = { rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000, ewaste: 20000, pins: 60000 };
+  function retiredRefund(d) {
+    let v = 0;
+    (Array.isArray(d.suppliers) ? d.suppliers : []).forEach((f) => { v += OLD_UNLOCK[f] || 0; });
+    const piles = d.ext && d.ext.intake && d.ext.intake.piles;
+    if (piles && typeof piles === 'object') for (const k in piles) { const p = piles[k]; if (p && +p.t > 0 && +p.paid > 0) v += +p.paid; }
+    if (d.ext) delete d.ext.intake;
+    if (v > 0) setTimeout(() => log('Supplier contracts and stockpiles are retired: ' + fmtMoney(v) + ' paid for them is back in the bank.', 'ok'), 0);
+    return v;
   }
   let resetArmed = false;
   function newGame() {
@@ -917,8 +843,7 @@
     S.money = START_BANK; S.tonnes = 0; S.kwh = 0; S.batches = 0; S.lifetime = 0;
     S.feedOwner = null;
     S.owned = new Set(STARTER_MACHINES); S.units = unitsFrom(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
-    S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
-    S.clock = 0; S.contract = null; S.contracts = {}; S.lastSpec = null; S.feedPrepaid = false; S.feedOpts = null; S.ext = {};
+    S.clock = 0; S.feedPrepaid = false; S.feedOpts = null; S.ext = {};
     Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
     API.emit('load', S.ext);
     setFeedLock(false); applyPlant(); renderFeedSelect();
@@ -938,7 +863,7 @@
     S.feedPrepaid = false; S.feedOpts = null; S.feedOwner = null;
     Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
     API.emit('newgame'); API.emit('load', S.ext);   // modules clear their state, then restore this mode's
-    setFeedLock(!!S.contract); applyPlant(); renderFeedSelect(); syncFeedRows();
+    setFeedLock(true); applyPlant(); renderFeedSelect(); syncFeedRows();
     $('#log').innerHTML = '';
     lastRankIdx = rankOf(netWorth()).idx;
     return true;
@@ -964,14 +889,13 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};
     API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
-    if (S.contract) { const C = contract(); const r = $('#feed-tons'); if (+r.max < C.tons) r.max = C.tons; }
-    setFeedLock(!!S.contract);
+    setFeedLock(true);
     if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Only sorted material sells: the magnet pulls the steel out clean, and everything still mixed waits in MISC until you buy another sorter. Run a few batches, run a few batches, then buy your first sorter from NEXT PURCHASE in Bank & upgrades (toolbar).', 'ok'); }
     else { renderFeedSelect(); syncFeedRows(); log('Session restored.', 'ok'); }
     lastRankIdx = rankOf(netWorth()).idx;

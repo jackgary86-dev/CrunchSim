@@ -1,6 +1,6 @@
 // Tickets #31 and #32: rival bidders and rival plants. Exercises the DOM-free parts on CS.Rivals (roster, valuation through each
-// rival's bias, the bid ladder, the sniper at the gavel, tender scoring, capability from the rivals' real flowsheets, contract and
-// job claims, the third-loss hint, the league, save/load) and then drives the module's CS.app hooks, with the auction and missions
+// rival's bias, the bid ladder, the sniper at the gavel, tender scoring, capability from the rivals' real flowsheets, job
+// claims, the league, save/load) and then drives the module's CS.app hooks, with the auction and missions
 // modules, against a fake app without a document.
 require('../js/data.js'); require('../js/sim.js'); require('../js/score.js');
 const { MATERIALS, FEEDS, Score } = globalThis.CS;
@@ -11,13 +11,12 @@ function check(cond, msg) { n++; if (!cond) { fails++; console.log('FAIL ' + msg
 const hooks = {}, logs = [];
 const app = {
   booted: false,
-  S: { clock: 0, money: 1e7, lifetime: 0, tons: 15, comp: {}, line: [], run: null, mr: { R: 0 }, ev: null, contract: null, owned: new Set(['hammer']), suppliers: new Set(['elv', 'pallets', 'quarry', 'zorba', 'tires', 'rubble']), feedPrepaid: false, ext: {} },
+  S: { clock: 0, money: 1e7, lifetime: 0, tons: 15, comp: {}, line: [], run: null, mr: { R: 0 }, ev: null, owned: new Set(['hammer']), suppliers: new Set(['elv', 'pallets', 'quarry', 'zorba', 'tires', 'rubble']), feedPrepaid: false, ext: {} },
   on(evt, fn) { (hooks[evt] || (hooks[evt] = [])).push(fn); if (evt === 'boot' && app.booted) fn(); },
   emit(evt, p) { (hooks[evt] || []).forEach((fn) => fn(p)); },
   veto(evt, p) { let why = ''; (hooks['veto:' + evt] || []).some((fn) => { why = fn(p) || ''; return !!why; }); return why; },
   log(msg, cls) { logs.push({ msg, cls }); },
   fmtMoney(x) { return (x < 0 ? '-$' : '$') + Math.round(Math.abs(x)); }, fmtNum(x, d) { return isFinite(x) ? x.toFixed(d == null ? 1 : d) : '--'; }, esc(s) { return String(s); },
-  contract() { return app.S.contract ? Score.CONTRACTS.find((c) => c.id === app.S.contract) || null : null; },
   spend(cost) { if (app.S.money < cost) return false; app.S.money -= cost; return true; },
   setFeed(comp, id, tons) { app.S.comp = Object.assign({}, comp); if (tons) app.S.tons = tons; },
   binList() { return []; }, plantValue() { return 30; }, save() {}, renderBank() {}, renderAll() {}, markDirty() {}, syncFeedRows() {}
@@ -26,7 +25,7 @@ globalThis.CS.app = app;
 require('../js/modules/market.js'); require('../js/modules/auction.js'); require('../js/modules/missions.js'); require('../js/modules/rivals.js');
 const { Auction: A, Missions: M, Rivals: RV, Market: MK } = globalThis.CS;
 check(RV && typeof RV.valuation === 'function' && typeof RV.tender === 'function', 'CS.Rivals is exported');
-check(['lotClose', 'lotPrice', 'veto:auctionBuy', 'veto:acceptContract', 'auctionRender', 'tick', 'save', 'load', 'newgame', 'batchComplete'].every((e) => hooks[e] && hooks[e].length), 'registers lotClose, lotPrice, the auction and contract vetoes, auctionRender, tick, save, load, newgame and batchComplete');
+check(['lotClose', 'lotPrice', 'veto:auctionBuy', 'auctionRender', 'tick', 'save', 'load', 'newgame', 'batchComplete'].every((e) => hooks[e] && hooks[e].length), 'registers lotClose, lotPrice, the auction and contract vetoes, auctionRender, tick, save, load, newgame and batchComplete');
 check(A.live && typeof A.live.board === 'function' && M.live && typeof M.live.jobs === 'function', 'the auction and missions modules expose their live boards');
 const byId = (id) => RV.rivalById(id);
 
@@ -132,49 +131,6 @@ console.log('=== tenders');
   check(RV.tender([{ who: 'x', fee: 0, rep: 1, hours: 1 }, { who: 'y', fee: 10, rep: 1, hours: Infinity }]) === null, 'junk candidates are dropped');
   check(Math.abs(RV.W.fee + RV.W.rep + RV.W.time - 1) < 1e-9, 'fee, reputation and delivery weights sum to 1');
 }
-const C = (id) => Score.CONTRACTS.find((c) => c.id === id);
-check(RV.contractCap(iron, C('ferrous')) && RV.contractCap(iron, C('ferrous')).stars >= 1, 'the volume buyer\'s car shredder meets the ferrous spec');
-check(RV.contractCap(red, C('zorba')) && !RV.contractCap(iron, C('zorba')), 'only the copper specialist\'s sink-float line meets zorba');
-check(RV.contractCap(jay, C('crumb')) && RV.contractCap(jay, C('gel')), 'the sniper\'s plant does crumb rubber and gel');
-check(RV.contractCap(mag, C('rebar')) && !RV.contractCap(iron, C('rebar')), 'only the bargain hunter\'s rubble line meets rubble to aggregate');
-{
-  const cap = RV.contractCap(red, C('zorba'));
-  check(cap.hours > RV.MOBILISE_H && Math.abs(cap.hours - (C('zorba').tons / cap.R + RV.MOBILISE_H)) < 1e-9, 'delivery time is tonnes over the line\'s rate plus mobilisation: ' + cap.hours.toFixed(1) + ' h');
-  const txt = RV.hintText(red, C('zorba'), 3, new Set(['hammer']));
-  console.log('  hint: ' + txt);
-  check(/Redline Non-Ferrous has taken Zorba aluminum from you 3 times/.test(txt) && /Sink-float tank/.test(txt) && /You do not own: .*Sink-float tank/.test(txt), 'the hint names the rival, the count, its flowsheet and the machines the operator lacks');
-  check(/You own every machine/.test(RV.hintText(red, C('zorba'), 3, new Set(['twin', 'sinkfloat', 'sensor']))), 'and says so when the operator owns them all');
-}
-{
-  const st = RV.newState(), rng = A.mulberry32(1), contracts = [C('zorba'), C('ferrous'), C('gel')];
-  let ev = RV.tenderContracts(st, 20, rng, { contracts, held: 'ferrous', you: () => null });
-  check(!ev.length && st.open.zorba === 20 && st.open.gel === 20, 'the first look opens the tender window');
-  ev = RV.tenderContracts(st, 20 + RV.TENDER_H - 0.1, rng, { contracts, held: 'ferrous', you: () => null });
-  check(!ev.length, 'nothing is tendered before the window runs out');
-  ev = RV.tenderContracts(st, 20 + RV.TENDER_H, rng, { contracts, held: 'ferrous', you: () => null });
-  check(ev.length === 1 && ev[0].type === 'claim' && ev[0].R.id === 'redline' && st.claims.zorba && !st.claims.ferrous && !st.claims.gel, 'zorba goes to Redline; the operator\'s own ferrous contract is never tendered; gel waits for the sniper to enter the market');
-  check(st.losses.zorba.redline === 1 && !ev[0].hint, 'the loss is counted');
-  const cl = st.claims.zorba;
-  check(RV.settleClaims(st, cl.untilH - 0.01).length === 0 && RV.settleClaims(st, cl.untilH).length === 1 && !st.claims.zorba, 'Redline delivers at the end of its delivery time and the contract reopens');
-  const rs = st.rivals.redline;
-  check(rs.starsN === 1 && rs.tonnes === cl.t && rs.deliveries === 1 && rs.rep !== red.rep, 'the delivery moves its tonnes, stars and reputation (' + red.rep + ' -> ' + rs.rep + ')');
-  // two more losses: the third one carries the hint
-  let h = cl.untilH, hinted = null;
-  for (let k = 0; k < 2; k++) {
-    h += RV.TENDER_H; const e = RV.tenderContracts(st, h, rng, { contracts: [C('zorba')], you: () => null });
-    if (e[0] && e[0].hint) hinted = e[0];
-    h = st.claims.zorba.untilH; RV.settleClaims(st, h);
-  }
-  check(st.losses.zorba.redline === 3 && hinted && hinted.count === 3, 'the third loss of the same contract to the same rival raises the hint');
-  // the operator in the tender: a strong offer keeps the contract open
-  const st2 = RV.newState();
-  RV.tenderContracts(st2, 20, rng, { contracts: [C('zorba')] });
-  const youStrong = () => ({ who: 'you', fee: C('zorba').fee * 0.5, rep: 100, hours: 0.5 });
-  const e2 = RV.tenderContracts(st2, 20 + RV.TENDER_H, rng, { contracts: [C('zorba')], you: youStrong });
-  check(e2.length === 1 && e2[0].type === 'held' && !st2.claims.zorba && st2.open.zorba === 20 + RV.TENDER_H, 'the client keeps it open for an operator whose line scores best');
-  const e3 = RV.tenderContracts(st2, 20 + 2 * RV.TENDER_H, rng, { contracts: [C('zorba')], you: () => ({ who: 'you', fee: C('zorba').fee, rep: 0, hours: 50 }) });
-  check(e3.length === 1 && e3[0].type === 'claim', 'and gives it to the rival when the operator\'s line is slow and unproven');
-}
 {
   // jobs on the missions board
   const rng = A.mulberry32(77), st = RV.newState(), J = M.newJobs();
@@ -198,12 +154,12 @@ check(RV.contractCap(mag, C('rebar')) && !RV.contractCap(iron, C('rebar')), 'onl
   check(RV.league(st, 0, 100).length === 5, 'rivals join the league as they enter the market');
 }
 {
-  const st = RV.newState(); st.on = false; st.rivals.redline.rep = 55; st.claims.zorba = { by: 'redline', fromH: 1, untilH: 9, stars: 2, t: 6, slip: false, fee: 300 };
-  st.losses.zorba = { redline: 2 }; st.results.push({ id: 7, headline: 'x', tons: 5, by: 'magpie', perT: 30, h: 2, bids: 3 });
+  const st = RV.newState(); st.on = false; st.rivals.redline.rep = 55;
+  st.results.push({ id: 7, headline: 'x', tons: 5, by: 'magpie', perT: 30, h: 2, bids: 3 });
   const back = RV.deserialize(JSON.parse(JSON.stringify(RV.serialize(st, 1234))));
-  check(back.on === false && back.rivals.redline.rep === 55 && back.claims.zorba.untilH === 9 && back.losses.zorba.redline === 2 && back.results[0].by === 'magpie' && back.rngState === 1234, 'state round-trips through save and load');
+  check(back.on === false && back.rivals.redline.rep === 55 && back.results[0].by === 'magpie' && back.rngState === 1234, 'state round-trips through save and load');
   const junk = RV.deserialize({ rivals: { redline: { rep: 'x' }, nobody: {} }, claims: { zorba: { by: 'nobody', untilH: 3 }, nope: { by: 'redline', untilH: 3 } }, rjobs: [{ by: 'redline', job: { mat: 'unobtainium' } }], results: 'x', losses: { zorba: { ghost: 4 } } });
-  check(junk.on && junk.rivals.redline.rep === red.rep && !Object.keys(junk.claims).length && !junk.rjobs.length && !junk.results.length && !junk.losses.zorba.ghost, 'junk in the save is rejected');
+  check(junk.on && junk.rivals.redline.rep === red.rep && !junk.rjobs.length && !junk.results.length, 'junk in the save is rejected');
 }
 
 /* ---- the module against the fake app ---- */
@@ -215,7 +171,7 @@ app.S.run = { total: 1e9, done: 0, rate: 30 };   // the clock only moves while a
 for (let i = 0; i < 4 * 40; i++) tick(0.25);
 const st = live.state();
 const rivalLots = Object.values(st.rivals).reduce((a, r) => a + r.lots, 0);
-console.log('  after 40 h: ' + st.results.length + ' lots in the closed list, ' + rivalLots + ' won by rivals, ' + Object.keys(st.claims).length + ' contracts held by rivals');
+console.log('  after 40 h: ' + st.results.length + ' lots in the closed list, ' + rivalLots + ' won by rivals');
 check(rivalLots > 0 && st.results.some((r) => r.by && r.by !== 'you' && r.perT > 0), 'rivals win lots at the timer and the board lists the price paid');
 check(A.live.board().some((L) => L.bid) || st.results.length > 0, 'open lots carry bid state');
 // the operator bids: keep the high bid until the gavel
@@ -242,20 +198,11 @@ if (P) {
 }
 const third = A.live.board().find((L) => !(L.bid && L.bid.by === 'you'));
 check(!third || live.raise(third.id), 'bidding goes on while a lot waits in the yard (#49)');
-// contracts held by rivals
+// jobs taken by rivals
 for (let i = 0; i < 4 * 200; i++) tick(0.25);
-const claimed = Object.keys(st.claims);
-console.log('  after 240 h: contracts held ' + (claimed.join(', ') || 'none') + '; deliveries ' + Object.values(st.rivals).map((r) => r.deliveries).join('/') + '; hints ' + logs.filter((l) => /^HINT:/.test(l.msg)).length);
+console.log('  after 240 h: deliveries ' + Object.values(st.rivals).map((r) => r.deliveries).join('/'));
 check(Object.values(st.rivals).some((r) => r.deliveries > 0), 'rivals win tenders and deliver');
-check(logs.some((l) => /^HINT: .* has taken .* from you 3 times/.test(l.msg)), 'a third loss to one rival logs a hint about their plant');
-let vetoed = false;
-for (let i = 0; i < 4 * 60 && !vetoed; i++) { tick(0.25); const id = Object.keys(st.claims)[0]; if (id) { const why = app.veto('acceptContract', { id, C: C(id) }); vetoed = /is with .* who won the tender/.test(why); } }
-check(vetoed, 'accepting a contract a rival holds is vetoed with the reason');
 check(RV.league(st, M.live.rep(), app.S.clock / 3600).length === 5, 'all four rivals are in the league by now');
-// operator stats from scored contracts
-const you0 = st.you.tonnes;
-app.emit('batchStart', { run: app.S.run }); app.emit('batchComplete', { r: { done: 10, rev: 0 }, cs: { stars: 2, deliveredT: 6.5 }, bins: [] });
-check(st.you.tonnes === you0 + 6.5 && st.you.starsN >= 1, 'a scored contract adds to the operator\'s tonnes and stars');
 // save, load and new game
 const saved = JSON.parse(JSON.stringify(Object.assign({}, ...hooks.save.map((fn) => fn()))));
 check(saved.rivals && saved.auction && saved.auction.board.every((L) => !L.bid || A.validBid(L.bid)), 'the rivals state and the lots\' bid state are saved');
@@ -263,10 +210,10 @@ app.emit('load', saved);
 check(JSON.stringify(RV.serialize(live.state(), 0)) === JSON.stringify(RV.serialize(RV.deserialize(saved.rivals), 0)), 'and load back');
 // sandbox switch
 live.setOn(false);
-check(!live.state().on && !Object.keys(live.state().claims).length && A.live.board().every((L) => !L.bid), 'the sandbox switch clears bids and claims');
-check(app.veto('acceptContract', { id: 'zorba', C: C('zorba') }) === '' && (() => { const q = { lot: A.live.board()[0], perT: A.live.board()[0].ask }; app.emit('lotPrice', q); return q.perT === A.live.board()[0].ask; })(), 'with rivals off nothing is vetoed and lots sell at the ask');
+check(!live.state().on && !live.state().rjobs.length && A.live.board().every((L) => !L.bid), 'the sandbox switch clears bids and claims');
+check((() => { const q = { lot: A.live.board()[0], perT: A.live.board()[0].ask }; app.emit('lotPrice', q); return q.perT === A.live.board()[0].ask; })(), 'with rivals off nothing is vetoed and lots sell at the ask');
 for (let i = 0; i < 4 * 20; i++) tick(0.25);
-check(A.live.board().every((L) => !L.bid) && !Object.keys(live.state().claims).length, 'and no rival bids or claims while it is off');
+check(A.live.board().every((L) => !L.bid) && !live.state().rjobs.length, 'and no rival bids or claims while it is off');
 live.setOn(true);
 check(live.state().on, 'rivals come back on');
 app.emit('load', {}); app.emit('newgame');

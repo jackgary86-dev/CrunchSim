@@ -222,24 +222,16 @@ button.buy.max { background: transparent; border-color: var(--green); color: var
 button.bad { border-color: var(--red); color: var(--red); }
 @media (max-width: 1180px) { .tele.hide-narrow { display: none; } }
 
-/* ---------- contracts ---------- */
+/* ---------- list rows (auction lots, jobs) ---------- */
 .crow { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: start; padding: 7px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel-2); margin: 4px 0; }
 .crow.active { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
 .crow .ch { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; grid-column: 1; }
 .crow .cd { font-size: 11px; color: var(--muted); grid-column: 1; line-height: 1.35; }
 .crow button { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+.crow .cbtns { grid-column: 2; grid-row: 1 / span 3; align-self: center; display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+.crow .cbtns button { white-space: nowrap; }
 .stars { font-family: var(--mono); letter-spacing: 2px; color: var(--line-2); white-space: nowrap; }
 .stars.got { color: var(--amber); }
-#spec { border: 1px solid var(--amber); border-radius: 3px; padding: 8px 10px; margin: 8px 0 4px; background: rgba(255,178,92,.05); }
-.spec-h { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; letter-spacing: 2px; color: var(--amber); margin-bottom: 6px; }
-.spec-h .stars { color: var(--amber); }
-.chk { display: grid; grid-template-columns: 78px 1fr auto; gap: 8px; font-family: var(--mono); font-size: 11px; padding: 3px 0; border-top: 1px dotted var(--line); }
-.chk span:first-child::before { content: "\2717 "; color: var(--red); }
-.chk.ok span:first-child::before, .chk.great span:first-child::before { content: "\2713 "; color: var(--green); }
-.chk.great span:nth-child(2) { color: var(--green); } .chk.ok span:nth-child(2) { color: var(--text); } .chk.bad span:nth-child(2) { color: var(--red); }
-.chk span:last-child { color: var(--muted); text-align: right; }
-.spec-f { font-size: 11px; color: var(--muted); margin-top: 6px; }
-.bin .ship { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: #0b1018; background: var(--green); border-radius: 2px; padding: 0 5px; margin-left: 6px; vertical-align: middle; }
 #feed-panel.locked .mat input, #feed-panel.locked #feed-tons, #feed-panel.locked #feed-preset { opacity: .45; }
 #feed-lock { color: var(--amber); margin: 4px 0; }
 .card .stars { font-size: 22px; letter-spacing: 4px; color: var(--amber); margin: 2px 0 6px; }
@@ -360,9 +352,6 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .mk.hot { color: var(--green); } .mk.cold { color: var(--red); }
 .mk.up { color: var(--green); } .mk.down { color: var(--amber); }
 .fn-w.neck { color: var(--amber); border: 1px solid var(--amber); border-radius: 2px; padding: 1px 4px; align-self: center; }
-.flow-contract { font-family: var(--mono); font-size: 12px; letter-spacing: 1px; color: var(--muted); padding: 0 2px 10px; }
-.flow-contract b { color: var(--cyan); font-weight: 400; }
-.flow-contract .stars { color: var(--muted); } .flow-contract .stars.got { color: var(--amber); }
 .ship { display: inline-block; font-style: normal; font-family: var(--mono); font-size: 10px; letter-spacing: 1px; margin-top: 2px; }
 .ship.ok { color: var(--green); } .ship.bad { color: var(--red); }
 .bk .refine { grid-column: 2 / -1; justify-self: stretch; }

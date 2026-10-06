@@ -1,4 +1,4 @@
-// Tickets #27 and #26: timed contract missions and the job board. Exercises the DOM-free parts on CS.Missions
+// Ticket #26: the job board (the timed contract missions of #27 were retired in #78). Exercises the DOM-free parts on CS.Missions
 // (deadlines, phases, settlement, penalties, reputation, seeded job generation, progress from real bins, projection,
 // save/load) and then drives the module's CS.app hooks against a fake app without a document.
 require('../js/data.js'); require('../js/sim.js'); require('../js/score.js');
@@ -14,64 +14,26 @@ const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps * Math.max(1, Math.abs
 const hooks = {}, logs = [];
 const app = {
   booted: false,
-  S: { clock: 0, money: 10000, lifetime: 0, tons: 15, line: [], run: null, mr: { R: 0 }, ev: null, contract: null, suppliers: new Set(['elv', 'pallets', 'quarry', 'zorba']), ext: {} },
+  S: { clock: 0, money: 10000, lifetime: 0, tons: 15, line: [], run: null, mr: { R: 0 }, ev: null, ext: {} },
   on(evt, fn) { (hooks[evt] || (hooks[evt] = [])).push(fn); if (evt === 'boot' && app.booted) fn(); },
   emit(evt, p) { (hooks[evt] || []).forEach((fn) => fn(p)); },
   log(msg, cls) { logs.push({ msg, cls }); },
   fmtMoney(x) { return (x < 0 ? '-$' : '$') + Math.round(Math.abs(x)); }, fmtNum(x, d) { return isFinite(x) ? x.toFixed(d == null ? 1 : d) : '--'; }, esc(s) { return String(s); },
-  contract() { return app.S.contract ? Score.CONTRACTS.find((c) => c.id === app.S.contract) || null : null; },
   binList() { return app.bins || []; }, plantValue() { return 30; }, save() { app.saves = (app.saves || 0) + 1; }, renderBank() {}
 };
 globalThis.CS.app = app;
 require(MOD);
 const M = globalThis.CS.Missions;
-check(M && typeof M.deadlineFor === 'function', 'CS.Missions is exported');
+check(M && typeof M.genJob === 'function' && !('deadlineFor' in M), 'CS.Missions is exported, without the contract missions');
 check(hooks.load && hooks.save && hooks.boot && hooks.render && hooks.tick && hooks.batchComplete && hooks.batchStart, 'registers load, save, boot, render, tick, batchStart and batchComplete hooks');
 
-/* ---- contract deadlines ---- */
-console.log('=== deadlines');
-Score.CONTRACTS.forEach((C) => {
-  const w = M.deadlineFor(C);
-  check(w >= M.DEADLINE_MIN_H && Number.isInteger(w), C.id + ': window ' + w + ' h is a whole number of hours, at least ' + M.DEADLINE_MIN_H);
-  check(M.graceFor(w) >= M.GRACE_MIN_H && near(M.graceFor(w), Math.max(M.GRACE_MIN_H, M.GRACE_FRAC * w)), C.id + ': grace ' + f(M.graceFor(w)) + ' h');
-  check(M.penaltyFor(C) > 0 && M.penaltyFor(C) < C.fee * C.tons, C.id + ': liquidated damages $' + M.penaltyFor(C) + ' are positive and below the gross fee');
-});
-check(M.deadlineFor({ id: 'nope', tons: 100 }) === 30 && M.deadlineFor({ id: 'tiny', tons: 1 }) === M.DEADLINE_MIN_H, 'an unknown contract gets three runs at 10 t/h, floored at half a shift');
-// the intended lines of tests/contracts.js fit three times inside the window
-const INTENDED = { ferrous: 44.6, mulch: 8.7, chair: 9.2, roadbase: 62.5, flour: 27.5, rebar: 28.8, crumb: 3.5, zorba: 15, gel: 0.5 };
-Score.CONTRACTS.forEach((C) => { if (INTENDED[C.id]) check(3 * M.hoursNeeded(C.tons, INTENDED[C.id]) <= M.deadlineFor(C) + 1e-9, C.id + ': three runs of the intended line (' + f(3 * C.tons / INTENDED[C.id]) + ' h) fit the ' + M.deadlineFor(C) + ' h window'); });
 check(M.hoursNeeded(10, 5) === 2 && M.hoursNeeded(10, 0) === Infinity && M.hoursNeeded(0, 0) === 0, 'hoursNeeded is tonnes over rate');
 
 /* ---- phases and settlement ---- */
-console.log('=== phases and settlement');
-const Cz = Score.CONTRACTS.find((c) => c.id === 'zorba');
-{
-  const m = M.newMission(Cz, 10);
-  check(m.deadlineH === 14 && m.state === 'accepted' && M.missionState(m, false) === 'accepted' && M.missionState(m, true) === 'in progress', 'a zorba mission accepted at T+10 h is due at T+14 h');
-  check(M.missionPhase(m, 12).phase === 'ontime' && near(M.missionPhase(m, 12).leftH, 2), 'two hours in: on time with 2 h left');
-  check(M.missionPhase(m, 14.5).phase === 'late' && near(M.missionPhase(m, 14.5).lateH, 0.5), 'past the deadline inside the grace: late');
-  check(M.missionPhase(m, 14 + m.graceH + 0.1).phase === 'overdue', 'past the grace: overdue');
-  check(M.expire(m, Cz, 14.5) === 0 && m.state === 'accepted', 'no cancellation inside the grace period');
-  const pen = M.expire(m, Cz, 14 + m.graceH + 0.1);
-  check(pen === M.penaltyFor(Cz) && m.state === 'failed' && M.missionPhase(m, 20).phase === 'failed', 'after the grace the client cancels and charges $' + pen);
-  check(M.expire(m, Cz, 30) === 0, 'a failed mission is not charged twice');
-}
-{
-  const m = M.newMission(Cz, 0), cs = { stars: 2, fee: 1000 };
-  let r = M.settle(m, { stars: 0, fee: 0 }, 1);
-  check(!r.delivered && m.attempts === 1 && m.state === 'accepted', 'a zero-star run counts as an attempt, not a delivery');
-  r = M.settle(m, cs, 2);
-  check(r.delivered && !r.late && r.factor === 1 && r.deduction === 0 && r.first && m.state === 'delivered' && m.deliveries === 1, 'on time: full fee, state delivered');
-  r = M.settle(m, { stars: 3, fee: 1000 }, 5);
-  check(r.delivered && r.late && r.factor === M.LATE_RATE && near(r.deduction, 400) && !r.first && m.late === 1 && m.bestStars === 3, 'after the deadline every delivery pays ' + Math.round(M.LATE_RATE * 100) + '%: $400 of a $1000 fee is deducted');
-  check(M.missionState(m, false) === 'delivered', 'display state stays delivered');
-}
-
-/* ---- reputation ---- */
 console.log('=== reputation');
 check(M.tierOf(0) === 0 && M.tierOf(24.9) === 0 && M.tierOf(25) === 1 && M.tierOf(60) === 2 && M.tierOf(100) === 2, 'tiers open at 25 and 60');
 check(M.repApply(0, -10) === 0 && M.repApply(98, 15) === 100 && M.repApply(10, 3) === 13, 'reputation is clamped to 0..100');
-check(M.REP.contractFail < 0 && M.REP.jobFail < -M.REP.jobDone[0] && M.REP.jobDone[2] > M.REP.jobDone[0], 'failures cost more than a small success earns; bigger jobs earn more');
+check(M.REP.jobFail < -M.REP.jobDone[0] && M.REP.jobDone[2] > M.REP.jobDone[0], 'failures cost more than a small success earns; bigger jobs earn more');
 
 /* ---- jobs: seeded generation ---- */
 console.log('=== job generation');
@@ -156,13 +118,13 @@ const car = binsOf(LINES.car, 'elv');
 /* ---- persistence ---- */
 console.log('=== persistence');
 {
-  const st = M.newState(); st.rep = 37.5; st.mission = M.newMission(Cz, 5); M.settle(st.mission, { stars: 1, fee: 100 }, 6);
+  const st = M.newState(); st.rep = 37.5;
   const rng = M.mulberry32(5); M.tickBoard(st.jobs, rng, 0, 0, { feeds, limit: 30, rep: st.rep }); M.acceptJob(st.jobs, st.jobs.board[0].id, 1, st.rep);
   const back = M.deserialize(JSON.parse(JSON.stringify(M.serialize(st, rng.getState()))));
-  check(back.rep === 37.5 && back.mission.id === 'zorba' && back.mission.state === 'delivered' && back.mission.deliveries === 1 && back.mission.deadlineH === 9, 'reputation and mission round-trip through JSON');
+  check(back.rep === 37.5 && !('mission' in back), 'reputation round-trips through JSON');
   check(back.jobs.active.length === 1 && back.jobs.board.length === st.jobs.board.length && back.jobs.nextId === st.jobs.nextId && back.rngState === rng.getState(), 'jobs, ids and the rng state round-trip');
   const junk = M.deserialize({ rep: 999, mission: { id: 'zorba', deadlineH: 'x' }, jobs: { board: [{ mat: 'unobtainium', tons: 1 }, { mat: 'copper', tons: -1 }, { mat: 'copper', tons: 3, purity: 2, mult: 0.5, windowH: 5, state: 'active' }], active: 'nope' } });
-  check(junk.rep === 100 && junk.mission === null && junk.jobs.board.length === 0 && junk.jobs.active.length === 0, 'junk is clamped or dropped (a job in the wrong list is not resurrected)');
+  check(junk.rep === 100 && junk.jobs.board.length === 0 && junk.jobs.active.length === 0, 'junk is clamped or dropped (a job in the wrong list is not resurrected)');
   check(M.deserialize(null).rep === M.REP.start && M.deserialize('x').jobs.board.length === 0, 'a missing save gives fresh state');
 }
 check(M.fmtH(2.5) === '2 h 30 min' && M.fmtH(0.25) === '15 min' && M.fmtH(-1) === '-1 h' && M.fmtH(Infinity) === '--', 'hour formatting');
@@ -176,38 +138,13 @@ console.log('=== hooks');
   const boardBefore = JSON.stringify(ext().missions.jobs.board);
   app.emit('load', JSON.parse(JSON.stringify(ext())));
   check(JSON.stringify(ext().missions.jobs.board) === boardBefore, 'load restores the same board');
-  // accept the zorba contract through the app's state; the render hook picks it up
-  app.S.contract = 'zorba'; app.S.tons = Cz.tons; app.S.clock = 3600 * 2;
-  app.emit('render');
-  let m = ext().missions.mission;
-  check(m && m.id === 'zorba' && m.acceptedH === 2 && m.deadlineH === 2 + M.deadlineFor(Cz) && m.state === 'accepted', 'accepting a contract starts a mission at the current clock');
-  check(logs.some((l) => /Mission clock started/.test(l.msg)), 'the start is logged');
-  // a scored batch on time: nothing deducted
-  const money0 = app.S.money;
-  app.S.clock = 3600 * 3; app.emit('batchComplete', { r: { done: 10 }, why: 'complete', net: 0, bins: [], cs: { C: Cz, stars: 2, fee: 1000 }, powerC: 0 });
-  check(app.S.money === money0 && ext().missions.mission.state === 'delivered' && ext().missions.rep === M.REP.contractOnTime, 'on-time delivery: no deduction, reputation +' + M.REP.contractOnTime);
-  // a second scored batch after the deadline: 40% comes back out
-  app.S.clock = 3600 * (2 + M.deadlineFor(Cz) + 0.5); app.S.money = 5000;
-  app.emit('batchComplete', { r: { done: 10 }, why: 'complete', net: 0, bins: [], cs: { C: Cz, stars: 3, fee: 1000 }, powerC: 0 });
-  check(near(app.S.money, 5000 - 1000 * (1 - M.LATE_RATE)) && logs.some((l) => /late/.test(l.msg) && /deducted/.test(l.msg)), 'a late delivery has 40% of its fee deducted and logged');
-  // release, accept again, let the grace run out on the tick hook
-  app.S.contract = null; app.emit('render');
-  check(ext().missions.mission === null && ext().missions.last && ext().missions.last.id === 'zorba', 'releasing clears the mission and keeps the last one');
-  app.S.contract = 'zorba'; app.emit('render'); m = ext().missions.mission;
-  app.S.money = 5000; const repBefore = ext().missions.rep;
-  app.S.clock = 3600 * (m.deadlineH + m.graceH + 0.1); app.emit('tick', { dt: 0.1, dh: 0.1 });
-  check(ext().missions.mission.state === 'failed' && near(app.S.money, 5000 - M.penaltyFor(Cz)) && ext().missions.rep === M.repApply(repBefore, M.REP.contractFail), 'deadline and grace missed on tick: liquidated damages $' + M.penaltyFor(Cz) + ' deducted, reputation ' + M.REP.contractFail);
-  check(logs.some((l) => /cancelled by the client/.test(l.msg) && l.cls === 'bad'), 'the cancellation is logged as bad');
-  app.emit('tick', { dt: 0.1, dh: 0 });
-  check(near(app.S.money, 5000 - M.penaltyFor(Cz)), 'an idle tick (dh = 0) changes nothing');
   // a job delivered through the batchComplete bins
-  app.S.contract = null; app.emit('render');
   const saved = ext().missions; const jb = saved.jobs.board.find((j) => j.mat === 'aluminum' && j.tier === 0);
   if (jb) {
     const st2 = JSON.parse(JSON.stringify(saved)); st2.jobs.active = [Object.assign({}, jb, { state: 'active', acceptedH: 0, deadlineH: 1e6 })]; st2.jobs.board = st2.jobs.board.filter((j) => j.id !== jb.id);
     app.emit('load', { missions: st2 });
     const money1 = app.S.money, lt = app.S.lifetime;
-    app.emit('batchComplete', { r: { done: 15 }, why: 'complete', net: 0, bins: zorba.bins, cs: null, powerC: 0 });
+    app.emit('batchComplete', { r: { done: 15 }, why: 'complete', net: 0, bins: zorba.bins, powerC: 0 });
     const after = ext().missions, aj = after.jobs.active[0] || after.jobs.done[0];
     check(aj && aj.t > 0 && app.S.money > money1 && near(app.S.money - money1, aj.paid) && near(app.S.lifetime - lt, aj.paid), 'a zorba batch credits ' + f(aj ? aj.t : 0, 2) + ' t to the aluminum job and pays the premium (' + f(app.S.money - money1, 0) + ')');
   } else check(true, '(no small aluminum job on this board; skipped the delivery check)');

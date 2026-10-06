@@ -438,7 +438,7 @@
    * The Omniprocessor is the one fantasy machine: it liberates every material to the target size and sorts every particle into a
    * bin of its own (see procComminution in js/sim.js). Its size, power, capacity and price are anchored on a real mega-shredder plant
    * with its full downstream separation hall, so the economics around it stay grounded. It unlocks at Mega-plant rank or when every
-   * contract has been finished at three stars (js/modules/endgame.js).
+   * the plant reaches Mega-plant rank (js/modules/endgame.js).
    */
   const OMNI_OUTS = {}; MAT_ORDER.forEach(function (id) { OMNI_OUTS[id] = MATERIALS[id].name; }); OMNI_OUTS.rejects = 'Oversize rejects';
   Object.assign(MACHINES, {
@@ -450,7 +450,7 @@
       settings: [S('rate', 'Throughput', '%', 20, 100, 5, 100), S('target', 'Target size', 'mm', 1, 100, 1, 20, true)],
       product: (s) => ({ p80: s.target, n: 2.4, top: 1.6 * s.target }),
       outs: OMNI_OUTS,
-      unlock: { rank: 'Mega-plant', stars: 3, text: 'Reach Mega-plant rank, or finish every contract at three stars.' },
+      unlock: { rank: 'Mega-plant', text: 'Reach Mega-plant rank.' },
       how: 'A long sealed unit that does in one pass what a whole plant does in twenty machines. Rotor cassettes take the feed down to the target size while a row of scan arches reads every particle (X-ray transmission, laser spectroscopy, induction and colour at once), and a bank of air jets fires each one down a chute of its own. No such machine exists: real plants need a shredder, magnets, eddy currents, air, density and sensor sorters in series because no single sensor and no single breaking mechanism works on every material.',
       best: 'Anything. One output bin per material.', avoid: 'Nothing, except a small bank balance.'
     }
@@ -515,6 +515,10 @@
     water: { name: 'Water', blurb: 'A bulk liquid.', cost: 0, comp: { water: 1 } },
     // Office furniture is particleboard and MDF held together by steel screws, staples and glides with plastic trim:
     // about 93% wood by mass. A clear-out pays a small tipping fee (-$5/t) because the board is clean enough to chip.
+    // Old timber windows and doors from a house clear-out: by mass roughly half timber frame, a third glazing (4 mm float glass,
+    // double-glazed units), steel hinges, stays and fixings, and a little PVC trim and seal. Demolition contractors pay to get
+    // rid of them, so a yard is paid a little to take a load.
+    windows: { name: 'Old windows & doors', blurb: 'Timber frames, panes of glass, steel hinges and fixings.', cost: -10, comp: { wood: 0.55, glass: 0.30, steel: 0.12, plastic: 0.03 } },
     chair: { name: 'Office clear-out', blurb: 'Desks and chairs: particleboard full of screws, staples and plastic glides.', cost: -5, comp: { wood: 0.93, steel: 0.05, plastic: 0.02 } },
     // Washing machine by mass (WEEE composition studies): ~55% steel shell and drum, 5% cast iron (drum spider), 4% copper
     // (motor windings and wiring), 3% aluminum, 18% plastics (tub and panels), 4% rubber (hoses, door seal), 3% glass (door)
@@ -704,9 +708,6 @@
     // tank farm on a take-or-pay contract gets the full bulk rate, about 30% below
     ln2farm: { name: 'Nitrogen tank farm', icon: '🧊', desc: 'Bulk liquid nitrogen deliveries', unit: '× LN2 price', levels: [1.0, 0.85, 0.70], costs: [10000, 35000] }
   };
-  // Supplier contracts: some feeds must be unlocked before they can be bought.
-  const FEED_UNLOCK = { elv: 0, pallets: 0, quarry: 0, water: 0, chair: 0, rubble: 2500, lab: 3000, gel: 3000, tires: 6000, zorba: 14000, appliance: 2000, everything: 5000, ewaste: 20000, pins: 60000 };
-  Object.keys(FEEDS).forEach(function (id) { FEEDS[id].unlock = FEED_UNLOCK[id] || 0; });
   // Rank is read from net worth: bank plus what the plant would sell for.
   const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [500000, 'Processor'], [2500000, 'Plant operator'], [12000000, 'Industrial group'], [60000000, 'Mega-plant']];   // balance pass #12: roughly 10 / 25 / 45 / 80 / 140 batches
 

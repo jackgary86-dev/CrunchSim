@@ -1,12 +1,12 @@
 /* CrunchSim module: blueprints. Save the current flowsheet under a name, list the saved lines with their signature
- * and the feed they were built on, reload one later, and keep the best-scoring line per contract automatically.
+ * and the feed they were built on, reload one later.
  *
  * A blueprint definition is preset-shaped, the same form as CS.LINES: { nodes: [{ m, s, src: 'feed' | 'k:port' }] }
  * with k the 1-based index of an earlier node, so CS.Sim.buildLine rebuilds it with fresh uids.
  *
  * The pure parts (serialise, deserialise, sanitise, sanitiseState, recordBest, offer) live on CS.Blueprints and touch
  * no DOM, so tests/blueprints.js can run them in Node. Everything that needs the page runs only when CS.app exists.
- * Module state is persisted through the app's 'save' / 'load' hooks under ext.blueprints = { saved: [...], best: {...} }.
+ * Module state is persisted through the app's 'save' / 'load' hooks under ext.blueprints = { saved: [...] }.
  */
 (function (G) {
   'use strict';
@@ -73,9 +73,9 @@
   function feedName(id) { return FEEDS[id] ? FEEDS[id].name : 'custom mix'; }
   function cleanName(name) { return String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, NAME_MAX); }
 
-  /* persisted state -> { saved, best } with every record validated; junk is dropped rather than trusted */
+  /* persisted state -> { saved } with every record validated; junk is dropped rather than trusted */
   function sanitiseState(raw) {
-    const out = { saved: [], best: {} };
+    const out = { saved: [] };
     if (!raw || typeof raw !== 'object') return out;
     (Array.isArray(raw.saved) ? raw.saved : []).forEach(function (b) {
       if (!b || typeof b !== 'object') return;
@@ -84,58 +84,35 @@
       out.saved.push({
         id: String(b.id || (Date.now().toString(36) + out.saved.length)), name: name, sig: signature(def.nodes), def: def,
         feed: FEEDS[b.feed] ? b.feed : 'custom', tons: isFinite(+b.tons) && +b.tons > 0 ? +b.tons : 0,
-        contract: b.contract && CS.Score && CS.Score.CONTRACTS.some(function (c) { return c.id === b.contract; }) ? b.contract : null,
         t: isFinite(+b.t) ? +b.t : 0
       });
     });
-    const best = raw.best && typeof raw.best === 'object' ? raw.best : {};
-    for (const cid in best) {
-      if (!CS.Score || !CS.Score.CONTRACTS.some(function (c) { return c.id === cid; })) continue;
-      const b = best[cid]; if (!b || typeof b !== 'object') continue;
-      const def = sanitise(b.def), stars = Math.floor(+b.stars || 0);
-      if (!def || stars < 1) continue;
-      out.best[cid] = { sig: signature(def.nodes), def: def, stars: Math.min(3, stars), feed: FEEDS[b.feed] ? b.feed : 'custom', kwhT: isFinite(+b.kwhT) ? +b.kwhT : null, fee: isFinite(+b.fee) ? +b.fee : null };
-    }
     return out;
   }
 
-  /* After a scored batch: keep the line when its stars beat the stored best for that contract. Returns true when stored.
-   * Ties are not replaced, so the first line to reach a star count stays the reference until a better one appears. */
-  function recordBest(best, cs, line, feed) {
-    if (!best || !cs || !cs.C || !(cs.stars > 0)) return false;
-    const prev = best[cs.C.id];
-    if (prev && prev.stars >= cs.stars) return false;
-    const def = serialise(line); if (!def.nodes.length) return false;
-    best[cs.C.id] = { sig: signature(def.nodes), def: def, stars: cs.stars, feed: feed || 'custom', kwhT: isFinite(cs.kwhT) ? cs.kwhT : null, fee: isFinite(cs.fee) ? cs.fee : null };
-    return true;
-  }
-
-  /* Order the shelf for the current situation: blueprints built for the active contract (saved under it, or on its feed)
-   * come first; with no contract, those saved on the current feed preset come first. Each row says whether it fits. */
+  /* Order the shelf for the current situation: those saved on the current feed preset come first. Each row says whether it fits. */
   function offer(saved, ctx) {
     ctx = ctx || {};
     const rows = (saved || []).map(function (bp, i) {
       let fit = false;
-      if (ctx.contract) fit = bp.contract === ctx.contract || (!!ctx.contractFeed && bp.feed === ctx.contractFeed);
-      else if (ctx.feedPreset && ctx.feedPreset !== 'custom') fit = bp.feed === ctx.feedPreset;
+      if (ctx.feedPreset && ctx.feedPreset !== 'custom') fit = bp.feed === ctx.feedPreset;
       return { bp: bp, fit: fit, i: i };
     });
     rows.sort(function (a, b) { return (b.fit - a.fit) || (a.i - b.i); });
     return rows;
   }
 
-  CS.Blueprints = { serialise: serialise, deserialise: deserialise, sanitise: sanitise, sanitiseState: sanitiseState, recordBest: recordBest, offer: offer, signature: signature, MAX_SAVED: MAX_SAVED, NAME_MAX: NAME_MAX };
+  CS.Blueprints = { serialise: serialise, deserialise: deserialise, sanitise: sanitise, sanitiseState: sanitiseState, offer: offer, signature: signature, MAX_SAVED: MAX_SAVED, NAME_MAX: NAME_MAX };
 
   /* ---------------- page: panel, save / load / delete, hooks ---------------- */
   if (typeof document === 'undefined') return;
 
   function install(app) {
-    const state = { saved: [], best: {} };
+    const state = { saved: [] };
     let loaded = false, els = null, armed = null;
-    const starsText = function (n) { return app.starsText ? app.starsText(n) : '★★★'.slice(0, n); };
 
     app.on('load', function (ext) { Object.assign(state, sanitiseState(ext && ext.blueprints)); loaded = true; });
-    app.on('save', function () { return { blueprints: { saved: state.saved, best: state.best } }; });
+    app.on('save', function () { return { blueprints: { saved: state.saved } }; });
 
     app.on('boot', function () {
       // if this module registered after boot() had already emitted 'load', read the persisted block directly
@@ -143,14 +120,6 @@
       buildPanel(); render();
     });
     app.on('render', render);
-    app.on('batchComplete', function (p) {
-      if (!p || !p.cs || !p.cs.C || !app.S) return;
-      if (recordBest(state.best, p.cs, app.S.line, app.S.feedPreset)) {
-        const b = state.best[p.cs.C.id];
-        app.log('Blueprint: ' + b.sig + ' is now your best line for ' + p.cs.C.name + ' (' + b.stars + ' star' + (b.stars === 1 ? '' : 's') + ').', 'ok');
-        render();
-      }
-    });
 
     function buildPanel() {
       if (els) return;
@@ -158,9 +127,8 @@
       sec.insertAdjacentHTML('beforeend',
         '<div class="small">SAVE CURRENT LINE</div>' +
         '<div class="row"><input type="text" id="bp-name" class="bp-name" maxlength="' + NAME_MAX + '" placeholder="name, e.g. tires v2" autocomplete="off"><button id="bp-save" type="button">SAVE</button></div>' +
-        '<h3>Saved lines</h3><div id="bp-list"></div>' +
-        '<h3>Best per contract</h3><div id="bp-best"></div>');
-      els = { sec: sec, name: sec.querySelector('#bp-name'), save: sec.querySelector('#bp-save'), list: sec.querySelector('#bp-list'), best: sec.querySelector('#bp-best') };
+        '<h3>Saved lines</h3><div id="bp-list"></div>');
+      els = { sec: sec, name: sec.querySelector('#bp-name'), save: sec.querySelector('#bp-save'), list: sec.querySelector('#bp-list') };
       els.save.addEventListener('click', saveCurrent);
       els.name.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); saveCurrent(); } });
     }
@@ -173,11 +141,10 @@
       let name = cleanName(els.name.value);
       if (!name) name = cleanName(feedName(S.feedPreset) + ' · ' + sig);
       const existing = state.saved.findIndex(function (b) { return b.name.toLowerCase() === name.toLowerCase(); });
-      const C = app.contract ? app.contract() : null;
-      const rec = { id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: name, sig: sig, def: def, feed: FEEDS[S.feedPreset] ? S.feedPreset : 'custom', tons: S.tons, contract: C ? C.id : null, t: S.clock || 0 };
+      const rec = { id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: name, sig: sig, def: def, feed: FEEDS[S.feedPreset] ? S.feedPreset : 'custom', tons: S.tons, t: S.clock || 0 };
       if (existing >= 0) { rec.id = state.saved[existing].id; state.saved[existing] = rec; app.log('Blueprint replaced: ' + name + ' (' + sig + ').', 'ok'); }
       else if (state.saved.length >= MAX_SAVED) { app.log('The blueprint shelf is full (' + MAX_SAVED + '). Delete one first.', 'warn'); return; }
-      else { state.saved.push(rec); app.log('Blueprint saved: ' + name + ' (' + sig + ', ' + feedName(rec.feed) + (C ? ', contract ' + C.name : '') + ').', 'ok'); }
+      else { state.saved.push(rec); app.log('Blueprint saved: ' + name + ' (' + sig + ', ' + feedName(rec.feed) + ').', 'ok'); }
       els.name.value = '';
       if (app.save) app.save();
       render();
@@ -200,8 +167,7 @@
       S.line = nodes; S.sel = nodes[0].uid; S.linePreset = 'custom';
       if (cost > 0) app.log('Blueprint loaded: ' + label + '. It uses ' + app.fmtMoney(cost) + ' of machines you do not own yet (' + names.join(', ') + '). Buy them from the node panel to run it.', 'warn');
       else app.log('Blueprint loaded: ' + label + ' (' + signature(nodes) + ').', 'ok');
-      const C = app.contract ? app.contract() : null;
-      if (feedId && !C && feedId !== S.feedPreset) app.log('It was built for ' + feedName(feedId) + '; the feed is still ' + feedName(S.feedPreset) + '.');
+      if (feedId && feedId !== S.feedPreset) app.log('It was built for ' + feedName(feedId) + '; the feed is still ' + feedName(S.feedPreset) + '.');
       app.markDirty(true);
     }
 
@@ -217,31 +183,20 @@
     function render() {
       if (!els || !app.S) return;
       const S = app.S, esc = app.esc, el = app.el;
-      const C = app.contract ? app.contract() : null;
-      const rows = offer(state.saved, { contract: C ? C.id : null, contractFeed: C ? C.feed : null, feedPreset: S.feedPreset });
+      const rows = offer(state.saved, { feedPreset: S.feedPreset });
       els.list.innerHTML = '';
       if (!rows.length) els.list.appendChild(el('div', 'empty', 'No blueprints yet. Build a line and save it.'));
       rows.forEach(function (r) {
         const bp = r.bp;
         const row = el('div', 'urow' + (r.fit ? ' fit' : ''),
           '<span class="ic">' + (r.fit ? '◈' : '▦') + '</span><span><div class="nm">' + esc(bp.name) + (r.fit ? '<span class="tag fit">BUILT FOR THIS</span>' : '') + '</div>' +
-          '<div class="cur">' + esc(bp.sig) + ' · ' + esc(feedName(bp.feed)) + (bp.tons ? ', ' + bp.tons + ' t' : '') + (bp.contract && CS.Score ? ' · ' + esc((CS.Score.CONTRACTS.find(function (c) { return c.id === bp.contract; }) || { name: bp.contract }).name) : '') + '</div></span>');
+          '<div class="cur">' + esc(bp.sig) + ' · ' + esc(feedName(bp.feed)) + (bp.tons ? ', ' + bp.tons + ' t' : '') + '</div></span>');
         const btns = el('span', 'btns');
         const bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'LOAD'; bl.addEventListener('click', function () { loadDef(bp.def, bp.name, bp.feed); });
         const bd = document.createElement('button'); bd.type = 'button'; bd.className = 'danger'; bd.textContent = 'DELETE'; bd.addEventListener('click', function () { deleteBlueprint(bp, bd); });
         btns.appendChild(bl); btns.appendChild(bd); row.appendChild(btns); els.list.appendChild(row);
       });
-      els.best.innerHTML = '';
-      let any = false;
-      (CS.Score ? CS.Score.CONTRACTS : []).forEach(function (Ct) {
-        const b = state.best[Ct.id]; if (!b) return; any = true;
-        const row = el('div', 'urow' + (C && C.id === Ct.id ? ' fit' : ''),
-          '<span class="ic amber">' + b.stars + '★</span><span><div class="nm">best for ' + esc(Ct.name) + ': <b class="num">' + esc(b.sig) + '</b> <span class="stars got">' + starsText(b.stars) + '</span></div>' +
-          '<div class="cur">' + esc(feedName(b.feed)) + (b.kwhT != null ? ' · ' + b.kwhT.toFixed(1) + ' kWh/t' : '') + (b.fee != null && app.fmtMoney ? ' · fee ' + app.fmtMoney(b.fee) : '') + '</div></span>');
-        const bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'LOAD'; bl.addEventListener('click', function () { loadDef(b.def, 'best for ' + Ct.name, b.feed); });
-        row.appendChild(bl); els.best.appendChild(row);
-      });
-      if (!any) els.best.appendChild(el('div', 'small', 'Complete a contract and its best-scoring line is kept here.'));
+
     }
   }
 

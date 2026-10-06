@@ -15,7 +15,7 @@ check(!!M && M.name === 'Omniprocessor' && M.short === 'OMNI' && M.cat === 'End 
 check(M.price / PRICE_SCALE >= 1e6, 'price is in the millions before PRICE_SCALE ($' + (M.price / PRICE_SCALE).toLocaleString('en-US') + ' real, $' + M.price.toLocaleString('en-US') + ' in game)');
 check(M.settings.map((s) => s.id).join(',') === 'rate,target' && M.defaults.rate === 100 && M.defaults.target === 20, 'settings: throughput and target size');
 check(M.foot && M.foot.w > 0 && M.foot.d > 0, 'has a footprint (' + M.foot.w + ' x ' + M.foot.d + ' m)');
-check(M.unlock && M.unlock.rank === 'Mega-plant' && M.unlock.stars === 3, 'unlock field: Mega-plant or three stars everywhere');
+check(M.unlock && M.unlock.rank === 'Mega-plant', 'unlock field: Mega-plant');
 check(MACHINE_GROUPS.some(([g, ids]) => g === 'End game' && ids.includes('omni')), 'End game group lists the omni');
 check(CS.MAT_ORDER.every((id) => M.outs[id] === MATERIALS[id].name) && M.outs.rejects, 'outs name a port for every material plus rejects');
 
@@ -48,11 +48,6 @@ check(Math.abs(evd.nodes[1].inKg - 80) < 1e-6, 'a downstream node fed from 1:alu
 const ham = Sim.evalLine(Sim.buildLine({ nodes: [{ m: 'hammer', s: {}, src: 'feed' }] }), FEEDS.everything.comp);
 check(ham.terminals.map((t) => t.port).sort().join(',') === 'product,rejects', 'the hammermill still has product and rejects ports');
 check(Math.abs(ham.nodes[0].perMat.steel.resp - Sim.mixResp(MACHINES.hammer, MATERIALS.steel.resp[0])) < 1e-12, 'the hammermill still uses its own mechanism response');
-
-console.log('\n=== contracts with the omni');
-const scored = Score.CONTRACTS.filter((C) => C.feed !== 'gel').map((C) => { const L = Sim.buildLine({ nodes: [{ m: 'omni', s: {}, src: 'feed' }] }); return [C, Score.evalContract(C, L, null)]; });
-scored.forEach(([C, cs]) => console.log('  ' + C.id.padEnd(9) + ' ' + cs.stars + ' stars'));
-check(scored.some(([, cs]) => cs.stars >= 1), 'the omni ships at least one contract');
 
 console.log('\n=== cam scene');
 const SC = CS.Scenes.omni;
@@ -99,20 +94,14 @@ const app = mkApp(); CS.app = app;
 require('../js/modules/endgame.js');
 const E = CS.Endgame;
 check(!!E && app.endgameStarted, 'CS.Endgame is exported and the module registered its hooks');
-const all3 = {}; Score.CONTRACTS.forEach((C) => { all3[C.id] = 3; });
-const allButOne = Object.assign({}, all3); allButOne[Score.CONTRACTS[0].id] = 2;
 const MEGA = RANKS.findIndex((r) => r[1] === 'Mega-plant');
 check(E.rankNeeded('omni') === MEGA, 'the omni needs rank index ' + MEGA + ' (Mega-plant)');
-check(!E.unlockStatus('omni', MEGA - 1, {}, Score.CONTRACTS).ok, 'Industrial group with no stars: locked');
-check(E.unlockStatus('omni', MEGA, {}, Score.CONTRACTS).ok, 'Mega-plant: unlocked');
-check(E.unlockStatus('omni', 0, all3, Score.CONTRACTS).ok, 'every contract at three stars: unlocked at any rank');
-const u1 = E.unlockStatus('omni', 0, allButOne, Score.CONTRACTS);
-check(!u1.ok && u1.starred === Score.CONTRACTS.length - 1, 'one contract at two stars: still locked (' + u1.starred + ' of ' + u1.total + ')');
-check(!E.unlockStatus('omni', 0, {}, []).ok, 'an empty contract list never unlocks by stars');
-check(E.vetoFor('hammer', false, 0, {}, Score.CONTRACTS) === '', 'ordinary machines are never refused');
-check(E.vetoFor('omni', true, 0, {}, Score.CONTRACTS) === '', 'an omni already owned is never refused');
-const why = E.vetoFor('omni', false, 0, {}, Score.CONTRACTS);
-check(/locked/.test(why) && /Mega-plant/.test(why) && /0 of 9/.test(why), 'the veto says why: ' + why);
+check(!E.unlockStatus('omni', MEGA - 1).ok, 'Industrial group: locked');
+check(E.unlockStatus('omni', MEGA).ok, 'Mega-plant: unlocked');
+check(E.vetoFor('hammer', false, 0) === '', 'ordinary machines are never refused');
+check(E.vetoFor('omni', true, 0) === '', 'an omni already owned is never refused');
+const why = E.vetoFor('omni', false, 0);
+check(/locked/.test(why) && /Mega-plant/.test(why), 'the veto says why: ' + why);
 
 console.log('\n=== hooks');
 app.nw = RANKS[MEGA][0] - 1;
@@ -122,9 +111,7 @@ check(/locked/.test(app.veto('applyLine', { id: 'blueprint', nodes: [{ m: 'twin'
 check(app.veto('applyLine', { id: 'car', nodes: CS.LINES.car.nodes }) === '', 'veto:applyLine lets the car line through');
 app.nw = RANKS[MEGA][0];
 check(app.veto('addMachine', { m: 'omni' }) === '', 'at Mega-plant the omni can be bought');
-app.nw = 0; app.S.contracts = all3;
-check(app.veto('addMachine', { m: 'omni' }) === '', 'with every contract at three stars the omni can be bought');
-app.S.contracts = {}; app.S.owned.add('omni');
+app.nw = 0; app.S.owned.add('omni');
 check(app.veto('addMachine', { m: 'omni' }) === '', 'once owned the omni stays placeable after net worth drops');
 app.emit('batchComplete', { why: 'complete', r: {} });
 check(!app.collect().endgame.shown, 'a batch without the omni does not end the game');
@@ -138,8 +125,8 @@ check(app.saved === 1, 'the end-game card shows once');
 app.emit('newgame'); check(!app.collect().endgame.shown, 'newgame resets it');
 app.emit('load', { endgame: { shown: true } }); check(app.collect().endgame.shown === true, 'load restores it');
 app.emit('load', { endgame: 'junk' }); check(app.collect().endgame.shown === false, 'junk loads as not shown');
-const es = E.endStats(app.S, 2e7, 'Mega-plant', Score.CONTRACTS);
-check(es.score === 2e7 && es.rank === 'Mega-plant' && es.lifetime === 123456 && es.batches === 42 && es.contracts === Score.CONTRACTS.length, 'end stats: score, rank, lifetime earnings, batches');
+const es = E.endStats(app.S, 2e7, 'Mega-plant');
+check(es.score === 2e7 && es.rank === 'Mega-plant' && es.lifetime === 123456 && es.batches === 42, 'end stats: score, rank, lifetime earnings, batches');
 
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nend game checks pass');
 process.exit(fails ? 1 : 0);

@@ -1,6 +1,6 @@
 /* CrunchSim module: endgame (ticket #15). The Omniprocessor (MACHINES.omni in js/data.js, the M.omni branch of
- * procComminution in js/sim.js, the 'omni' cam scene in js/scenes-b.js) is locked until the plant reaches Mega-plant rank or
- * every contract has been finished at three stars. The lock is a veto on 'addMachine' and 'applyLine'; an Omniprocessor already
+ * procComminution in js/sim.js, the 'omni' cam scene in js/scenes-b.js) is locked until the plant reaches Mega-plant rank (the
+ * old path through three-star client contracts went with the contracts in #78). The lock is a veto on 'addMachine' and 'applyLine'; an Omniprocessor already
  * owned is never refused. When the first batch through it completes, an end-game card shows the final score (net worth), the
  * rank, lifetime earnings and a KEEP PLAYING button. Whether the card has been shown persists under ext.endgame.
  *
@@ -20,26 +20,22 @@
     const U = MACHINES[m] && MACHINES[m].unlock, i = U ? RANKS.findIndex(function (r) { return r[1] === U.rank; }) : -1;
     return i >= 0 ? i : RANKS.length - 1;
   }
-  /* { ok, byRank, byStars, starred, total, need, rankName } for machine m at rank index rankIdx with best stars per contract */
-  function unlockStatus(m, rankIdx, contracts, list) {
-    const U = (MACHINES[m] && MACHINES[m].unlock) || {}, need = U.stars || 3, ri = rankNeeded(m);
-    const all = list || [], best = contracts || {};
-    const starred = all.filter(function (c) { return (best[c.id] || 0) >= need; }).length;
-    const byRank = (+rankIdx || 0) >= ri, byStars = all.length > 0 && starred === all.length;
-    return { ok: byRank || byStars, byRank: byRank, byStars: byStars, starred: starred, total: all.length, need: need, rankName: RANKS[ri][1] };
+  /* { ok, rankName } for machine m at rank index rankIdx */
+  function unlockStatus(m, rankIdx) {
+    const ri = rankNeeded(m);
+    return { ok: (+rankIdx || 0) >= ri, rankName: RANKS[ri][1] };
   }
   /* reason machine m may not be added, or '' when it may (not an end-game machine, already owned, or unlocked) */
-  function vetoFor(m, owned, rankIdx, contracts, list) {
+  function vetoFor(m, owned, rankIdx) {
     if (!isOmni(m) || owned) return '';
-    const u = unlockStatus(m, rankIdx, contracts, list); if (u.ok) return '';
-    return 'The ' + MACHINES[m].name + ' is locked: reach ' + u.rankName + ' rank, or finish every contract at ' + u.need + ' stars (' + u.starred + ' of ' + u.total + ' so far).';
+    const u = unlockStatus(m, rankIdx); if (u.ok) return '';
+    return 'The ' + MACHINES[m].name + ' is locked: reach ' + u.rankName + ' rank.';
   }
   /* numbers on the end-game card */
-  function endStats(S, netWorth, rank, list) {
-    const all = list || [], best = (S && S.contracts) || {};
+  function endStats(S, netWorth, rank) {
     return {
       score: netWorth, rank: rank, lifetime: (S && S.lifetime) || 0, batches: (S && S.batches) || 0, tonnes: (S && S.tonnes) || 0,
-      clock: (S && S.clock) || 0, threeStar: all.filter(function (c) { return (best[c.id] || 0) >= 3; }).length, contracts: all.length
+      clock: (S && S.clock) || 0
     };
   }
 
@@ -58,12 +54,11 @@
     const state = { shown: false };
     let overlay = null, status = null;
     const S = function () { return API.S; };
-    const list = function () { return (API.Score || CS.Score || {}).CONTRACTS || []; };
     const rankIdx = function () { return API.rankOf && API.netWorth ? API.rankOf(API.netWorth()).idx : 0; };
     const omniId = function () { return Object.keys(MACHINES).find(isOmni) || 'omni'; };
 
     function restore(ext) { const e = ext && ext.endgame; state.shown = !!(e && e.shown); }
-    function veto(m) { return vetoFor(m, S() && S().owned && S().owned.has(m), rankIdx(), S() && S().contracts, list()); }
+    function veto(m) { return vetoFor(m, S() && S().owned && S().owned.has(m), rankIdx()); }
 
     function hide() { if (overlay) overlay.classList.add('hidden'); }
     function show() {
@@ -74,14 +69,13 @@
         document.body.appendChild(overlay);
         overlay.addEventListener('click', function (e) { if (e.target === overlay) hide(); });
       }
-      const nw = API.netWorth(), st = endStats(S(), nw, API.rankOf(nw).name, list()), M = MACHINES[omniId()];
+      const nw = API.netWorth(), st = endStats(S(), nw, API.rankOf(nw).name), M = MACHINES[omniId()];
       overlay.innerHTML = '<div class="card"><h2>END GAME<span>' + API.esc(M.name.toUpperCase()) + ' ONLINE</span></h2>' +
         '<div class="net"><small>FINAL SCORE · NET WORTH</small>' + API.fmtMoney(st.score) + '</div>' +
         '<dl><dt>Rank</dt><dd class="rk">' + API.esc(st.rank.toUpperCase()) + '</dd>' +
         '<dt>Lifetime earnings</dt><dd>' + API.fmtMoney(st.lifetime) + '</dd>' +
         '<dt>Batches run</dt><dd>' + API.fmtNum(st.batches, 0) + '</dd>' +
         '<dt>Tonnes processed</dt><dd>' + API.fmtNum(st.tonnes, 0) + ' t</dd>' +
-        '<dt>Contracts at three stars</dt><dd>' + st.threeStar + ' / ' + st.contracts + '</dd>' +
         '<dt>Plant clock</dt><dd>' + API.esc(API.fmtClock(st.clock)) + '</dd></dl>' +
         '<div class="lesson">One pass, one bin per material. No real plant can do this: every sensor and every breaking mechanism works on some materials and not others, which is why the yard you built needed a shredder, magnets, eddy currents, air, density and sensor sorters in series.</div>' +
         '<button type="button" class="buy" id="endgame-keep">KEEP PLAYING</button></div>';
@@ -95,9 +89,9 @@
       if (!status) { status = API.el('div', 'small num'); status.id = 'endgame-status'; bar.insertAdjacentElement('afterend', status); }   // under the rank bar: the rank is half the unlock rule
       const id = omniId(), M = MACHINES[id];
       if (S().owned.has(id)) { status.innerHTML = 'END GAME · <b class="ok">' + API.esc(M.name.toUpperCase()) + ' OWNED</b>'; return; }
-      const u = unlockStatus(id, rankIdx(), S().contracts, list());
+      const u = unlockStatus(id, rankIdx());
       status.innerHTML = 'END GAME · ' + (u.ok ? '<b class="ok">' + API.esc(M.name.toUpperCase()) + ' UNLOCKED</b> · ' + API.fmtMoney(M.price) + ' in the Flowsheet drawer'
-        : '<b class="lock">' + API.esc(M.name.toUpperCase()) + ' LOCKED</b> · ' + API.esc(u.rankName) + ' rank, or ' + u.starred + ' / ' + u.total + ' contracts at ' + u.need + ' stars');
+        : '<b class="lock">' + API.esc(M.name.toUpperCase()) + ' LOCKED</b> · reach ' + API.esc(u.rankName) + ' rank');
     }
 
     /* hooks */

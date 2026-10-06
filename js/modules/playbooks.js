@@ -473,8 +473,7 @@
       st.line = nodes; st.sel = nodes[0].uid; st.linePreset = 'custom';
       if (cost > 0) app.log('Playbook loaded: ' + pb.name + ' (' + signature(nodes) + '). It uses ' + app.fmtMoney(cost) + ' of machines you do not own yet (' + names.join(', ') + '). Buy them from the node panel to run it.', 'warn');
       else app.log('Playbook loaded: ' + pb.name + ' (' + signature(nodes) + ').', 'ok');
-      const C = app.contract ? app.contract() : null;
-      if (!C && st.feedPreset !== pb.feed) app.log('The card was written for ' + feedName(pb) + '; the feed is still ' + (FEEDS[st.feedPreset] ? FEEDS[st.feedPreset].name : 'your custom mix') + '. The fit readout shows how it does on it.');
+      if (st.feedPreset !== pb.feed) app.log('The card was written for ' + feedName(pb) + '; the feed is still ' + (FEEDS[st.feedPreset] ? FEEDS[st.feedPreset].name : 'your custom mix') + '. The fit readout shows how it does on it.');
       app.markDirty(true);
     }
 

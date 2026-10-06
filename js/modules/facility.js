@@ -5,7 +5,7 @@
  *
  * How each effect reaches the game (a module only has CS.app, Sim.prices and the shared tables to work with):
  *   desk         Sim.prices.market = plant offtake value x desk multiplier. applyPlant() in app.js rewrites the plant value on
- *                boot, on every plant purchase and on contract release, so the multiplier is re-applied from the 'render' hook
+ *                boot, on every plant purchase, so the multiplier is re-applied from the 'render' hook
  *                whenever the price is found back at the plant value. A price that is neither the plant value nor the one this
  *                module wrote last was set by another module and is left alone (CS.Facility.effects() exposes the multiplier).
  *   ln2farm      Sim.prices.ln2, the same way, on top of the nitrogen supply upgrade.
@@ -205,8 +205,7 @@
     /* the batch slider's max is only set by the app's applyPlant(), so after a weighbridge purchase it is set here too */
     function syncBatchMax() {
       const r = document.querySelector('#feed-tons'); if (!r) return;
-      const C = API.contract ? API.contract() : null;
-      const max = Math.max(API.plantValue('logistics'), C ? C.tons : 0);
+      const max = API.plantValue('logistics');
       if (+r.max !== max) r.max = max;
     }
     /* push every effect into the game; true when a price changed and the plant numbers need a recompute */

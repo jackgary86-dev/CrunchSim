@@ -92,6 +92,13 @@
     const c = sellable().filter(function (id) { return state.recent.indexOf(id) < 0; });
     return c.length >= 2 ? c : sellable();
   }
+  /* #213: a batch closes a round only when it did real work (finished, or at least a quarter of its tonnes and 1 t), so a start-then-STOP cannot re-roll the bulletin */
+  const MIN_SHARE = 0.25, MIN_TONNES = 1;
+  function countsAsRound(r, why) {
+    if (!r || !(r.done > 0)) return false;
+    return why === 'complete' || (r.done >= MIN_TONNES && r.done >= MIN_SHARE * (r.total || 0));
+  }
+
   /* one round: the walk steps, a hot and a cold material are named, history grows. hour: mission clock hour the batch closed at. */
   function step(state, hour) {
     hour = Math.floor(hour > 0 ? hour : 0);
@@ -151,7 +158,7 @@
   let live = newState();
   const Market = {
     MIN, MAX, SIGMA, KAPPA, HOT, COLD, COOLDOWN, HISTORY, REASONS, mulberry32,
-    newState, step, factorOf, walkOf, factorsMap, trendMap, viewOf, priceOf, historyOf, applyToSim, serialize, deserialize, sellable,
+    newState, step, countsAsRound, MIN_SHARE, MIN_TONNES, factorOf, walkOf, factorsMap, trendMap, viewOf, priceOf, historyOf, applyToSim, serialize, deserialize, sellable,
     state() { return live; },
     round() { return live.round; },
     hot() { return live.hot; },
@@ -199,7 +206,7 @@
     }
 
     function onBatchComplete(p) {
-      const r = p && p.r; if (!r || !(r.done > 0)) return;
+      const r = p && p.r; if (!countsAsRound(r, p && p.why)) return;
       step(live, clockHour());
       applyToSim(live);
       logRound();

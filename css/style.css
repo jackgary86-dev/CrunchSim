@@ -561,3 +561,15 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .loop-step b { letter-spacing: 1.5px; }
 .loop-step span { font-size: 11px; color: var(--text); opacity: .75; }
 .loop-step.on span { opacity: 1; }
+
+/* milestones (#73) */
+.ms { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-bottom: 1px dotted var(--line); }
+.ms > span:last-child { display: flex; flex-direction: column; }
+.ms b { font-weight: 500; }
+.ms-ic { width: 18px; height: 18px; border: 1px solid var(--line-2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #0b1018; font-size: 12px; }
+.ms.done .ms-ic { background: var(--green); border-color: var(--green); }
+.ms.done b { color: var(--green); }
+.toast { position: fixed; top: 70px; left: 50%; transform: translate(-50%, -20px); opacity: 0; z-index: 95; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 22px; background: rgba(12, 18, 26, .96); border: 1px solid var(--amber); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.5); transition: transform .35s ease-out, opacity .35s ease-out; pointer-events: none; }
+.toast.in { transform: translate(-50%, 0); opacity: 1; }
+.toast b { font-family: var(--mono); letter-spacing: 3px; color: var(--amber); font-weight: 400; font-size: 12px; }
+.toast span { font-size: 16px; }

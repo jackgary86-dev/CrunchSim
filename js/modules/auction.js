@@ -306,6 +306,7 @@
       if (!app.spend(total, 'lot #' + L.id + ' (' + L.tons + ' t at ' + app.fmtMoney(perT) + '/t)')) { render(); return false; }
       st.board = st.board.filter((x) => x !== L);
       const lot = Object.assign({}, L, { ask: perT, listAsk: L.ask, paid: total, boughtTons: L.tons, bid: undefined });
+      app.emit('lotBought', { lot, total });   // milestones (#73)
       if (st.pending) st.yard.push(lot); else st.pending = lot;   // #49: lots queue in the yard
       const cap = app.plantValue('logistics');
       app.log(how + ' lot #' + L.id + ' from ' + L.seller + ': ' + L.tons + ' t of ' + L.headline + ' at ' + app.fmtMoney(perT) + '/t, ' + app.fmtMoney(total) + ' paid. Declared ' + compText(L.declared, 4).replace(/&amp;/g, '&') + '.' + (L.tons > cap ? ' Only ' + cap + ' t fit a batch; the rest waits in the yard.' : ''), 'ok');

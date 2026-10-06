@@ -82,7 +82,8 @@
       if (API.S.run) { API.log('The furnace crew is on the line: refine between batches.', 'warn'); return; }
       const out = I.withdraw(mat, I.stock()[mat].t); if (!(out.t > 0)) return;
       credit(q.net);
-      if (CS.Audio) CS.Audio.ui('ok');
+      if (CS.Audio && CS.Audio.fx) CS.Audio.fx('roar');   // #81
+      API.emit('refined', { mat, form: q.form, t: q.metalT, net: q.net });   // milestones (#73)
       API.log('Refined ' + API.fmtNum(out.t, out.t >= 1 ? 1 : 3) + ' t of ' + MATERIALS[mat].name.toLowerCase() + ' into ' + API.fmtNum(q.metalT, q.metalT >= 1 ? 1 : 3) + ' t of ' + q.form + ': ' + API.fmtMoney(q.value) + ' less ' + API.fmtMoney(q.cost) + ' (' + API.fmtNum(q.kwh, 0) + ' kWh and charges) = ' + API.fmtMoney(q.net) + ', ' + (q.gain >= 0 ? API.fmtMoney(q.gain) + ' more' : API.fmtMoney(-q.gain) + ' less') + ' than selling it raw.', 'ok');
       after();
     }
@@ -92,7 +93,8 @@
       if (API.S.run) { API.log('Refine between batches.', 'warn'); return; }
       const misc = I.misc(); Object.keys(misc).forEach((m) => I.withdrawMisc(m, misc[m].t));
       credit(q.net);
-      if (CS.Audio) CS.Audio.ui('ok');
+      if (CS.Audio && CS.Audio.fx) CS.Audio.fx('roar');
+      API.emit('refined', { mat: 'misc', form: 'concentrate', metal: q.metal, net: q.net });
       API.log('Sold ' + API.fmtNum(q.t, 1) + ' t of MISC concentrate to the precious refinery by assay: ' + Object.keys(q.metal).map((m) => Math.round(q.metal[m] * 1e6) + ' g ' + m).join(', ') + ' paid at ' + Math.round(CONC_PAY * 100) + '% (' + API.fmtMoney(q.value) + ') less ' + API.fmtMoney(q.cost) + ' treatment = ' + API.fmtMoney(q.net) + '. The copper, plastic and glass around it went with it.', 'ok');
       after();
     }

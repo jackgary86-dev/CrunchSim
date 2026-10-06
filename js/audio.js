@@ -99,6 +99,16 @@
     else if (kind === 'done') [523, 659, 784, 1046].forEach((f, i) => tone(t + i * 0.09, { freq: f, dur: 0.18, gain: 0.1, type: 'triangle' }));
     else if (kind === 'alarm') { for (let i = 0; i < 3; i++) tone(t + i * 0.16, { freq: 880, dur: 0.1, gain: 0.1, type: 'square' }); }
   }
+  /* the key moments (#81): a cash register for a sale, a gavel when a bin is sold at auction, a rising chime when a bucket
+   * crosses 90% purity and starts to sell, a furnace roar for refining, a fanfare for a rank or a milestone */
+  function fx(kind) {
+    if (!ready()) return; const t = ctx.currentTime;
+    if (kind === 'cash') { burst(t, { dur: 0.05, freq: 3000, q: 3, gain: 0.18 }); tone(t + 0.04, { freq: 1568, dur: 0.35, gain: 0.12, type: 'triangle' }); tone(t + 0.04, { freq: 2093, dur: 0.45, gain: 0.08, type: 'sine' }); burst(t + 0.12, { dur: 0.2, freq: 5000, q: 0.8, gain: 0.05, type: 'highpass' }); }
+    else if (kind === 'gavel') { burst(t, { dur: 0.08, freq: 700, freqEnd: 250, q: 1.5, gain: 0.5 }); tone(t, { freq: 140, freqEnd: 70, dur: 0.12, gain: 0.35 }); burst(t + 0.28, { dur: 0.09, freq: 750, freqEnd: 260, q: 1.5, gain: 0.55 }); tone(t + 0.28, { freq: 150, freqEnd: 70, dur: 0.14, gain: 0.4 }); }
+    else if (kind === 'chime') [784, 988, 1319].forEach((f, i) => tone(t + i * 0.07, { freq: f, dur: 0.3, gain: 0.09, type: 'sine' }));
+    else if (kind === 'roar') { burst(t, { dur: 1.2, freq: 180, freqEnd: 90, q: 0.5, gain: 0.35, type: 'lowpass' }); burst(t + 0.1, { dur: 0.9, freq: 900, freqEnd: 300, q: 0.4, gain: 0.08 }); tone(t, { freq: 55, freqEnd: 45, dur: 1.1, gain: 0.2, type: 'sawtooth' }); }
+    else if (kind === 'fanfare') [523, 659, 784, 1046, 1319].forEach((f, i) => { tone(t + i * 0.11, { freq: f, dur: 0.22 + (i === 4 ? 0.4 : 0), gain: 0.11, type: 'triangle' }); tone(t + i * 0.11, { freq: f / 2, dur: 0.2, gain: 0.05, type: 'square' }); });
+  }
   function setMuted(m) { muted = !!m; if (master) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.05); }
-  CS.Audio = { init, crunch, setHum, ui, setMuted, isMuted: () => muted };
+  CS.Audio = { init, crunch, setHum, ui, fx, cash: () => fx('cash'), setMuted, isMuted: () => muted };
 })(typeof window !== 'undefined' ? window : globalThis);

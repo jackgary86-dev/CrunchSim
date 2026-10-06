@@ -113,6 +113,7 @@ node tests/refinery.js
 node tests/slots.js
 node tests/round.js
 node tests/rivals-match.js
+node tests/milestones.js
 ```
 
 ## Sources

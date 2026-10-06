@@ -87,7 +87,7 @@
     ['auction', 'Auction', ['auction-panel', 'intake-panel']],
     ['sales', 'Market', ['inventory-panel', 'market-panel']],
     ['jobs', 'Jobs', ['missions-panel']],
-    ['bank', 'Bank & upgrades', ['bank-panel', 'slots-panel', 'refinery-panel', 'facility-panel']],
+    ['bank', 'Bank & upgrades', ['bank-panel', 'milestones-panel', 'slots-panel', 'refinery-panel', 'facility-panel']],
     ['rivals', 'Rivals', ['rivals-panel']],
     ['report', 'Plant report', ['plant-panel']],
     ['log', 'Event log', ['log-panel']]
@@ -303,7 +303,7 @@
   }
 
   /* ---------------- the lot card (#64) and the idle plant (#65) ---------------- */
-  let idleNow = false, runProg = -1;
+  let idleNow = false, runProg = -1, pureSeen = null;
   function isIdle() { const S = app.S; return !S.feedPrepaid && !(app.contract && app.contract()); }
   function compBars(c, n) {
     const e = Object.entries(c || {}).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]);
@@ -691,6 +691,12 @@
     spec = contractSpec();
     const old = $('#flow-contract'); if (old) old.remove();
     const strip = contractStrip(); if (strip) { strip.id = 'flow-contract'; ff.after(strip); }
+    // #81: a chime when a change makes a station bin pure enough to sell
+    if (!idleNow && S.ev) {
+      const pure = new Set(); S.ev.terminals.forEach((t) => { const b = Sim.binStats(t.stream.m, t.form); if (b.sellable && Sim.binMatters(b)) pure.add(t.key + ':' + b.main); });
+      if (pureSeen && !S.run) { for (const k of pure) if (!pureSeen.has(k)) { if (CS.Audio && CS.Audio.fx) CS.Audio.fx('chime'); break; } }
+      pureSeen = pure;
+    } else pureSeen = null;
     const box = $('#flow-nodes'); box.innerHTML = '';
     box.classList.toggle('idle', idleNow);
     const cta = $('#flow-cta');

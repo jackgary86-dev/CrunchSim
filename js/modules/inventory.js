@@ -378,6 +378,7 @@
     function sellMat(mat, why) {
       const r = sell(stock, mat, mv(), marketMul()); if (!r) return;
       credit(r.proceeds);
+      API.emit('sale', { mat, t: r.t, proceeds: r.proceeds, purity: r.purity });   // milestones (#73)
       const margin = r.proceeds - r.cost;
       API.log((why || 'Sold') + ' ' + fmtUnits(r.n, r.unit) + ' of ' + matName(mat).toLowerCase() + ' (' + API.fmtNum(r.t, 1) + ' t at ' + fmtPrice(r.price) + '/t, grade ' + Math.round(r.grade * r.sf * 100) + '%) for ' + fmtPrice(r.proceeds) + (r.cost > 0 ? ', ' + (margin >= 0 ? 'margin ' : 'loss ') + fmtPrice(Math.abs(margin)) + ' on a cost of ' + fmtPrice(r.cost) : '') + '.', margin >= 0 ? 'ok' : 'warn');
       afterSale();
@@ -385,6 +386,7 @@
     function sellEverything() {
       const r = sellAll(stock, mv(), marketMul()); if (!r.lots.length) return;
       credit(r.proceeds);
+      r.lots.forEach(function (l) { API.emit('sale', { mat: l.mat, t: l.t, proceeds: l.proceeds, purity: l.purity }); });
       API.log('Sold all stock: ' + r.lots.map(function (l) { return fmtUnits(l.n, l.unit) + ' of ' + matName(l.mat).toLowerCase(); }).join(', ') + ' for ' + fmtPrice(r.proceeds) + '.', 'ok');
       afterSale();
     }

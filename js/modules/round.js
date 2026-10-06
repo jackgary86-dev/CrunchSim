@@ -189,6 +189,7 @@
           app.log(L.catName + ' bin (' + fmtT(L.tons) + ' of ' + L.headline + ') to ' + nameOf(r.leader) + ' at ' + money(r.price) + '/t, ' + money(r.price * L.tons) + '.');
         }
       } else { say('No bids: the ' + L.catName.toLowerCase() + ' bin goes unsold'); app.log(L.catName + ' bin unsold: nobody met the opening price.'); }
+      if (r.leader && CS.Audio && CS.Audio.fx) CS.Audio.fx('gavel');   // #81
       r.k++; r.price = 0; r.leader = null; r.out = [];
       if (r.k >= r.cards.length) return finish();
       if (!inFor('you')) { setTimeout(() => { settleWithoutYou(); }, 350); }   // you hold a card: the rest go among the rivals

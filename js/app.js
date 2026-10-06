@@ -7,6 +7,11 @@
   const Score = CS.Score;
   const $ = (s) => document.querySelector(s);
   const SAVE_KEY = 'crunchsim.v2';
+  /* Two game modes, each with its own save: PROGRESS (level up your plant on your own; the six-tier auction board, no
+   * rivals) and RIVALS (round-based auctions against three rival yards). The last mode played is remembered. */
+  const MODE_KEY = 'crunchsim.mode', MODES = ['progress', 'rivals'];
+  function storedMode() { try { const m = localStorage.getItem(MODE_KEY); return MODES.indexOf(m) >= 0 ? m : null; } catch (e) { return null; } }
+  function saveKey() { return S && S.mode === 'rivals' ? SAVE_KEY + '.rivals' : SAVE_KEY; }
   const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
   /* ---------------- formatting ---------------- */
@@ -865,12 +870,12 @@
   function collectExt() { const ext = {}; (hooks.save || []).forEach((fn) => { try { Object.assign(ext, fn() || {}); } catch (e) { console.error('module save', e); } }); return ext; }
   function save() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts, ext: collectExt() }));
+      localStorage.setItem(saveKey(), JSON.stringify({ comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, suppliers: Array.from(S.suppliers), speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, contract: S.contract, contracts: S.contracts, ext: collectExt() }));
     } catch (e) { /* storage unavailable */ }
   }
   function load() {
     try {
-      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (!d || !Array.isArray(d.line)) return false;
+      const d = JSON.parse(localStorage.getItem(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
       S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
       S.line = d.line.filter((n) => MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed', autoService: !!n.autoService }));
       const uids = new Set(S.line.map((n) => n.uid));
@@ -897,7 +902,7 @@
   function newGame() {
     const b = $('#btn-newgame');
     if (!resetArmed) { resetArmed = true; b.textContent = 'CLICK AGAIN TO WIPE AND RESTART'; b.classList.add('bad'); setTimeout(() => { resetArmed = false; b.textContent = 'NEW GAME'; b.classList.remove('bad'); }, 4000); return; }
-    try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+    try { localStorage.removeItem(saveKey()); } catch (e) { /* ignore */ }
     // a page reload is the cleanest reset, but inside a hosted viewer's frame a reload can land on a blank page
     let topLevel = false; try { topLevel = window.top === window; } catch (e) { topLevel = false; }
     if (topLevel) { window.removeEventListener('beforeunload', save); location.reload(); return; }
@@ -909,6 +914,7 @@
     hideCard();
     S.comp = {}; S.tons = 15; S.line = []; S.sel = null;
     S.money = START_BANK; S.tonnes = 0; S.kwh = 0; S.batches = 0; S.lifetime = 0;
+    S.feedOwner = null;
     S.owned = new Set(STARTER_MACHINES); S.units = unitsFrom(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
     S.suppliers = new Set(); for (const id in FEEDS) if (!FEEDS[id].unlock) S.suppliers.add(id);
     S.clock = 0; S.contract = null; S.contracts = {}; S.lastSpec = null; S.feedPrepaid = false; S.feedOpts = null; S.ext = {};
@@ -924,13 +930,37 @@
     $('#help').classList.remove('hidden');
   }
 
+  /* switch game mode in place: save this mode's game, then load the other mode's save (or start it fresh) */
+  function switchMode(mode) {
+    if (MODES.indexOf(mode) < 0) return;
+    if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch before switching modes.', 'warn'); return; }
+    const first = !storedMode();
+    try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* ignore */ }
+    if (mode === S.mode && !first) return;
+    if (!first) save();
+    S.mode = mode;
+    hideCard();
+    if (!load()) { softReset(); $('#help').classList.add('hidden'); }
+    else {
+      S.feedPrepaid = false; S.feedOpts = null; S.feedOwner = null;
+      Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
+      API.emit('newgame'); API.emit('load', S.ext);   // modules clear their state, then restore this mode's
+      setFeedLock(!!S.contract); applyPlant(); renderFeedSelect(); syncFeedRows();
+      $('#log').innerHTML = '';
+      lastRankIdx = rankOf(netWorth()).idx;
+    }
+    log('Game mode: ' + (mode === 'rivals' ? 'RIVALS. Auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC.' : 'PROGRESS. Build your plant on your own: buy lots from the six-tier auction board and level up.'), 'ok');
+    API.emit('modechange', { mode }); renderAll(); save();
+  }
+
   /* ---------------- boot ---------------- */
   function setSpeed(v) { S.speed = v; document.querySelectorAll('.spd').forEach((b) => b.classList.toggle('on', +b.dataset.speed === v)); }
   function setMuted(m) { S.muted = m; Audio.setMuted(m); $('#btn-mute').innerHTML = m ? '&#128263;' : '&#128266;'; }
 
   function boot() {
     API.S = S;
-    Object.assign(API, { S, Score, softReset, unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    S.mode = storedMode() || 'progress';
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

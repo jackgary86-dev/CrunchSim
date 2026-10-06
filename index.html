@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=88c070e525">
+  <link rel="stylesheet" href="css/style.css?v=7c646006b9">
 </head>
 <body>
 <div id="app">
@@ -140,6 +140,7 @@
     <h2>CrunchSim</h2>
     <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
     <ol>
+      <li><b>Two modes.</b> PROGRESS: build your plant on your own from the six-tier auction board. RIVALS: auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC bin. Each mode keeps its own save; switch from the toolbar.</li>
       <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board always shows six lots, one per tier from $1k to $100k: cheap tiers are skips of mixed junk, the dear ones carry zorba, circuit boards and gold-plated pins. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Feed panel shows what is loaded; only the batch size is yours to set.</li>
       <li><b>The plant.</b> The main screen shows your stations left to right in the order you placed them, three at a time (the arrows page through longer lines). Each station shows its machine at work, the bins it fills and what is left over moving on to the next station. Click a station to sit down at it: the machine cam, its settings, upgrades and telemetry, with CLOSE to get back.</li>
       <li><b>Flowsheet.</b> Open Flowsheet in the toolbar to add machines. Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
@@ -169,10 +170,10 @@
 <script src="js/scenes-a.js?v=f822f9574c"></script>
 <script src="js/scenes-b.js?v=b99bb3bb00"></script>
 <script src="js/score.js?v=d88a44e57f"></script>
-<script src="js/app.js?v=2b4d40fd09"></script>
+<script src="js/app.js?v=959e69fde2"></script>
 <script src="js/modules/market.js?v=9f24c2cc7f"></script>
 <script src="js/modules/inventory.js?v=48db15c299"></script>
-<script src="js/modules/auction.js?v=6ebe26cf64"></script>
+<script src="js/modules/auction.js?v=9ae0cdc52c"></script>
 <script src="js/modules/missions.js?v=aace985cec"></script>
 <script src="js/modules/floor.js?v=35f9e2577d"></script>
 <script src="js/modules/onboarding.js?v=073cef94ed"></script>
@@ -181,10 +182,11 @@
 <script src="js/modules/economics.js?v=34ee0ad7dc"></script>
 <script src="js/modules/intake.js?v=011cdcac20"></script>
 <script src="js/modules/facility.js?v=6ce160beb4"></script>
-<script src="js/modules/rivals.js?v=23bc0ea94a"></script>
+<script src="js/modules/rivals.js?v=031e696c92"></script>
 <script src="js/modules/endgame.js?v=f8dd4bb6fa"></script>
 <script src="js/modules/refinery.js?v=a335e81970"></script>
 <script src="js/modules/slots.js?v=4d5fb7c5c6"></script>
-<script src="js/modules/layout.js?v=1b9794ab32"></script>
+<script src="js/modules/round.js?v=dc03a8dc0a"></script>
+<script src="js/modules/layout.js?v=95a6658e84"></script>
 </body>
 </html>

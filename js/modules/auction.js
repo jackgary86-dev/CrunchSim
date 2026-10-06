@@ -187,7 +187,11 @@
     /* hooks for js/modules/rivals.js (ticket #31): the live board, the yard lot, a redraw; 'lotPrice' {lot, perT} may raise the buy price,
      * 'veto:auctionBuy' {lot} may refuse a purchase, 'lotClose' {lot, award} may award a closing lot to the operator at award $/t,
      * and 'auctionRender' {box} lets a module add to the board after each redraw (lot rows carry data-lot) */
-    CS.Auction.live = { board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render() };
+    const roundMode = () => app.S && app.S.mode === 'rivals';   // RIVALS mode: lots come from auction rounds (js/modules/round.js), not the tier board
+    const tiers = () => { if (roundMode()) { st.board = []; return false; } return tickTiers(st, rng, clockH(), genOpts()); };
+    CS.Auction.live = { board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render(),
+      /* a lot won somewhere else (an auction round): pay for it and put it in the yard */
+      deliver: (L, perT, how) => take(L, perT, how) };
     function priceOf(L) { const q = { lot: L, perT: L.ask }; app.emit('lotPrice', q); return q.perT > 0 ? Math.ceil(q.perT) : L.ask; }
     function closeLot(L) { const q = { lot: L, award: 0 }; app.emit('lotClose', q); if (q.award > 0) take(L, q.award, 'Won at auction:'); }
 
@@ -304,7 +308,7 @@
       const cap = app.plantValue('logistics');
       app.log(how + ' lot #' + L.id + ' from ' + L.seller + ': ' + L.tons + ' t of ' + L.headline + ' at ' + app.fmtMoney(perT) + '/t, ' + app.fmtMoney(total) + ' paid. Declared ' + compText(L.declared, 4).replace(/&amp;/g, '&') + '.' + (L.tons > cap ? ' Only ' + cap + ' t fit a batch; the rest waits in the yard.' : ''), 'ok');
       if (st.pending === lot && !loadPending() && S().run) st.pending.arriving = true;   // won mid-batch: it loads when the batch ends
-      tickTiers(st, rng, clockH(), genOpts());   // the tier refills at once
+      tiers();   // the tier refills at once
       app.renderBank(); render(); app.save();
       return true;
     }
@@ -342,17 +346,18 @@
     app.on('boot', () => {
       if (!seeded) { rng.setState(Math.floor(S().clock)); seeded = true; }
       marketStep(st.market, rng, 0);
-      tickTiers(st, rng, clockH(), genOpts());
+      tiers();
       if (st.pending && !app.contract() && !S().feedPrepaid && sameComp(S().comp, st.pending.truth)) { S().feedPrepaid = true; S().feedOwner = 'auction'; }   // the flag is not saved by the app
       else if (st.pending && !S().feedPrepaid) loadPending();
       build(); render();
     });
     app.on('render', render);
-    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; tickTiers(st, rng, clockH(), genOpts()); render(); });
+    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; tiers(); render(); });
+    app.on('modechange', () => { tiers(); render(); });
     app.on('tick', (p) => {
       if (!(p.dh > 0)) return;
       marketStep(st.market, rng, p.dh);
-      const changed = tickTiers(st, rng, clockH(), genOpts());
+      const changed = tiers();
       guard();
       const key = Math.floor(clockH() * 4);
       if (changed || key !== lastKey) { lastKey = key; render(); if (!changed) app.markDirty(); }   // quarter-hourly: refresh timers and the feed price line

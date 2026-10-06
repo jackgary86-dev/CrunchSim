@@ -95,6 +95,14 @@
       b.addEventListener('click', () => (openDrawer === key ? closeDrawer() : showDrawer(key)));
       bar.appendChild(b);
     });
+    const modes = el('div', 'modesw'); modes.id = 'mode-switch';
+    [['progress', 'PROGRESS'], ['rivals', 'RIVALS']].forEach(([m, label]) => {
+      const b = el('button', 'tool mode', label); b.type = 'button'; b.dataset.mode = m;
+      b.title = m === 'rivals' ? 'Auction rounds against three rival yards (its own save)' : 'Build your plant on your own (its own save)';
+      b.addEventListener('click', () => app.switchMode(m));
+      modes.appendChild(b);
+    });
+    bar.appendChild(modes);
     appEl.insertBefore(bar, $('#left'));
     const plant = el('section', 'panel'); plant.id = 'flow-panel';
     plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div>' +
@@ -143,10 +151,12 @@
   function loopState() {
     const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 0.05);
     if (S.run) return ['shred', 'sort'];
+    if (S.mode === 'rivals' && CS.Round && CS.Round.live && CS.Round.live.miscAllowed() && CS.Inventory.miscTotal(CS.Inventory.misc()) >= 1) return ['shred'];   // no bin this round: run your MISC
     if (!S.feedPrepaid && !(app.contract && app.contract())) return held ? ['sell', 'auction'] : ['auction'];
     return held ? ['shred', 'sell'] : ['shred'];
   }
   function showDrawer(key) {
+    if (key === 'auction' && app.S.mode === 'rivals' && CS.Round && CS.Round.live) { closeStation(); closeDrawer(); CS.Round.live.open(); return; }
     closeStation(); closeDrawer();
     const d = DRAWERS.find((x) => x[0] === key); if (!d) return;
     const body = $('#drawer-body');
@@ -325,6 +335,7 @@
   function srcMap(src) { const Inv = CS.Inventory; return src === 'misc' ? (Inv.misc ? Inv.misc() : {}) : Inv.stock(); }
   function rerun(mats, label, src) {
     const S = app.S, stock = srcMap(src);
+    if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log('In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.', 'warn'); return; }
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
     if (app.contract && app.contract()) { app.log('Release the contract first: the client supplies the feed while a contract is active.', 'warn'); return; }
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
@@ -369,6 +380,7 @@
     if (app.contract() || !sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
     const tons = p && p.run && p.run.total ? p.run.total : S.tons;
     for (const m in l.comp) { if (l.src === 'misc' && Inv.withdrawMisc) Inv.withdrawMisc(m, tons * l.comp[m]); else Inv.withdraw(m, tons * l.comp[m]); }
+    if (l.src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live) CS.Round.live.useMisc();
     rerunActive = l.prev || true;   // the sizes and entry station hold for this batch, then the feed is ordinary again
   }
   let rerunActive = false;
@@ -466,8 +478,26 @@
       '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>';
     return col;
   }
+  function renderMode() {
+    const m = app.S.mode;
+    document.querySelectorAll('#mode-switch .mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    const rv = document.getElementById('tool-rivals'); if (rv) rv.classList.toggle('hidden', m !== 'rivals');
+    document.body.dataset.mode = m;
+  }
+  /* the first launch asks which game to play */
+  function chooseMode() {
+    if (app.storedMode && app.storedMode()) return;
+    const d = el('div', 'overlay'); d.id = 'mode-pick';
+    d.innerHTML = '<div class="sheet"><div class="sheet-h"><b>CHOOSE A GAME</b></div><div class="sheet-b mode-b">' +
+      '<button type="button" class="mode-card" data-mode="progress"><b>PROGRESS</b><span>Build your plant on your own. Buy scrap from the six-tier auction board, grind it, sort it, refine it and sell it, and level up from scrapyard to mega-plant.</span></button>' +
+      '<button type="button" class="mode-card" data-mode="rivals"><b>RIVALS</b><span>Auction rounds against three rival yards. Three bins a round, four bidders: whoever goes home without a bin runs their MISC instead. Watch the market to judge your bids.</span></button>' +
+      '<div class="small">Each mode keeps its own save. Switch any time from the toolbar.</div></div></div>';
+    document.body.appendChild(d);
+    d.querySelectorAll('.mode-card').forEach((b) => b.addEventListener('click', () => { d.remove(); app.switchMode(b.dataset.mode); }));
+  }
   function renderFlow(force) {
     const S = app.S; if (!S || !$('#flow-nodes')) return;
+    renderMode();
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
@@ -509,7 +539,7 @@
   function init() {
     app = CS.app; if (!app || app.layoutStarted) return; app.layoutStarted = true;
     app.on('boot', () => {
-      build(); renderFlow(true); requestAnimationFrame(miniLoop);
+      build(); renderFlow(true); requestAnimationFrame(miniLoop); chooseMode();
       // hand edits on the feed panel only do a light refresh (no render event): check the loaded bucket right after them,
       // and again just before RUN BATCH prices the feed
       const fp = $('#feed-panel'), chk = () => setTimeout(() => { guardLoaded(); renderFlow(false); }, 0);
@@ -530,6 +560,7 @@
     };
     app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
+    app.on('modechange', () => { offset = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.on('newgame', () => { offset = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
   }

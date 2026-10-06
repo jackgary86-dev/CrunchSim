@@ -4,6 +4,13 @@ A simulator game of how industry crunches stuff into bits, played as a plant-bui
 
 Feed a mix of materials into a line of real industrial machines, run a batch, and watch what happens in a cross-section "machine cam" while mission-control telemetry reports particle size, reduction ratio, energy, power, wear and product value. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.
 
+## Two game modes
+
+Each mode keeps its own save; switch any time from the toolbar (the first launch asks).
+
+- **Progress**: build your plant on your own. Buy scrap from the six-tier auction board ($1k to $100k), grind, sort, refine and sell, and level up from Scrapyard to Mega-plant. No rivals.
+- **Rivals**: auction rounds against three rival yards (Ironside Shredding, a volume buyer; Magpie Salvage, a bargain hunter; Redline Non-Ferrous, a copper specialist). Each round three large bins come up as cards, each heavy in one category (ferrous, non-ferrous, electronics and precious metal, wood, rubber and plastic, aggregate, gels, a mixed skip). The four players bid in open ascending steps of 5%; a player who wins a bin sits out the rest of the round, so one player always goes home with nothing, and that player runs their MISC bin instead (in Rivals your MISC re-runs only in a round where you won no bin). A market panel beside the cards shows the round's HOT and COLD materials and the price of everything in the bins. The next round opens when your yard is empty. Bin sizes grow with your plant.
+
 ## The game loop
 
 ![From auction to sale: buy lots, haul in, offload, shred, sort into buckets, smelt and sell](docs/process.svg)
@@ -104,6 +111,7 @@ node tests/layout.js
 node tests/precious.js
 node tests/refinery.js
 node tests/slots.js
+node tests/round.js
 ```
 
 ## Sources

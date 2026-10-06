@@ -625,6 +625,10 @@
     app.on('boot', () => { build(); render(); redrawAuction(); });
     app.on('render', render);
     start.live = { raise, setOn, state: () => st, step };
+    // game modes: PROGRESS has no rivals at all; RIVALS has them (bidding happens in the auction rounds)
+    const byMode = () => { if (app.S && app.S.mode) st.on = app.S.mode === 'rivals'; };
+    app.on('load', byMode); app.on('newgame', byMode); app.on('modechange', () => { byMode(); render(); });
+    byMode();
     CS.Rivals.live = start.live;
   }
 

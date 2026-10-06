@@ -736,3 +736,9 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 @keyframes paddle1 { 0% { transform: none; } 35% { transform: translateY(-9px) rotate(12deg) scale(1.25); } 100% { transform: none; } }
 .pl.gotbin { animation: gotbin .9s ease-out; }
 @keyframes gotbin { 0% { box-shadow: 0 0 0 0 var(--pc); } 30% { box-shadow: 0 0 0 3px var(--pc), 0 0 22px var(--pc); } 100% { box-shadow: none; } }
+
+/* #128: the title screen's yard */
+.title-screen canvas.tt-yard { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.title-screen .tt-box { position: relative; z-index: 1; }
+.tt-card { background: rgba(12, 18, 26, .9); }
+.tt-ic { width: 48px; height: 32px; }

@@ -33,6 +33,49 @@
     let title = null, bar = null;
     const read = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
+    /* ---- the title screen's yard (#128): a crane drops scrap into a shredder, a belt carries the sorted pieces to their piles ---- */
+    let yard = null;
+    function yardLoop(now) {
+      if (!yard || !yard.cv.isConnected || !title || title.classList.contains('hidden')) { if (yard) yard.raf = 0; return; }
+      const cv = yard.cv, r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+      const W = Math.round(r.width), H = Math.round(r.height);
+      if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+      const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+      const still = document.body.classList.contains('reduce-motion');
+      const t = still ? 2.2 : now / 1000, dt = still ? 0 : Math.min(0.05, (now - (yard.last || now)) / 1000); yard.last = now;
+      const g = H * 0.96, sx = W * 0.3, sw = Math.min(90, W * 0.09), MAT = CS.MATERIALS;   // a strip along the bottom, under the cards
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#121b26'; ctx.fillRect(0, g, W, H - g);   // the yard floor
+      // the shredder: hopper, body, rotor
+      ctx.fillStyle = '#2a3644'; ctx.beginPath(); ctx.moveTo(sx - sw * 0.7, g - sw * 1.3); ctx.lineTo(sx + sw * 0.7, g - sw * 1.3); ctx.lineTo(sx + sw * 0.4, g - sw * 0.85); ctx.lineTo(sx - sw * 0.4, g - sw * 0.85); ctx.fill();
+      ctx.fillStyle = '#1f2a36'; ctx.fillRect(sx - sw * 0.5, g - sw * 0.85, sw, sw * 0.85);
+      ctx.strokeStyle = '#4a5a6c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, g - sw * 0.45, sw * 0.28, 0, Math.PI * 2); ctx.stroke();
+      for (let k = 0; k < 6; k++) { const a = t * 3 + k * Math.PI / 3; ctx.beginPath(); ctx.moveTo(sx, g - sw * 0.45); ctx.lineTo(sx + Math.cos(a) * sw * 0.27, g - sw * 0.45 + Math.sin(a) * sw * 0.27); ctx.stroke(); }
+      // the crane: mast, jib, a hook swinging in over the hopper
+      const cx = W * 0.1, top = g - sw * 2.6; ctx.strokeStyle = '#3d4b5b'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(cx, g); ctx.lineTo(cx, top); ctx.lineTo(sx + sw * 0.2, top); ctx.stroke();
+      const ph = (t % 6) / 6, hx = cx + (sx - cx) * (ph < 0.5 ? ph * 2 : 2 - ph * 2), hy = top + sw * 0.7;
+      ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(hx, top); ctx.lineTo(hx, hy); ctx.stroke();
+      if (ph < 0.5) { ctx.fillStyle = '#6b6f75'; ctx.fillRect(hx - 12, hy, 24, 14); }   // a load of scrap on the hook
+      if (!still && ph > 0.45 && ph < 0.5 && Math.random() < 0.6) for (let k = 0; k < 3; k++) yard.drop.push({ x: hx + (Math.random() - 0.5) * 20, y: hy + 14, vy: 0, m: ['steel', 'wood', 'glass', 'copper', 'plastic', 'aluminum'][Math.floor(Math.random() * 6)] });
+      yard.drop = yard.drop.filter((p) => { p.vy += 500 * dt; p.y += p.vy * dt; ctx.fillStyle = MAT[p.m].color; ctx.fillRect(p.x - 3, p.y - 3, 6, 6); if (p.y > g - sw * 0.9) { yard.belt.push({ x: sx + sw * 0.5, m: p.m }); return false; } return true; });
+      // the belt out of the shredder, carrying the pieces to a pile of each kind
+      const by = g - 8; ctx.fillStyle = '#26313d'; ctx.fillRect(sx + sw * 0.5, by, W - sx - sw * 0.5, 6);
+      const piles = {}; ['steel', 'wood', 'glass', 'copper', 'plastic', 'aluminum'].forEach((m, i) => { piles[m] = sx + sw + 40 + i * ((W - sx - sw - 80) / 6); });
+      yard.belt = yard.belt.filter((p) => { p.x += 60 * dt; ctx.fillStyle = MAT[p.m].color; ctx.fillRect(p.x - 3, by - 6, 6, 6); if (p.x >= piles[p.m]) { yard.heaps[p.m] = Math.min(18, (yard.heaps[p.m] || 3) + 0.5); return false; } return true; });
+      Object.keys(piles).forEach((m) => { const h = yard.heaps[m] || 4; ctx.fillStyle = MAT[m].color; ctx.beginPath(); ctx.moveTo(piles[m] - h * 1.4, g); ctx.quadraticCurveTo(piles[m], g - h * 2, piles[m] + h * 1.4, g); ctx.fill(); });
+      ctx.globalAlpha = 1;
+      if (!still) yard.raf = requestAnimationFrame(yardLoop); else yard.raf = 0;
+    }
+    function startYard() {
+      if (!title) return;
+      let cv = title.querySelector('canvas.tt-yard');
+      if (!cv) { cv = document.createElement('canvas'); cv.className = 'tt-yard'; cv.setAttribute('aria-hidden', 'true'); title.insertBefore(cv, title.firstChild); }
+      if (!yard || yard.cv !== cv) yard = { cv, drop: [], belt: [], heaps: {}, raf: 0, last: 0 };
+      if (!yard.raf) yard.raf = requestAnimationFrame(yardLoop);
+      setTimeout(() => { if (yard && !yard.last) yardLoop(performance.now()); }, 50);   // a first frame even where animation frames are paused
+    }
+
     /* ---- the title screen ---- */
     function showTitle() {
       if (app.S.run) { app.log('Stop the running batch before going to the menu.', 'warn'); return; }
@@ -42,14 +85,15 @@
       const pLine = P.has ? 'Bank ' + money(P.money) + ' · ' + P.machines + ' machine' + (P.machines === 1 ? '' : 's') + ' · ' + app.fmtNum(P.tonnes, 0) + ' t processed' : 'No yard yet.';
       const rLine = !R.has || !R.round ? 'No match in progress.' : R.over ? 'Last match finished after ' + R.round + ' rounds.' : 'Round ' + R.round + ' of ' + R.length + ' · bank ' + money(R.money);
       title.innerHTML = '<div class="tt-box"><div class="tt-logo">CRUNCH<b>SIM</b></div><div class="tt-sub">BUY THE JUNK · GRIND IT · SORT IT · SELL IT PURE</div><div class="tt-cards">' +
-        '<div class="tt-card tt-progress"><b>PROGRESS</b><p>The long game. Earn money, keep building out your plant: more sorters, bigger lots, a refinery. Nobody to beat, no end.</p><div class="tt-save">' + esc(pLine) + '</div>' +
+        '<div class="tt-card tt-progress"><svg class="tt-ic" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 30 H46" stroke="#7fe3ff" stroke-width="2"/><rect x="6" y="14" width="12" height="16" fill="#7fe3ff" opacity=".35"/><rect x="20" y="8" width="10" height="22" fill="#7fe3ff" opacity=".55"/><rect x="32" y="18" width="12" height="12" fill="#7fe3ff" opacity=".8"/><path d="M25 8 V3 H29" stroke="#7fe3ff" stroke-width="2" fill="none"/></svg><b>PROGRESS</b><p>The long game. Earn money, keep building out your plant: more sorters, bigger lots, a refinery. Nobody to beat, no end.</p><div class="tt-save">' + esc(pLine) + '</div>' +
           '<button type="button" class="primary" data-go="progress">' + (P.has ? 'CONTINUE' : 'START') + '</button></div>' +
-        '<div class="tt-card tt-rivals"><b>RIVALS</b><p>A match of auction rounds against three yards. Three bins a round, four bidders. The highest worth after the last round wins.</p><div class="tt-save">' + esc(rLine) + '</div>' +
+        '<div class="tt-card tt-rivals"><svg class="tt-ic" viewBox="0 0 48 32" aria-hidden="true"><rect x="8" y="4" width="16" height="9" rx="2" fill="#ff8a5c" transform="rotate(-30 16 8)"/><path d="M18 12 L30 28" stroke="#ff8a5c" stroke-width="3" stroke-linecap="round"/><rect x="28" y="24" width="16" height="5" rx="1" fill="#ff8a5c" opacity=".6"/><circle cx="40" cy="9" r="3" fill="#ffb25c"/><circle cx="33" cy="6" r="3" fill="#5cffb1"/><circle cx="44" cy="15" r="3" fill="#7fe3ff"/></svg><b>RIVALS</b><p>A match of auction rounds against three yards. Three bins a round, four bidders. The highest worth after the last round wins.</p><div class="tt-save">' + esc(rLine) + '</div>' +
           (R.has && R.round && !R.over ? '<button type="button" class="primary" data-go="rivals">CONTINUE MATCH</button><button type="button" data-go="rivals-new">NEW MATCH</button>' : '<button type="button" class="primary" data-go="rivals-new">' + (R.has && R.over ? 'NEW MATCH' : 'START A MATCH') + '</button>') + '</div>' +
         '</div><div class="small tt-foot">Each game keeps its own save in this browser. MENU in the toolbar comes back here. <a href="#" id="tt-settings">Settings</a></div></div>';
       title.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
       const ts = title.querySelector('#tt-settings'); if (ts) ts.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
       title.classList.remove('hidden'); document.body.classList.add('at-title');
+      startYard();
       title.dataset.cur = cur;
     }
     /* ---- settings (#136): sound, motion, the guide, the save, restarting a match: one screen ---- */

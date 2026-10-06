@@ -11,14 +11,29 @@
   const b64d = (s) => (typeof atob === 'function' ? decodeURIComponent(escape(atob(s))) : Buffer.from(s, 'base64').toString('utf8'));
   /* saves: { progress: string|null, rivals: string|null, mode } (the raw stored JSON strings) */
   function encode(saves) { return PREFIX + b64e(JSON.stringify({ v: 1, at: saves.at || null, mode: saves.mode || 'progress', progress: saves.progress || null, rivals: saves.rivals || null })); }
+  const MAX_SAVE = 2000000, MAX_LINE = 200, MAX_NUM = 1e12;
+  const num = (v) => (v !== v ? 0 : Math.min(Math.max(v, -MAX_NUM), MAX_NUM));   // JSON can hold 1e999, which reads back as Infinity; clamped everywhere (money may be negative)
+  /* one stored save as a string: parsed, checked and its numbers clamped; null when it is not a usable game */
+  function clean(x) {
+    let g; try { g = JSON.parse(x, (k, v) => (typeof v === 'number' ? num(v) : v)); } catch (e) { return null; }   // every number in the save, stock piles included
+    if (!g || typeof g !== 'object' || !Array.isArray(g.line) || g.line.length > MAX_LINE) return null;
+    const M = CS.MACHINES;
+    for (const n of g.line) if (!n || typeof n !== 'object' || typeof n.m !== 'string' || (M && !M[n.m])) return null;
+    return JSON.stringify(g);
+  }
   /* returns { ok, saves } or { ok: false, why } ; each save must parse as a game with a line */
   function decode(code) {
     const c = String(code || '').trim();
     if (c.indexOf(PREFIX) !== 0) return { ok: false, why: 'That is not a CrunchSim save code (it should start with ' + PREFIX + ').' };
     let d; try { d = JSON.parse(b64d(c.slice(PREFIX.length))); } catch (e) { return { ok: false, why: 'The code is damaged: it could not be read.' }; }
     if (!d || d.v !== 1) return { ok: false, why: 'Unknown save version.' };
-    const good = (x) => { if (x == null) return true; try { const g = JSON.parse(x); return !!(g && Array.isArray(g.line)); } catch (e) { return false; } };
-    if (!good(d.progress) || !good(d.rivals)) return { ok: false, why: 'A save inside the code is damaged.' };
+    if (d.at != null && (typeof d.at !== 'string' || d.at.length > 40)) return { ok: false, why: 'The code is damaged: its date is wrong.' };
+    for (const k of ['progress', 'rivals']) {
+      if (d[k] == null) { d[k] = null; continue; }
+      const g = typeof d[k] === 'string' && d[k].length <= MAX_SAVE ? clean(d[k]) : null;
+      if (!g) return { ok: false, why: 'A save inside the code is damaged.' };
+      d[k] = g;
+    }
     if (!d.progress && !d.rivals) return { ok: false, why: 'The code holds no game.' };
     return { ok: true, saves: { progress: d.progress, rivals: d.rivals, mode: d.mode === 'rivals' ? 'rivals' : 'progress', at: d.at } };
   }
@@ -64,20 +79,27 @@
         box.innerHTML = '<textarea class="sv-code" rows="4" placeholder="Paste a save code here"></textarea><div class="sv-row"><button type="button" class="buy sv-go">IMPORT</button><span class="small sv-msg"></span></div>';
         const ta = box.querySelector('textarea'), go = box.querySelector('.sv-go'), msg = box.querySelector('.sv-msg');
         let armed = false;
+        ta.addEventListener('input', () => { armed = false; go.textContent = 'IMPORT'; msg.textContent = ''; msg.className = 'small sv-msg'; });   // a changed code needs its own confirmation
         go.addEventListener('click', () => {
           const r = decode(ta.value);
           if (!r.ok) { msg.textContent = r.why; msg.className = 'small sv-msg bad'; return; }
           if (app.S.run) { msg.textContent = 'Stop the running batch first.'; return; }
           if (!armed) { armed = true; go.textContent = 'IMPORT: REPLACE BOTH GAMES?'; msg.textContent = 'This replaces the Progress and Rivals games on this browser.'; msg.className = 'small sv-msg warn'; return; }
-          const k = keys();
-          try {
-            if (r.saves.progress) localStorage.setItem(k.progress, r.saves.progress); else localStorage.removeItem(k.progress);
-            if (r.saves.rivals) localStorage.setItem(k.rivals, r.saves.rivals); else localStorage.removeItem(k.rivals);
-            localStorage.setItem(k.mode, r.saves.mode);
-          } catch (e) { msg.textContent = 'This browser would not store the save.'; return; }
-          app.S.mode = r.saves.mode;
-          app.restoreSave(); app.emit('modechange', { mode: r.saves.mode }); app.renderAll();
-          app.log('Save imported' + (r.saves.at ? ' (exported ' + r.saves.at.slice(0, 10) + ')' : '') + '. You are playing ' + r.saves.mode.toUpperCase() + '.', 'ok');
+          const k = keys(), old = { progress: read(k.progress), rivals: read(k.rivals), mode: read(k.mode) }, oldMode = app.S.mode;
+          const put = (v) => {
+            if (v.progress) localStorage.setItem(k.progress, v.progress); else localStorage.removeItem(k.progress);
+            if (v.rivals) localStorage.setItem(k.rivals, v.rivals); else localStorage.removeItem(k.rivals);
+            if (v.mode) localStorage.setItem(k.mode, v.mode); else localStorage.removeItem(k.mode);
+          };
+          let ok = false;
+          try { put(r.saves); app.S.mode = r.saves.mode; ok = app.restoreSave() !== false; } catch (e) { ok = false; }
+          if (!ok) {   // the game would not load it: put the old saves back (a failed load starts a fresh game over the key) and reload them
+            try { put(old); app.S.mode = oldMode; app.restoreSave(); app.renderAll(); } catch (e) { /* storage gone: nothing more to do */ }
+            msg.textContent = 'That save could not be loaded, so your current games are unchanged.'; msg.className = 'small sv-msg bad'; return;
+          }
+          app.emit('modechange', { mode: r.saves.mode }); app.renderAll();
+          app.log('Save imported' + (r.saves.at ? ' (exported ' + String(r.saves.at).slice(0, 10) + ')' : '') + '. You are playing ' + r.saves.mode.toUpperCase() + '.', 'ok');
+          const tt = document.body.classList.contains('at-title') && CS.Modes && CS.Modes.live; if (tt) tt.showTitle();   // the title cards show the new saves
           if (app.layout && app.layout.closeDrawer) app.layout.closeDrawer();
         });
       });

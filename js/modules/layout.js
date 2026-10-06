@@ -161,6 +161,7 @@
       b.addEventListener('click', () => app.switchMode(m));
       modes.appendChild(b);
     });
+    const ng = document.getElementById('btn-newgame'); if (ng) { ng.classList.add('tool'); modes.appendChild(ng); }   // RESTART RIVALS: shown in Rivals only
     bar.appendChild(modes);
     appEl.insertBefore(bar, $('#left'));
     const plant = el('section', 'panel'); plant.id = 'flow-panel';

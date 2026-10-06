@@ -319,8 +319,9 @@
     const L = LINES[id];
     const why = API.veto('applyLine', { id, nodes: L.nodes }); if (why) { Audio.ui('deny'); log(why, 'bad'); $('#line-preset').value = LINES[S.linePreset] ? S.linePreset : 'custom'; return; }
     S.linePreset = id; S.line = Sim.buildLine(L); S.sel = S.line[0].uid;
-    if (L.feed && FEEDS[L.feed]) applyFeedPreset(L.feed);
-    if (L.tons) S.tons = Math.min(L.tons, plantValue('logistics'));
+    // material comes only from lots and buckets (#57): a line preset never changes what is loaded, or it would be free feed
+    if (!AUCTION_ONLY && L.feed && FEEDS[L.feed]) applyFeedPreset(L.feed);
+    if (!AUCTION_ONLY && L.tons) S.tons = Math.min(L.tons, plantValue('logistics'));
     const c = unownedCost(S.line);
     if (c > 0) log('Blueprint loaded: ' + L.name + '. It uses ' + fmtMoney(c) + ' of machines you do not own yet. Buy them from the node panel to run it.', 'warn');
     $('#line-preset').value = id; syncFeedRows(); markDirty(true);
@@ -826,9 +827,13 @@
     return v;
   }
   let resetArmed = false;
+  /* Only a Rivals match can be restarted: a Progress yard is permanent (the user's call, 2026-10-06) */
+  const RESTART_LABEL = 'RESTART RIVALS';
   function newGame() {
     const b = $('#btn-newgame');
-    if (!resetArmed) { resetArmed = true; b.textContent = 'CLICK AGAIN TO WIPE AND RESTART'; b.classList.add('bad'); setTimeout(() => { resetArmed = false; b.textContent = 'NEW GAME'; b.classList.remove('bad'); }, 4000); return; }
+    if (S.mode !== 'rivals') return;
+    if (S.run) { Audio.ui('deny'); log('Stop the running batch before restarting the match.', 'warn'); return; }
+    if (!resetArmed) { resetArmed = true; b.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; b.classList.add('bad'); setTimeout(() => { resetArmed = false; b.textContent = RESTART_LABEL; b.classList.remove('bad'); }, 4000); return; }
     try { localStorage.removeItem(saveKey()); } catch (e) { /* ignore */ }
     // a page reload is the cleanest reset, but inside a hosted viewer's frame a reload can land on a blank page
     let topLevel = false; try { topLevel = window.top === window; } catch (e) { topLevel = false; }
@@ -852,8 +857,8 @@
     lastRankIdx = rankOf(netWorth()).idx;
     log('New game. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Grind the junk, sort it, sell only what is pure.', 'ok');
     API.emit('newgame'); renderAll(); save();
-    const b = $('#btn-newgame'); resetArmed = false; b.textContent = 'NEW GAME'; b.classList.remove('bad');
-    $('#help').classList.remove('hidden');
+    const b = $('#btn-newgame'); resetArmed = false; b.textContent = RESTART_LABEL; b.classList.remove('bad');
+    if (S.mode !== 'rivals') $('#help').classList.remove('hidden');
   }
 
   /* load this mode's save into the running game, in place (no page reload): mode switches and save imports (#82) */

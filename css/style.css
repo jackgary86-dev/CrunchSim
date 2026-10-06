@@ -579,3 +579,7 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .g-title { font-family: var(--mono); letter-spacing: 2px; color: var(--amber); font-weight: 400; }
 .g-text { margin: 0; font-size: 14px; line-height: 1.45; }
 .g-btns { display: flex; justify-content: space-between; gap: 8px; }
+
+/* a Progress yard is permanent: only a Rivals match can be restarted */
+#btn-newgame { display: none; }
+body[data-mode="rivals"] #btn-newgame { display: inline-block; }

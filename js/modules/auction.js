@@ -220,7 +220,7 @@
   function init() {
     const app = CS.app; if (!app || init.done) return; init.done = true;
     const st = { board: [], market: {}, nextId: 1001, pending: null, settle: null, yard: [], sellers: {} };   // sellers: their record at your weighbridge (#76)   // pending: the lot loaded as the feed; yard: lots waiting their turn (#49)
-    const rng = mulberry32(0); let seeded = false, lastKey = '', panel = null;
+    const rng = mulberry32(0); let seeded = false, lastKey = '', panel = null, gate = null, stale = false;
     const S = () => app.S, clockH = () => app.S.clock / 3600;
     const feeds = () => Object.keys(FEEDS).filter((id) => worthOf(FEEDS[id].comp) > 1);   // #57: the auction is where all scrap comes from
     const genOpts = () => ({ feeds: feeds(), limit: app.plantValue('logistics'), market: st.market, onClose: closeLot });
@@ -285,9 +285,11 @@
         '#auction-panel .mkt .r{display:grid;grid-template-columns:1fr 54px 76px;gap:6px;font-family:var(--mono);font-size:11px;padding:2px 0;border-bottom:1px dotted var(--line);align-items:center}' +
         '#auction-panel .mkt .r.h{color:var(--muted);font-size: 11px;letter-spacing:1px}#auction-panel .mkt .r span:nth-child(n+2){text-align:right}';
       panel.appendChild(css);
+      gate = CS.Sim.panelGate(panel, document, () => { if (stale) refresh(false); });
     }
     function render() {
       if (!panel) return;
+      stale = false;
       const box = panel.querySelector('#auction-lots'); box.innerHTML = '';
       const run = !!S().run, cap = app.plantValue('logistics'), now = clockH();
       panel.querySelector('h2 .tag').textContent = st.board.length + ' OPEN';
@@ -453,8 +455,14 @@
       const changed = tiers();
       guard();
       const key = Math.floor(clockH() * 4);
-      if (changed || key !== lastKey) { lastKey = key; render(); if (!changed) app.markDirty(); }   // quarter-hourly: refresh timers and the feed price line
+      if (changed || key !== lastKey) { lastKey = key; stale = true; }   // quarter-hourly: refresh timers and the feed price line
+      if (stale) refresh(changed);
     });
+    /* #199: hold the rebuild while the pointer is down in the panel or the panel is hidden; it runs on release or the next tick */
+    function refresh(changed) {
+      if (gate && gate.busy()) return;
+      render(); if (!changed) app.markDirty();
+    }
   }
   if (CS.app) init();
   else if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', init);   // app.js boots on DOMContentLoaded and its listener was added first

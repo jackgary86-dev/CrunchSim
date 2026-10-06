@@ -67,9 +67,10 @@
   function newStock() { return {}; }
   /* Add dt tonnes of `mat` with the given bin qualities and (optionally) the $ cost of producing them.
    * Weighted merge, value preserving (see the header). */
+  const SF_MAX = 3;   // sf carries the form too: an ingot lot sits above 1 (ingot price is up to ~1.9x scrap), dross far below
   function addLot(stock, mat, dt, purity, grade, sf, p80, cost) {
     if (!(dt > 0) || !MATERIALS[mat]) return;
-    purity = clamp(+purity || 0, 0, 1); grade = clamp(isFinite(+grade) ? +grade : 1, 0, 1.5); sf = clamp(isFinite(+sf) ? +sf : 1, 0, 1);
+    purity = clamp(+purity || 0, 0, 1); grade = clamp(isFinite(+grade) ? +grade : 1, 0, 1.5); sf = clamp(isFinite(+sf) ? +sf : 1, 0, SF_MAX);
     cost = isFinite(+cost) && +cost > 0 ? +cost : 0;
     const lnp = Math.log(p80 > 0 ? p80 : 1e-3);
     const e = stock[mat];
@@ -136,11 +137,17 @@
       if (!main || !MATERIALS[main]) for (const mat in st.perMat) if (st.perMat[mat].mass > mm) { mm = st.perMat[mat].mass; main = mat; }
       if (!main || !MATERIALS[main]) return;
       const g = clamp(isFinite(+st.grade) ? +st.grade : 1, 0, 1.5);
-      // value of the bin before the market, per tonne of feed: what each material in it is paid as (priceFactor, #35) x size
+      // value of the bin before the market, per tonne of feed: binStats' own per-material value with the market and the
+      // round's price factor divided out, so form (ingot premium, dross discount), grade and size all carry into the lot (#211)
       let vb = 0;
-      for (const mat in st.perMat) { const pm = st.perMat[mat]; if (!(pm.mass > 0) || !MATERIALS[mat]) continue; vb += pm.mass / 1000 * MATERIALS[mat].sell * (pm.priceFactor == null ? 1 : pm.priceFactor) * (isFinite(+pm.sizeFactor) ? +pm.sizeFactor : 1) * g; }
+      const P = CS.Sim && CS.Sim.prices, mk = P && P.market != null ? +P.market : 1, pf = (P && P.perMat) || {};
+      for (const mat in st.perMat) {
+        const pm = st.perMat[mat]; if (!(pm.mass > 0) || !MATERIALS[mat]) continue;
+        const div = mk * (pf[mat] || 1);
+        vb += isFinite(+pm.value) && div > 0 ? pm.value / div : pm.mass / 1000 * MATERIALS[mat].sell * (pm.priceFactor == null ? 1 : pm.priceFactor) * (isFinite(+pm.sizeFactor) ? +pm.sizeFactor : 1) * g;
+      }
       const dt = st.total / 1000 * tonnes, val = vb * tonnes;
-      const sf = dt > 0 && g > 0 ? clamp(val / (dt * MATERIALS[main].sell * g), 0, 1) : 0;
+      const sf = dt > 0 && g > 0 ? clamp(val / (dt * MATERIALS[main].sell * g), 0, SF_MAX) : 0;
       lots.push({ mat: main, dt, purity: st.share, grade: g, sf, p80: st.perMat[main] ? st.perMat[main].p80 : st.p80, val: val > 0 ? val : 0 });
       valTot += val > 0 ? val : 0; massTot += dt;
     });

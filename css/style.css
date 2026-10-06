@@ -636,3 +636,24 @@ body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-t
 .bk.clicky:hover { border-color: var(--line-2); background: var(--panel-2); }
 #lot-card.flash { animation: lc-flash .9s ease-out; }
 @keyframes lc-flash { 0% { box-shadow: 0 0 0 2px var(--cyan), 0 0 24px rgba(127,227,255,.5); } 100% { box-shadow: none; } }
+/* #130: a bucket's buttons go on their own line under its name when the column is narrow */
+.bk.shelf, .bk.misc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.bk.shelf > .unit, .bk.misc > .unit { flex: none; }
+.bk.shelf > .bk-t, .bk.misc > .bk-t { flex: 1 1 110px; min-width: 0; }
+.bk.shelf > button, .bk.misc > button { flex: 1 0 auto; }
+.bk .bk-t .small { overflow-wrap: anywhere; }
+/* #131: the header stays on one line */
+#top { gap: 16px; white-space: nowrap; }
+#top .brand .sub { white-space: nowrap; }
+#btn-run { white-space: nowrap; }
+#btn-run .proj { display: block; font-size: 10px; }
+@media (max-width: 1400px) { #top .brand .sub { display: none; } }
+@media (max-width: 1250px) { #run-net { display: none; } #top .tele .val { font-size: 16px; } }
+@media (max-width: 1050px) { #top .tele.clock { display: none; } }
+/* #132 #135: the left column: the loaded lot, the next step, the last batch */
+.nextcard .ns-t { font-family: var(--mono); font-size: 11px; letter-spacing: 3px; color: var(--amber); }
+.nextcard .ns-s { font-size: 13px; color: var(--text); margin: 4px 0 10px; line-height: 1.4; }
+.nextcard button { width: 100%; padding: 10px; letter-spacing: 2px; }
+.lastcard .lb-n { font-family: var(--mono); font-size: 22px; }
+.lastcard .lb-n.ok { color: var(--green); } .lastcard .lb-n.bad { color: var(--red); }
+#app { grid-template-columns: 270px minmax(420px, 1fr) 340px; }

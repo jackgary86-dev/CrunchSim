@@ -208,6 +208,8 @@
     const lc = el('section', 'panel lotcard-panel'); lc.id = 'lot-card';
     lc.innerHTML = '<h2>Loaded</h2><div id="lot-body"></div>';
     const left = $('#left'); left.insertBefore(lc, left.firstChild);
+    const nc = el('section', 'panel nextcard'); nc.id = 'next-card'; nc.innerHTML = '<h2>Next step</h2><div id="next-body"></div>'; lc.after(nc);
+    const lbc = el('section', 'panel lastcard hidden'); lbc.id = 'last-card'; lbc.innerHTML = '<h2>Last batch</h2><div id="last-body"></div>'; nc.after(lbc);
     const tonsRow = $('#feed-tons') && $('#feed-tons').closest('.row'); if (tonsRow) { tonsRow.classList.add('lot-tons'); lc.appendChild(tonsRow); }
     const fp = $('#feed-panel'); if (fp) stash.appendChild(fp);
     // #144: the bank in the header opens the records (milestones, the plant report and the event log of every sale and cost)
@@ -360,6 +362,47 @@
       return { label: RL.canStart() ? (st.n ? 'NEXT AUCTION ROUND' : 'START THE MATCH') : 'OPEN THE AUCTION', sub: 'Material comes only from bins you win at auction, or your MISC bin in a round you win nothing.', go: () => showDrawer('auction') };
     }
     return { label: 'BUY A LOT', sub: 'Material comes only from the auction or your MISC bucket. Six lots wait on the board, from $1k to $100k.' + (mt >= 1 ? ' Or RE-RUN your MISC bucket: ' + fmtW(mt) + ' of mixed material is waiting.' : ''), go: () => showDrawer('auction') };
+  }
+  /* #135: the one next step, decided in one place for every state: the bottom note and the NEXT STEP card both show it */
+  let npCache = { at: 0, key: '', v: null };
+  function topPurchase() {   // NEXT PURCHASE's best pick, cached: the ranking evaluates the line for every candidate
+    const S = app.S; if (!app.nextPurchases || S.run || !S.line.length) return null;
+    const key = S.line.map((n) => n.m + n.uid).join() + '|' + Math.floor(S.money / 500);
+    if (npCache.key !== key || Date.now() - npCache.at > 5000) { const ps = app.nextPurchases(); npCache = { at: Date.now(), key, v: ps && ps[0] ? ps[0] : null }; }
+    return npCache.v;
+  }
+  function nextStep() {
+    const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0;
+    if (S.run) {
+      const lot = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();
+      return { title: 'RUNNING', label: lot ? 'STOP THE LOT' : 'STOP', sub: fmtW(S.run.total - S.run.done) + ' to go in this batch' + (lot ? ', then the rest of the lot' : '') + '.', go: () => $('#btn-run').click(), quiet: true };
+    }
+    if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + S.tons + ' t a batch.', go: () => $('#btn-run').click() };
+    if (S.mode === 'rivals') { const a = nextAction(); return Object.assign({ title: 'NEXT' }, a); }
+    // money first: the best pure bucket
+    const stock = I && I.stock ? I.stock() : {};
+    let best = null; for (const m in stock) { const v = I.quote ? I.quote(m) : 0; if (stock[m].t > 0.05 && v > 0 && (!best || v > best.v)) best = { m, v }; }
+    if (best && best.v >= 50) return { title: 'SELL', label: 'SELL ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(best.v), sub: 'A pure bucket is money waiting: ' + fmtW(stock[best.m].t) + ' of ' + MATERIALS[best.m].name.toLowerCase() + '.', go: () => { if (I.sellMat) I.sellMat(best.m); } };
+    const p = topPurchase();
+    if (p) {
+      const price = p.ms.reduce((c, m) => c + (app.unitsOf(m) > S.line.filter((x) => x.m === m).length ? 0 : MACHINES[m].price), 0);
+      if (price <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
+    }
+    if (mt >= 1) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material is waiting for your sorters.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
+    return Object.assign({ title: 'BUY' }, nextAction());
+  }
+  /* the left column (#132): NEXT STEP and the LAST BATCH under the loaded lot */
+  let lastBatch = null;
+  function renderSideCards() {
+    const nb = $('#next-body'); if (nb) {
+      const a = nextStep();
+      nb.innerHTML = '<div class="ns-t">' + esc(a.title) + '</div><div class="ns-s">' + esc(a.sub) + '</div>';
+      if (!a.quiet || app.S.run) { const b = el('button', 'primary', esc(a.label)); b.type = 'button'; b.addEventListener('click', () => a.go()); nb.appendChild(b); }
+    }
+    const lb = $('#last-body'); if (lb) {
+      lb.parentElement.classList.toggle('hidden', !lastBatch);
+      if (lastBatch) lb.innerHTML = '<div class="lb-n ' + (lastBatch.net >= 0 ? 'ok' : 'bad') + '">' + (lastBatch.net >= 0 ? '+' : '') + app.fmtMoney(lastBatch.net) + '</div><div class="small">' + esc(fmtW(lastBatch.t) + (lastBatch.why !== 'complete' ? ' (' + lastBatch.why + ')' : '') + (lastBatch.best ? ' · best: ' + lastBatch.best : '')) + '</div>';
+    }
   }
   function renderLotCard() {
     const box = $('#lot-body'), S = app.S; if (!box) return;
@@ -566,6 +609,10 @@
   }
   let rerunActive = false;
   function onBatchComplete(p) {
+    if (p && p.r) {   // #132: the LAST BATCH card
+      const sel = (p.bins || []).filter((b) => b.st && b.st.sellable && b.st.main).sort((x, y) => y.st.value - x.st.value)[0];
+      lastBatch = { t: p.r.done || 0, net: (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0), why: p.why || 'complete', best: sel ? MATERIALS[sel.st.main].name.toLowerCase() + ' ' + Math.round(sel.st.share * 100) + '%' : '' };
+    }
     if (rerunActive) {
       const ra = rerunActive; rerunActive = false; app.S.feedOpts = null;
       const done = p && p.r ? p.r.done : 0;
@@ -733,7 +780,7 @@
     const S = app.S; if (!S || !$('#flow-nodes')) return;
     idleNow = isIdle(); runProg = S.run && S.run.total > 0 ? Math.min(1, S.run.done / S.run.total) : -1;
     document.body.classList.toggle('plant-running', !!S.run);
-    renderMode(); renderMargin(); renderLotCard();
+    renderMode(); renderMargin(); renderLotCard(); renderSideCards();
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
@@ -769,9 +816,9 @@
     box.classList.toggle('idle', idleNow);
     const cta = $('#flow-cta');
     if (idleNow) {   // #65: a small note at the bottom of the screen, out of the plant's way
-      const a = nextAction();
+      const a = nextStep();
       cta.innerHTML = '<div class="cta-card" title="' + esc(a.sub) + '"><b>NOTHING LOADED</b><button type="button" class="primary">' + esc(a.label) + '</button></div>';
-      cta.querySelector('button').addEventListener('click', () => nextAction().go());
+      cta.querySelector('button').addEventListener('click', () => nextStep().go());
       cta.classList.remove('hidden');
     } else cta.classList.add('hidden');
     seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : x.bin ? binCol(x.from) : machineCol(x.n, x.i)));
@@ -815,7 +862,7 @@
     app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
     app.on('modechange', () => { offset = 0; closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
-    app.on('newgame', () => { offset = 0; seenPanels = {}; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
+    app.on('newgame', () => { offset = 0; seenPanels = {}; lastBatch = null; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
   }
   if (CS.app) init();

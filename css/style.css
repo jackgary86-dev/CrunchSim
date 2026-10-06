@@ -372,3 +372,24 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .slot-pips i.used { background: var(--cyan); border-color: var(--cyan); }
 .slot-pips i.free { background: transparent; border-color: var(--green); }
 .slot-pips i.locked { background: repeating-linear-gradient(45deg, var(--line-2) 0 2px, transparent 2px 4px); }
+
+/* the game loop strip (#58) and THE BIN (#50) */
+.loop { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin: 0 0 10px; border: 1px solid var(--line-2); border-radius: 4px; overflow: hidden; }
+.loop-step { display: flex; flex-direction: column; align-items: center; gap: 1px; border: 0; border-right: 1px solid var(--line-2); border-radius: 0; padding: 6px 4px; background: var(--panel-2); position: relative; }
+.loop-step:last-child { border-right: 0; }
+.loop-step b { font-weight: 400; letter-spacing: 2px; font-size: 13px; }
+.loop-step span { font-family: var(--sans); font-size: 10px; letter-spacing: 0; color: var(--muted); }
+.loop-step:not(:last-child)::after { content: "\25B6"; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); font-size: 9px; color: var(--line-2); z-index: 1; }
+.loop-step.on { background: #103142; color: var(--cyan); box-shadow: inset 0 -2px 0 var(--cyan); }
+.loop-step.on span { color: var(--text); }
+.fcol.bincol { justify-content: flex-start; align-items: stretch; text-align: center; gap: 6px; background: #0e151d; }
+.bigbin { height: 120px; margin: 4px 12px 0; border: 3px solid #5d6b7b; border-top: 0; border-radius: 0 0 8px 8px; padding: 4px; display: flex; align-items: flex-end; background: #0b1018; }
+.bigbin-fill { width: 100%; height: 85%; display: flex; flex-direction: column-reverse; overflow: hidden; border-radius: 2px; }
+.bigbin-fill i { display: block; min-height: 2px; }
+.bin-list { display: flex; flex-direction: column; gap: 2px; text-align: left; font-size: 11px; }
+.bin-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.bin-row .sw { width: 10px; height: 10px; border-radius: 2px; }
+.bin-row b { font-weight: 500; font-family: var(--mono); }
+.fcol.flash { animation: colflash 1.2s ease-out; }
+@keyframes colflash { 0% { box-shadow: inset 0 0 0 2px var(--cyan); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+@media (max-width: 900px) { .loop-step span { display: none; } }

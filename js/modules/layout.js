@@ -97,11 +97,16 @@
     });
     appEl.insertBefore(bar, $('#left'));
     const plant = el('section', 'panel'); plant.id = 'flow-panel';
-    plant.innerHTML = '<h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div>' +
+    plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div>' +
       '<div class="flow"><button type="button" class="flow-nav" id="flow-prev" aria-label="Earlier machines">&lsaquo;</button><div id="flow-nodes"></div><button type="button" class="flow-nav" id="flow-next" aria-label="Later machines">&rsaquo;</button></div>' +
       '<div class="small flow-hint">Machines run left to right in the order you placed them. Click one to sit at its station and tune it.</div>';
     const center = $('#center');
     center.insertBefore(plant, center.firstChild);
+    LOOP.forEach(([key, label, hint]) => {
+      const b = el('button', 'loop-step', '<b>' + label + '</b><span>' + hint + '</span>'); b.type = 'button'; b.dataset.key = key;
+      b.addEventListener('click', () => goStep(key));
+      $('#loop').appendChild(b);
+    });
     $('#flow-prev').addEventListener('click', () => { offset = Math.max(0, offset - 1); renderFlow(true); });
     $('#flow-next').addEventListener('click', () => { offset += 1; renderFlow(true); });
     const drawer = el('div', 'overlay hidden'); drawer.id = 'drawer';
@@ -122,6 +127,24 @@
     $('#drawer-close').addEventListener('click', closeDrawer);
     $('#station-close').addEventListener('click', closeStation);
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeStation(); } });
+  }
+  /* the game loop across the top (#58): Auction / Shred / Sort / Refine / Sell; each step takes you to that part of the game */
+  const LOOP = [['auction', 'AUCTION', 'buy a lot'], ['shred', 'SHRED', 'grind into the BIN'], ['sort', 'SORT', 'up to 10 sorters'], ['refine', 'REFINE', 'ingots and bars'], ['sell', 'SELL', 'pure buckets only']];
+  function goStep(key) {
+    if (key === 'auction') return showDrawer('auction');
+    if (key === 'sell') return showDrawer('sales');
+    if (key === 'refine') { showDrawer('bank'); const r = document.getElementById('refinery-panel'); if (r) r.scrollIntoView({ block: 'start' }); return; }
+    closeDrawer(); closeStation();
+    const seq = flowSeq(), k = key === 'shred' ? 0 : Math.max(0, seq.findIndex((x) => x.n && MACHINES[x.n.m].kind === 'separator'));
+    offset = k; renderFlow(true);
+    const col = key === 'shred' ? document.querySelector('.fcol.bincol') : document.querySelector('.fcol.mach.sorter');
+    if (col) { col.classList.remove('flash'); void col.offsetWidth; col.classList.add('flash'); }
+  }
+  function loopState() {
+    const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 0.05);
+    if (S.run) return ['shred', 'sort'];
+    if (!S.feedPrepaid && !(app.contract && app.contract())) return held ? ['sell', 'auction'] : ['auction'];
+    return held ? ['shred', 'sell'] : ['shred'];
   }
   function showDrawer(key) {
     closeStation(); closeDrawer();
@@ -236,7 +259,7 @@
   /* ---------------- sections ---------------- */
   function machineCol(n, i) {
     const M = MACHINES[n.m], inf = app.info(n.uid), S = app.S, owned = app.nodeOwned ? app.nodeOwned(n) : true;
-    const col = el('div', 'fcol mach' + (owned ? '' : ' unowned'));
+    const col = el('div', 'fcol mach' + (M.kind === 'separator' ? ' sorter' : '') + (owned ? '' : ' unowned'));
     col.tabIndex = 0; col.setAttribute('role', 'button'); col.setAttribute('aria-label', 'Open the ' + M.name + ' station');
     let status = '', warn = '';
     if (inf) {
@@ -315,7 +338,7 @@
     S.feedOpts = { sizes: plan.sizes, entry };   // it goes in as the shred it already is (#41), past the shredders (#42)
     app.markDirty(true);
     const k = entry == null ? 0 : S.line.findIndex((n) => n.uid === entry);
-    offset = Math.max(0, k);   // page the plant screen to the entry station
+    offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === (entry == null ? S.line[0].uid : entry)));   // page the plant screen to the entry station
     app.log('Loaded the ' + label + ' bucket as the feed: ' + tons + ' t per batch, no feed cost, entering at station ' + (k + 1) + '.' + (tot > tons ? ' The rest stays in the bucket (batch limit ' + cap + ' t).' : '') + ' Pick another entry station above the plant if you like, then press RUN BATCH.', 'ok');
     renderFlow(true);
   }
@@ -415,9 +438,37 @@
     return col;
   }
 
+  /* the plant in screen order: the grinding stage (the stations at the head of the line that break material), then THE BIN
+   * everything falls into, then the sorters and the rest in placement order, then the add-a-machine column (#50) */
+  function flowSeq() {
+    const S = app.S, seq = S.line.map((n, i) => ({ n, i }));
+    let k = 0; while (k < S.line.length && MACHINES[S.line[k].m] && MACHINES[S.line[k].m].kind === 'comminution') k++;
+    if (k > 0) seq.splice(k, 0, { bin: true, from: S.line[k - 1] });
+    return seq.concat([{ add: true }]);
+  }
+  function binCol(from) {
+    const S = app.S, col = el('div', 'fcol bincol');
+    const port = S.ev && S.ev.ports[from.uid + ':product'];
+    const st = port ? Sim.binStats(port.m) : null, tons = st ? st.total / 1000 * S.tons : 0;
+    let bands = '', list = '';
+    if (st && st.total > 0) {
+      topMats(st, 8).forEach((m) => {
+        const f = st.perMat[m].mass / st.total;
+        bands += '<i style="flex:' + f.toFixed(4) + ';background:' + MATERIALS[m].color + '"></i>';
+        if (f >= 0.005 || CS.Sim.PRECIOUS.indexOf(m) >= 0) list += '<div class="bin-row"><span class="sw" style="background:' + MATERIALS[m].color + '"></span>' + esc(MATERIALS[m].name) + '<b>' + (f >= 0.001 ? (f * 100).toFixed(f < 0.1 ? 1 : 0) + '%' : Math.round(f * 1e6) + ' g/t') + '</b></div>';
+      });
+    }
+    col.innerHTML = '<div class="fn-k">THE BIN</div>' +
+      '<div class="bigbin"><div class="bigbin-fill">' + bands + '</div></div>' +
+      '<div class="fn-n">' + (st && st.total > 0 ? fmtW(tons) + ' of mixed shred' : 'empty') + '</div>' +
+      '<div class="fn-s">' + (st && st.total > 0 ? 'P80 ' + fmtSz(st.p80) + ' · everything the grinder breaks falls in here' : 'Load a lot: the grinder fills it') + '</div>' +
+      '<div class="bin-list">' + list + '</div>' +
+      '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>';
+    return col;
+  }
   function renderFlow(force) {
     const S = app.S; if (!S || !$('#flow-nodes')) return;
-    const seq = S.line.map((n, i) => ({ n, i })).concat([{ add: true }]);
+    const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
     const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
@@ -446,7 +497,8 @@
     const old = $('#flow-contract'); if (old) old.remove();
     const strip = contractStrip(); if (strip) { strip.id = 'flow-contract'; ff.after(strip); }
     const box = $('#flow-nodes'); box.innerHTML = '';
-    seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : machineCol(x.n, x.i)));
+    seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : x.bin ? binCol(x.from) : machineCol(x.n, x.i)));
+    const lit = loopState(); document.querySelectorAll('#loop .loop-step').forEach((b) => b.classList.toggle('on', lit.indexOf(b.dataset.key) >= 0));
     for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
     box.appendChild(bucketsCol());
     $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + MACHINE_COLS >= seq.length;

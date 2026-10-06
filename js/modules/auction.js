@@ -275,7 +275,9 @@
       const P = st.pending; if (!P || app.contract() || S().run) return false;
       S().feedOwner = null;   // setFeed renders before the flag is set: no guard may read this as someone else's feed
       app.setFeed(P.truth, 'custom', Math.max(1, Math.min(P.tons, app.plantValue('logistics'))));
-      S().feedPrepaid = true; S().feedOwner = 'auction'; return true;
+      S().feedPrepaid = true; S().feedOwner = 'auction';
+      app.markDirty(true);   // redraw with the flag set: the feed line, the projection and the loop strip read it
+      return true;
     }
     /* LOAD a waiting lot: it becomes the loaded one and the loaded one goes back to wait (#49) */
     function swapIn(L) {

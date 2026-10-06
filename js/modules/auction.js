@@ -45,16 +45,16 @@
   const TIER_TONS = [0.1, 4000];
   const TIER_MAX_T = [30, 80, 200, 600, 1500, 4000];   // #103: the most a tier lot weighs, so cheap scrap is not a mountain (a few batches at that stage's batch size)
   /* What each tier deals, lined up with the machines a plant can afford by then (start: hammermill and magnet):
-   *   $1k  wood, glass and steel: the magnet and a sink-float (water) tank sort them
-   *   $3k  plus demolition rubble (stone, rebar, timber)
-   *   $8k  tires and white goods: an air classifier blows off fabric and plastic film
+   *   $1k  steel and wood only (pallets, office clear-outs): the starting magnet pulls the nails, the wood is left clean
+   *   $3k  plus old windows (wood, glass, steel): a sink-float (water) tank floats the wood off the glass
+   *   $8k  demolition rubble, tires and white goods: an air classifier blows off fabric and plastic film
    *   $20k car hulks and white goods: an eddy current separator throws the non-ferrous metals
    *   $50k zorba and mixed skips: density and size splits between the non-ferrous metals
    *   $100k electronics and connector pins: a sensor sorter picks copper, brass and the precious metals
    * Gel and water are never dealt: there is nothing to sort. */
   const TIER_FEEDS = [
+    ['pallets', 'chair'],
     ['pallets', 'chair', 'windows'],
-    ['windows', 'pallets', 'chair', 'rubble'],
     ['rubble', 'tires', 'appliance', 'windows'],
     ['elv', 'appliance', 'tires'],
     ['zorba', 'elv', 'everything', 'appliance'],
@@ -231,7 +231,7 @@
     const tiers = () => { if (roundMode()) { st.board = []; return false; } return tickTiers(st, rng, clockH(), genOpts()); };
     CS.Auction.live = { board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render(),
       /* a lot won somewhere else (an auction round): pay for it and put it in the yard */
-      deliver: (L, perT, how) => take(L, perT, how),
+      deliver: (L, perT, how, credit) => take(L, perT, how, credit),
       /* LOAD a waiting lot by id (the plant screen's lot card, #64) */
       load: (id) => { const L = st.yard.find((x) => x.id === id); if (L && swapIn(L)) { render(); return true; } return false; },
       sample: (L, perT) => sample(L, perT),
@@ -310,7 +310,7 @@
       if (!st.board.length) box.appendChild(app.el('div', 'empty', 'No lots on the board.'));
       st.board.slice().sort((a, b) => (a.tier == null ? 99 : a.tier) - (b.tier == null ? 99 : b.tier) || a.expiresH - b.expiresH).forEach((L) => {
         const total = priceOf(L) * L.tons;
-        const tierTag = L.tier != null ? '<span class="tier">' + app.fmtMoney(TIERS[L.tier]).replace(',000', 'k') + ' LOT</span> ' : '';
+        const tierTag = L.tier != null ? '<span class="tier" title="Tier ' + (L.tier + 1) + ': lots up to this price, and at most ' + TIER_MAX_T[L.tier] + ' t">UP TO ' + app.fmtMoney(TIERS[L.tier]).replace(',000', 'k') + '</span> ' : '';   // #172: a capped lot costs less than its tier
         const row = app.el('div', 'crow', '<div class="ch"><b>' + tierTag + app.esc(L.headline) + ' · ' + L.tons + ' t</b><span class="ask">' + app.fmtMoney(L.ask) + '/t</span></div>' +
           '<div class="cd">Declared: ' + compText(L.declared) + compBar(L.declared) + '</div>' +
           (L.sample ? '<div class="cd sampled">Sampled: ' + compText(L.sample) + compBar(L.sample) + '</div>' : '') +
@@ -374,9 +374,9 @@
       take(L, priceOf(L), 'Bought');
     }
     /* pay perT for the whole lot and put it in the yard; a lot won at the timer arrives mid-batch and loads when the batch ends */
-    function take(L, perT, how) {
+    function take(L, perT, how, credit) {
       const total = perT * L.tons;
-      if (!app.spend(total, 'lot #' + L.id + ' (' + L.tons + ' t at ' + app.fmtMoney(perT) + '/t)')) { render(); return false; }
+      if (!app.spend(total, 'lot #' + L.id + ' (' + L.tons + ' t at ' + app.fmtMoney(perT) + '/t)', credit || 0)) { render(); return false; }
       st.board = st.board.filter((x) => x !== L);
       const lot = Object.assign({}, L, { ask: perT, listAsk: L.ask, paid: total, boughtTons: L.tons, bid: undefined });
       app.emit('lotBought', { lot, total });   // milestones (#73)
@@ -385,6 +385,7 @@
       const cap = app.plantValue('logistics');
       app.log(how + ' lot #' + L.id + ' from ' + L.seller + ': ' + L.tons + ' t of ' + L.headline + ' at ' + app.fmtMoney(perT) + '/t, ' + app.fmtMoney(total) + ' paid. Declared ' + compText(L.declared, 4).replace(/&amp;/g, '&') + '.' + (L.tons > cap ? ' Only ' + cap + ' t fit a batch; the rest waits in the yard.' : ''), 'ok');
       if (st.pending === lot && !loadPending() && S().run) st.pending.arriving = true;   // won mid-batch: it loads when the batch ends
+      else if (st.pending === lot && S().mode !== 'rivals' && app.layout && app.layout.closeDrawer) setTimeout(() => app.layout.closeDrawer(), 250);   // #175: loaded: back to the plant
       tiers();   // the tier refills at once
       app.renderBank(); render(); app.save();
       return true;

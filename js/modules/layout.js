@@ -442,7 +442,7 @@
   function nextAction() {
     const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0, RL = CS.Round && CS.Round.live;
     if (S.mode === 'rivals' && RL) {
-      if (RL.miscAllowed() && mt >= 1) return { label: 'RUN YOUR MISC', sub: 'No bin for you this round: ' + fmtW(mt) + ' of mixed material is waiting.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
+      if (RL.miscAllowed() && mt >= 1 && lineSortsMisc()) return { label: 'RUN YOUR MISC', sub: 'No bin for you this round: ' + fmtW(mt) + ' of mixed material is waiting.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
       const st = RL.state(); if (st.match && st.match.over) return { label: 'SEE THE STANDINGS', sub: 'The match is over.', go: () => showDrawer('auction') };
       return { label: RL.canStart() ? (st.n ? 'NEXT AUCTION ROUND' : 'START THE MATCH') : 'OPEN THE AUCTION', sub: 'Material comes only from bins you win at auction, or your MISC bin in a round you win nothing.', go: () => showDrawer('auction') };
     }
@@ -456,11 +456,32 @@
     if (npCache.key !== key || Date.now() - npCache.at > 5000) { const ps = app.nextPurchases(); npCache = { at: Date.now(), key, v: ps && ps[0] ? ps[0] : null }; }
     return npCache.v;
   }
+  /* #169: does the line, as it stands, pull anything pure out of the MISC bucket? (cached on the line and the pile) */
+  let sortCache = { key: '', v: false };
+  function lineSortsMisc() {
+    const S = app.S, I = CS.Inventory, misc = I && I.misc ? I.misc() : {}; let tot = 0; const comp = {};
+    for (const m in misc) if (misc[m].t > 0) { comp[m] = misc[m].t; tot += misc[m].t; }
+    if (!(tot > 0) || !S.line.length) return false;
+    const key = S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings)).join() + '|' + Object.keys(comp).map((m) => m + Math.round(comp[m])).join();
+    if (sortCache.key === key) return sortCache.v;
+    for (const m in comp) comp[m] /= tot;
+    let v = false;
+    try {
+      const ev = Sim.evalLine(S.line, comp, { sizes: {}, entry: defaultEntry(S.line, MACHINES) });
+      v = ev.terminals.some((t) => { const st = Sim.binStats(t.stream.m, t.form); return st.sellable && st.total > 30; });   // over 3% of the feed comes out pure
+    } catch (e) { v = false; }
+    sortCache = { key, v }; return v;
+  }
   function nextStep() {
     const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0;
     if (S.run) {
       const lot = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();
       return { title: 'RUNNING', label: lot ? 'STOP THE LOT' : 'STOP', sub: fmtW(S.run.total - S.run.done) + ' to go in this batch' + (lot ? ', then the rest of the lot' : '') + '.', go: () => $('#btn-run').click(), quiet: true };
+    }
+    const stock0 = I && I.stock ? I.stock() : {};
+    if (S.money < 0 && S.mode !== 'rivals') {   // #169: in the red: sell before running more
+      let b0 = null; for (const m in stock0) { const v = I.quote ? I.quote(m) : 0; if (stock0[m].t > 0.05 && v > 0 && (!b0 || v > b0.v)) b0 = { m, v }; }
+      if (b0) return { title: 'SELL', label: 'SELL ' + MATERIALS[b0.m].name.toUpperCase() + ' ' + app.fmtMoney(b0.v), sub: 'The bank is in the red: sell before you run more.', go: () => { if (I.sellMat) I.sellMat(b0.m); } };
     }
     if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + S.tons + ' t a batch.', go: () => $('#btn-run').click() };
     if (S.mode === 'rivals') { const a = nextAction(); return Object.assign({ title: 'NEXT' }, a); }
@@ -473,18 +494,28 @@
       const price = app.pairPrice ? app.pairPrice(p) : 0;
       if (price <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
-    if (mt >= 1) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material is waiting for your sorters.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
+    if (mt >= 1 && lineSortsMisc()) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material: your line pulls something pure out of it.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
+    const cap = app.plantValue ? app.plantValue('logistics') : 30, dq = I && I.dumpQuote ? I.dumpQuote() : null;
+    // ship it out only when it pays, or costs a quarter of the bank at most
+    if (mt >= cap && dq && (dq.net >= 0 || -dq.net <= S.money * 0.25)) return { title: 'CLEAR THE YARD', label: 'SHIP OUT MISC ' + (dq.net >= 0 ? '+' : '') + app.fmtMoney(dq.net), sub: fmtW(mt) + ' of MISC your line cannot sort is filling yard bays you pay rent on.', go: () => { if (I.dumpMisc) I.dumpMisc(); } };
+    // a dead end: no money for the cheapest lot, nothing to sell, nothing to run: the yard advance (repaid from sales)
+    const A0 = CS.Auction && CS.Auction.live, cheapest = A0 ? Math.min.apply(null, A0.board().map((L) => L.ask * L.tons).concat([Infinity])) : Infinity;
+    if (S.mode !== 'rivals' && !S.feedPrepaid && !(A0 && A0.pending && A0.pending()) && S.money < cheapest && !best && loan === 0)
+      return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(ADVANCE) + ' ADVANCE', sub: 'No money for a lot and nothing to sell. A scrap merchant advances you ' + app.fmtMoney(ADVANCE) + ', repaid from a quarter of each sale.', go: takeAdvance };
     return Object.assign({ title: 'BUY' }, nextAction());
   }
+  /* the yard advance: interest-free, repaid from 25% of each sale; it counts against net worth until it is repaid */
+  const ADVANCE = 1000; let loan = 0;
+  function takeAdvance() { if (loan > 0) return; loan = ADVANCE; app.S.money += ADVANCE; app.log('A scrap merchant advanced you ' + app.fmtMoney(ADVANCE) + '. A quarter of each sale goes to repay it.', 'warn'); app.save(); app.renderAll(); }
   /* the left column (#132): NEXT STEP and the LAST BATCH under the loaded lot */
   let lastBatch = null;
   function renderSideCards() {
     const nb = $('#next-body'); if (nb) {
-      const a = nextStep(), key = a.title + '|' + a.sub + '|' + a.label;
+      const keyOf = (x) => x.title + '|' + x.sub + '|' + x.label, a = nextStep(), key = keyOf(a);
       if (nb.dataset.key !== key) {   // unchanged: keep the button (and its focus) under the pointer
         nb.dataset.key = key;
         nb.innerHTML = '<div class="ns-t">' + esc(a.title) + '</div><div class="ns-s">' + esc(a.sub) + '</div>';
-        if (!a.quiet || app.S.run) { const b = el('button', 'primary', esc(a.label)); b.type = 'button'; b.addEventListener('click', () => nextStep().go()); nb.appendChild(b); }
+        if (!a.quiet || app.S.run) { const b = el('button', 'primary', esc(a.label)); b.type = 'button'; b.addEventListener('click', () => { const now = nextStep(); if (keyOf(now) !== nb.dataset.key) { renderSideCards(); return; } now.go(); }); nb.appendChild(b); }   // the button does only what it says: if the step moved on, show the new one first
       }
     }
     const lb = $('#last-body'); if (lb) {
@@ -821,6 +852,14 @@
       const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re);
       const rf = refineMiscButton(); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
+      // #168: ship it out when the plant cannot sort it: the metal in it pays a little, landfill takes the rest
+      const dq = Inv.dumpQuote ? Inv.dumpQuote() : null;
+      if (dq && dq.t > 0) {
+        let armed = false; const du = el('button', 'danger', 'SHIP OUT ' + (dq.net >= 0 ? '+' : '') + app.fmtMoney(dq.net)); du.type = 'button';
+        du.title = 'Send the mixed material away: a mixed-metals processor pays ' + app.fmtMoney(dq.metal) + ' for the metal in it, landfill charges ' + app.fmtMoney(dq.fee) + ' for the rest. Frees the yard bays it fills.';
+        du.addEventListener('click', () => { if (!armed) { armed = true; du.textContent = 'CLICK AGAIN TO SHIP ' + fmtW(dq.t); setTimeout(() => { armed = false; du.textContent = 'SHIP OUT ' + (dq.net >= 0 ? '+' : '') + app.fmtMoney(dq.net); }, 3000); return; } withMoney(du, () => Inv.dumpMisc()); });
+        row.appendChild(du);
+      }
       list.appendChild(row);
     }
     col.appendChild(list);
@@ -983,6 +1022,11 @@
       document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#btn-run')) guardLoaded(); }, true);
     });
     app.on('batchStart', onBatchStart);
+    app.on('sale', (p) => {
+      if (loan > 0 && p && p.proceeds > 0) { const pay = Math.min(loan, p.proceeds * 0.25); loan -= pay; app.S.money -= pay; if (loan < 0.5) { loan = 0; app.log('The yard advance is repaid.', 'ok'); } }
+      setTimeout(() => renderFlow(true), 0);   // the buckets and NEXT STEP follow a sale at once
+    });
+    app.on('assetValue', (q) => { if (q && loan > 0) q.value -= loan; });   // the advance counts against worth
     app.on('refined', () => { refinedAt = Date.now(); renderFlow(true); setTimeout(() => renderFlow(true), 2700); });   // #129: the furnace pours
     // #109: a MISC bucket loaded in a no-bin round cannot run once a later round has handed you a bin
     app.on('veto:startRun', () => {
@@ -993,10 +1037,11 @@
     app.on('render', () => { guardLoaded(); pruneMinis(); renderFlow(false); if (stationOpen && !app.node(app.S.sel)) closeStation(); });
     app.on('batchComplete', onBatchComplete);
     // a loaded bucket survives a reload: it is restored as the prepaid feed while the feed panel still shows its blend
-    app.on('save', () => ({ layout: { loaded, rerunActive, seen: seenPanels } }));
+    app.on('save', () => ({ layout: { loaded, rerunActive, seen: seenPanels, loan } }));
     const restore = (ext) => {
       const d = ext && ext.layout, S = app.S; loaded = null; rerunActive = false;
       seenPanels = d && d.seen && typeof d.seen === 'object' ? Object.assign({}, d.seen) : {};
+      loan = d && isFinite(+d.loan) && +d.loan > 0 ? +d.loan : 0;
       if (!d || !S) return;
       if (d.loaded && !S.run && sameComp(S.comp, d.loaded.comp)) {
         loaded = d.loaded; S.feedPrepaid = true; S.feedOwner = 'rerun'; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
@@ -1007,7 +1052,7 @@
     app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
     app.on('modechange', () => { offset = 0; closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
-    app.on('newgame', () => { offset = 0; seenPanels = {}; lastBatch = null; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
+    app.on('newgame', () => { offset = 0; seenPanels = {}; lastBatch = null; loan = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
   }
   if (CS.app) init();

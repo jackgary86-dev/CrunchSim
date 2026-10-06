@@ -88,8 +88,8 @@
   function rankOf(nw) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (nw >= RANKS[k][0]) i = k; return { idx: i, name: RANKS[i][1], floor: RANKS[i][0], next: RANKS[i + 1] ? RANKS[i + 1][0] : null, nextName: RANKS[i + 1] ? RANKS[i + 1][1] : null }; }
   function unownedIn(line) { const cnt = {}, miss = {}; line.forEach((n) => { cnt[n.m] = (cnt[n.m] || 0) + 1; }); for (const m in cnt) { const short = cnt[m] - unitsOf(m); if (short > 0) miss[m] = short * MACHINES[m].price; } return miss; }
   function unownedCost(line) { let c = 0; const m = unownedIn(line); for (const k in m) c += m[k]; return c; }
-  function spend(cost, what) {
-    if (S.money < cost) { Audio.ui('deny'); log('Not enough in the bank for ' + what + ' (' + fmtMoney(cost) + ', bank ' + fmtMoney(S.money) + ').', 'bad'); return false; }
+  function spend(cost, what, credit) {   // credit: how far below zero this purchase may take the bank (Rivals bins, #171)
+    if (S.money + (credit || 0) < cost) { Audio.ui('deny'); log('Not enough in the bank for ' + what + ' (' + fmtMoney(cost) + ', bank ' + fmtMoney(S.money) + ').', 'bad'); return false; }
     S.money -= cost; return true;
   }
   function buyMachine(id) {
@@ -435,8 +435,9 @@
    * margin they add per head-tonne. Feed cost cancels in the difference, so it is left out. Computed only here, from renderBank.
    */
   const TRIAL_MACHINES = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen', 'cone', 'jaw'];
+  let rankComp = null;   // the mix NEXT PURCHASE ranks against (null: the loaded feed)
   function lineMarginNoFeed(line) {
-    const ev = Sim.evalLine(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
+    const ev = rankComp ? Sim.evalLine(line, rankComp, null) : Sim.evalLine(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
     if (!(R > 0)) return -Infinity;
     let P = 0, extra = 0, wearC = 0, rev = 0;
     ev.nodes.forEach((n) => { P += Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
@@ -455,19 +456,38 @@
     }));
     return out;
   }
+  /* #170: a sorter is only as good as its setting: the density of a sink-float medium decides what floats (wood 0.6, plastic
+   * 0.9-1.4, glass 2.5, stone 2.65-2.7, aluminum 2.7, steel 7.8 g/cc); a drum's field what it lifts. The ranking tries these
+   * and BUY & PLACE sets the winner. Pairs try a shorter list. */
+  const SETTING_TRIALS = { sinkfloat: { sg: [1.1, 1.5, 2.0, 2.45, 2.6, 2.8, 2.9, 3.2] }, magnet: { field: [100, 250, 400] } };
+  const SETTING_TRIALS_PAIR = { sinkfloat: { sg: [1.5, 2.45, 2.9] } };
+  function trialSettings(m, pair) {
+    const T = (pair ? SETTING_TRIALS_PAIR : SETTING_TRIALS)[m]; if (!T) return [{}];
+    const k = Object.keys(T)[0]; return T[k].map((v) => ({ [k]: v }));
+  }
   function nextPurchases() {
     if (!S.line.length) return [];
+    // nothing loaded: rank against the richest lot on the board the bank can buy, the scrap that comes next
+    rankComp = null;
+    const A = CS.Auction && CS.Auction.live;
+    if (!S.feedPrepaid && A && A.board) {
+      const can = A.board().filter((L) => L.ask * L.tons <= S.money).sort((a, b) => b.ask * b.tons - a.ask * a.tons)[0];
+      if (can) rankComp = can.declared;
+    }
+    try { return rankPurchases(); } finally { rankComp = null; }
+  }
+  function rankPurchases() {
     const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
     const ports = freePorts(S.line), singles = [];
     TRIAL_MACHINES.forEach((m) => {
       if (freeUnit(m)) return;   // a spare unit is free to add; this block ranks purchases
       if (API.veto('addMachine', { m })) return;   // no slot or no floor for it (#51)
       let best = null;
-      ports.forEach((src) => {
-        const n = Sim.makeNode(m, {}, src); n.level = levelOf(m);
+      ports.forEach((src) => trialSettings(m).forEach((set) => {
+        const n = Sim.makeNode(m, set, src); n.level = levelOf(m);
         const gain = lineMarginNoFeed(S.line.concat([n])) - base;
-        if (!best || gain > best.gain) best = { ms: [m], src, gain };
-      });
+        if (!best || gain > best.gain) best = { ms: [m], src, gain, sets: [set] };
+      }));
       if (best && best.gain > 0.5) singles.push(best);   // under fifty cents a tonne is noise
     });
     if (singles.length) return singles.sort((a, b) => b.gain - a.gain).slice(0, 3);
@@ -475,17 +495,17 @@
     SORT.forEach((a) => SORT.forEach((b) => {
       if (API.veto('addMachine', { m: a }) || API.veto('addMachine', { m: b, pending: 1 })) return;
       let best = null;
-      ports.forEach((src) => {
-        const na = Sim.makeNode(a, {}, src); na.level = levelOf(a);
-        ['extract', 'residue'].forEach((port2) => {
-          const nb = Sim.makeNode(b, {}, { uid: na.uid, port: port2 }); nb.level = levelOf(b);
+      ports.forEach((src) => trialSettings(a, true).forEach((sa) => {
+        const na = Sim.makeNode(a, sa, src); na.level = levelOf(a);
+        ['extract', 'residue'].forEach((port2) => trialSettings(b, true).forEach((sb) => {
+          const nb = Sim.makeNode(b, sb, { uid: na.uid, port: port2 }); nb.level = levelOf(b);
           const gain = lineMarginNoFeed(S.line.concat([na, nb])) - base;
-          if (!best || gain > best.gain) best = { ms: [a, b], src, port2, gain };
-        });
-      });
+          if (!best || gain > best.gain) best = { ms: [a, b], src, port2, gain, sets: [sa, sb] };
+        }));
+      }));
       if (best && best.gain > 0.5) pairs.push(best);
     }));
-    const cost = (p) => p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
+    const cost = (p) => pairPrice(p) || 1;
     return pairs.sort((x, y) => cost(x) / x.gain - cost(y) / y.gain).slice(0, 3);   // pairs ranked by payback
   }
   function renderNextPurchase() {
@@ -521,11 +541,13 @@
     if (S.money < price) { Audio.ui('deny'); log('Not enough in the bank: ' + fmtMoney(price) + ' needed.', 'bad'); renderBank(); return; }
     const need = {}; p.ms.forEach((m) => { need[m] = (need[m] || 0) + 1; });
     for (const m in need) { let buy = need[m] - Math.max(0, unitsOf(m) - S.line.filter((x) => x.m === m).length); while (buy-- > 0) if (!buyMachine(m)) { renderBank(); return; } }
-    const na = Sim.makeNode(p.ms[0], {}, p.src); S.line.push(na);
+    const sets = p.sets || [];
+    const na = Sim.makeNode(p.ms[0], sets[0] || {}, p.src); S.line.push(na);
     let last = na;
-    if (p.ms[1]) { last = Sim.makeNode(p.ms[1], {}, { uid: na.uid, port: p.port2 }); S.line.push(last); }
+    if (p.ms[1]) { last = Sim.makeNode(p.ms[1], sets[1] || {}, { uid: na.uid, port: p.port2 }); S.line.push(last); }
     S.sel = last.uid; S.linePreset = 'custom';
-    Audio.ui('click'); log('Added ' + p.ms.map((m) => MACHINES[m].name).join(' and ') + ' to the line.'); markDirty(true);
+    const setText = (m, st) => { const d = st && Object.keys(st)[0]; const D = d && (MACHINES[m].settings || []).find((x) => x.id === d); return D ? ' (' + D.label.toLowerCase() + ' ' + st[d] + (D.unit ? ' ' + D.unit : '') + ')' : ''; };
+    Audio.ui('click'); log('Added ' + p.ms.map((m, i) => MACHINES[m].name + setText(m, sets[i])).join(' and ') + ' to the line.'); markDirty(true);
   }
 
   /* ---------------- telemetry ---------------- */
@@ -868,7 +890,7 @@
     log('New game. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Grind the junk, sort it, sell only what is pure.', 'ok');
     API.emit('newgame'); renderAll(); save();
     const b = $('#btn-newgame'); resetArmed = false; b.textContent = RESTART_LABEL; b.classList.remove('bad');
-    if (S.mode !== 'rivals') $('#help').classList.remove('hidden');
+    // #174: a new game opens on the guided first lot, not the help (which stays one click away on ?)
   }
 
   /* load this mode's save into the running game, in place (no page reload): mode switches and save imports (#82) */
@@ -945,7 +967,6 @@
     CS.app = API;
     renderAll(); renderRunState();
     API.booted = true; API.emit('boot');
-    if (!had) $('#help').classList.remove('hidden');
     lastRealT = performance.now();
     let acc = 0;
     function tick(now) {

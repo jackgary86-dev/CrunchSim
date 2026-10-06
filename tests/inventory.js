@@ -28,7 +28,8 @@ function binsValuePerT(bins) { return bins.reduce((v, b) => v + b.st.value, 0); 
 function binsMassPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.perMat[mat] ? b.st.perMat[mat].mass : 0), 0); }
 // #52: a sellable (pure) bin is held whole as its main material; a mixed bin goes to MISC
 function heldPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.sellable && b.st.main === mat ? b.st.total : 0), 0); }
-function miscPerT(bins) { return bins.reduce((m, b) => m + (b.st.sellable ? 0 : b.st.total), 0); }
+const waterIn = (b) => (b.st.perMat && b.st.perMat.water ? b.st.perMat.water.mass : 0);   // free water drains off; it is never kept as MISC
+function miscPerT(bins) { return bins.reduce((m, b) => m + (b.st.sellable ? 0 : b.st.total - waterIn(b)), 0); }
 
 Sim.prices.market = 1;
 const carBins = binsOf(LINES.car, 'elv');
@@ -40,7 +41,7 @@ for (const mat in stock) if (!near(stock[mat].t, heldPerT(carBins, mat) / 1000 *
 check(massOk && Object.keys(stock).length >= 2, 'absorbBins holds each pure bin whole as its main material (bins are per head-tonne, scaled by the batch)');
 check(near(Inv.miscTotal(misc0), miscPerT(carBins) / 1000 * 15) && Inv.miscTotal(misc0) > 0, 'every mixed bin goes to MISC, tonne for tonne (' + f(Inv.miscTotal(misc0), 1) + ' t)');
 check(MAT_ORDER.every((m) => !stock[m] || stock[m].purity >= 0.9), 'nothing under 90% purity is held as sellable stock');
-check(near(Object.keys(stock).reduce((t, m) => t + stock[m].t, 0) + Inv.miscTotal(misc0), carBins.reduce((t, b) => t + b.st.total, 0) / 1000 * 15), 'stock plus MISC is the whole batch');
+check(near(Object.keys(stock).reduce((t, m) => t + stock[m].t, 0) + Inv.miscTotal(misc0), carBins.reduce((t, b) => t + b.st.total - (b.st.sellable ? 0 : waterIn(b)), 0) / 1000 * 15), 'stock plus MISC is the whole batch, less the water that drains off');
 const baseAfterOne = MAT_ORDER.reduce((v, m) => v + Inv.baseValue(stock, m), 0);
 check(near(baseAfterOne, binsValuePerT(carBins) * 15, 1e-9), 'value is preserved on absorption: stock base value = sum of bin values x tonnes (' + f(baseAfterOne, 0) + ')');
 check(MAT_ORDER.every((m) => !stock[m] || (stock[m].purity > 0 && stock[m].purity <= 1 && stock[m].grade > 0 && stock[m].grade <= 1.25 && stock[m].sf > 0 && stock[m].sf <= 1 && stock[m].p80 > 0)), 'purity, grade, size factor and p80 are in range');

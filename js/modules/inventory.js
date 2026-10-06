@@ -91,6 +91,7 @@
   function newMisc() { return {}; }
   function addMisc(misc, mat, dt, p80) {
     if (!(dt > 0) || !MATERIALS[mat]) return;
+    if (mat === 'water') return;   // free water in a lot (rain, wash water) drains to the yard sewer; it is never kept as MISC
     const e = misc[mat], lnp = Math.log(p80 > 0 ? p80 : 1e-3);
     if (!e) { misc[mat] = { t: dt, p80: Math.exp(lnp) }; return; }
     e.p80 = Math.exp((e.t * Math.log(e.p80 > 0 ? e.p80 : 1e-3) + dt * lnp) / (e.t + dt)); e.t += dt;
@@ -100,6 +101,20 @@
     const take = Math.min(+t, e.t); e.t -= take; const out = { t: take, p80: e.p80 };
     if (e.t <= 1e-9) delete misc[mat];
     return out;
+  }
+  /* #168: shipping MISC out, as yards do with mixed residue: a downstream mixed-metals processor pays about a fifth of the
+   * metal's value (it still has to sort it); the rest goes where its kind goes: waste wood to biomass or mulch (~$10/t),
+   * stone and glass to inert fill (~$20/t), plastics and rubber to landfill (~$55/t, near the US average gate fee), liquids
+   * and gels to treatment (~$40/t). Returns { t, metal, fee, net }. */
+  const MISC_METAL_SHARE = 0.2, LANDFILL_PER_T = 55, GATE = { wood: 10, granite: 20, limestone: 20, glass: 20, water: 40, gel: 40 };
+  function miscDumpQuote(misc) {
+    let t = 0, metal = 0, fee = 0;
+    for (const m in misc || {}) {
+      const e = misc[m], D = MATERIALS[m]; if (!e || !(e.t > 0) || !D) continue;
+      t += e.t;
+      if (D.magnetic || D.sigma > 0) metal += e.t * D.sell * MISC_METAL_SHARE; else fee += e.t * (GATE[m] != null ? GATE[m] : LANDFILL_PER_T);
+    }
+    return { t, metal, fee, net: metal - fee };
   }
   function miscTotal(misc) { let t = 0; for (const m in misc || {}) t += misc[m].t > 0 ? misc[m].t : 0; return t; }
 
@@ -328,7 +343,7 @@
   const Inv = {
     UNITS, DRIFT_MIN, DRIFT_MAX, SIGMA_H, KAPPA_H,
     unitFor, unitsOf, fmtUnits, pluralUnit,
-    newStock, addLot, absorbBins, withdrawLot, newMisc, addMisc, takeMisc: withdrawMisc, miscTotal, avgCost, baseValue, lotValue, stockTotals,
+    miscDumpQuote, MISC_METAL_SHARE, LANDFILL_PER_T, newStock, addLot, absorbBins, withdrawLot, newMisc, addMisc, takeMisc: withdrawMisc, miscTotal, avgCost, baseValue, lotValue, stockTotals,
     storageCfg, ownedBays, baysFor, storage, chargeStorage,
     newTargets, setTarget, targetEvents,
     newMarket, marketStep, marketAdvance, marketAt, priceOf, drift, trendOf, trendArrow,
@@ -338,6 +353,7 @@
     /* the live MISC pile: mixed material waiting to be re-run (read-only view) */
     misc() { return liveMisc; },
     withdrawMisc(mat, tonnes) { return withdrawMisc(liveMisc, mat, tonnes); },
+    dumpQuote() { return miscDumpQuote(liveMisc); },
     /* Deliver held stock: takes up to `tonnes` of `mat` out of the yard. Returns { t, purity, ... } with the tonnes actually
      * withdrawn and their average purity. Set by the page integration to refresh the panel; this is the no-page fallback. */
     withdraw(mat, tonnes) { return withdrawLot(liveStock, mat, tonnes); }
@@ -525,6 +541,19 @@
       if (src === 'misc') addMisc(misc, mat, out.t, out.p80); else addLot(stock, mat, out.t, out.purity, out.grade, out.sf, out.p80, out.cost);
       renderPanel(); API.save();
     };
+    Inv.dumpMisc = function () {   // #168
+      let q = miscDumpQuote(misc); if (!(q.t > 0)) return q;
+      let f = 1;   // a bank that cannot cover the whole fee ships the share it can pay for
+      if (q.net < 0 && API.S.money < -q.net) { f = Math.max(0, API.S.money) / -q.net; if (f < 0.02) { API.log('Shipping the MISC out costs ' + API.fmtMoney(-q.net) + ': sell something first.', 'warn'); return null; } }
+      if (f < 1) q = { t: q.t * f, metal: q.metal * f, fee: q.fee * f, net: q.net * f };
+      if (q.net < 0 && !API.spend(-q.net, 'shipping ' + q.t.toFixed(1) + ' t of MISC out')) return null;
+      if (q.net > 0) { API.S.money += q.net; API.S.lifetime = (API.S.lifetime || 0) + q.net; }
+      for (const m in misc) { if (f >= 1) delete misc[m]; else { misc[m].t *= 1 - f; if (misc[m].t <= 1e-6) delete misc[m]; } }
+      API.log('Shipped ' + q.t.toFixed(1) + ' t of MISC out: the metal in it paid ' + API.fmtMoney(q.metal) + ', landfill took ' + API.fmtMoney(q.fee) + ' (net ' + (q.net >= 0 ? '+' : '') + API.fmtMoney(q.net) + '). The yard bays are free again.', q.net >= 0 ? 'ok' : 'warn');
+      renderPanel(); API.save(); API.renderAll();
+      return q;
+    };
+    Inv.dumpQuote = function () { return miscDumpQuote(misc); };
     Inv.withdrawMisc = function (mat, tonnes) { const out = withdrawMisc(misc, mat, tonnes); if (out.t > 0) { renderPanel(); API.save(); } return out; };
     Inv.quote = function (mat) { return stock[mat] && stock[mat].t > 0 ? lotValue(stock, mat, mv(), marketMul()) : 0; };   // what SELL would pay now (#44)
 

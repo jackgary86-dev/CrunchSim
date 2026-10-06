@@ -97,7 +97,10 @@
   }
   function standings(rows) { return rows.slice().sort((a, b) => b.worth - a.worth).map((r, i) => Object.assign({ place: i + 1 }, r)); }
 
-  CS.Round = { CATEGORIES, PLAYERS, OPEN, STEP, STEP_MIN, MIN_SIZE, BIN_SPREAD, roundSize, nextBid, makeCards, rivalPurse, rivalMax, settleRivals,
+  /* #171: a yard buys on trade credit: a won bin may take the bank down to -$5,000 (repaid from sales; it counts against worth),
+   * so one bad bin does not lock a player out of the rest of the match */
+  const CREDIT = 5000;
+  CS.Round = { CREDIT, CATEGORIES, PLAYERS, OPEN, STEP, STEP_MIN, MIN_SIZE, BIN_SPREAD, roundSize, nextBid, makeCards, rivalPurse, rivalMax, settleRivals,
     MATCH_LENGTHS, MATCH_DEFAULT, YIELD, SPECIAL, PROCESS, MISC_RUN, COLORS, fullValue, rivalYield, rivalProfit, purseScale, machinesOf, foldReason, standings };
 
   /* ======================= page integration ======================= */
@@ -167,7 +170,7 @@
     function youBid() {
       const r = R(), L = card(); if (!r || r.done || busy || !inFor('you') || r.leader === 'you') return;
       const nb = nextBid(r.price, L.opening);
-      if (nb * L.tons > app.S.money) { app.log('A bid of ' + money(nb) + '/t on ' + fmtT(L.tons) + ' commits ' + money(nb * L.tons) + '; the bank holds ' + money(app.S.money) + '.', 'warn'); return; }
+      if (nb * L.tons > app.S.money + CREDIT) { app.log('A bid of ' + money(nb) + '/t on ' + fmtT(L.tons) + ' commits ' + money(nb * L.tons) + '; the bank holds ' + money(app.S.money) + ' with a ' + money(CREDIT) + ' credit line.', 'warn'); return; }
       r.price = nb; r.leader = 'you'; r.pop++; r.bidOn = r.k; snd('bid', 0); say('You bid ' + money(nb) + '/t');
       busy = true; render();
       const live = () => R() === r && !r.done && r.k < r.cards.length;   // a reload, a new game or a mode switch ends these timers
@@ -197,7 +200,7 @@
       if (r.leader) {
         r.won[r.leader] = { k: r.k, perT: r.price }; r.justWon = r.leader;   // #127: that yard flashes on the next draw
         if (r.leader === 'you') {
-          const ok = A().live.deliver(Object.assign({}, L), r.price, 'Won at auction round ' + r.n + ':');
+          const ok = A().live.deliver(Object.assign({}, L), r.price, 'Won at auction round ' + r.n + ':', CREDIT);
           if (!ok) { delete r.won.you; say('You could not pay: the bin goes to the next bidder'); r.out.push('you'); r.leader = null; r.price = 0; settleWithoutYou(); return; }
           else { M_().you.bins++; M_().you.t += L.tons; }
         } else {
@@ -336,7 +339,7 @@
       const L = card(), nb = nextBid(r.price, L.opening), mine = inFor('you'), lead = r.leader === 'you';
       const deal = !r.dealt; r.dealt = true;   // #127: the three cards are dealt in once, when the round opens
       main.innerHTML = '<div class="pls">' + players() + '</div><div class="rcards' + (deal ? ' deal' : '') + '">' + r.cards.map(cardHtml).join('') + '</div>' +
-        '<div class="round-act">' + (mine ? '<button type="button" class="primary" id="round-bid"' + (lead || busy || nb * L.tons > app.S.money ? ' disabled' : '') + '>' + (lead ? 'YOU LEAD' : 'BID ' + money(nb) + '/t · ' + money(nb * L.tons)) + '</button><button type="button" id="round-pass"' + (busy ? ' disabled' : '') + '>' + (lead ? 'HOLD (no one answers)' : 'PASS') + '</button>' : '<span class="small">' + (r.won.you ? 'You hold a card this round: the rest go among the rivals.' : 'You passed on this bin.') + '</span>') + '</div>' +
+        '<div class="round-act">' + (mine ? '<button type="button" class="primary" id="round-bid"' + (lead || busy || nb * L.tons > app.S.money + CREDIT ? ' disabled' : '') + '>' + (lead ? 'YOU LEAD' : 'BID ' + money(nb) + '/t · ' + money(nb * L.tons)) + '</button><button type="button" id="round-pass"' + (busy ? ' disabled' : '') + '>' + (lead ? 'HOLD (no one answers)' : 'PASS') + '</button>' : '<span class="small">' + (r.won.you ? 'You hold a card this round: the rest go among the rivals.' : 'You passed on this bin.') + '</span>') + '</div>' +
         '<div class="round-log">' + r.log.slice(-6).reverse().map((t) => '<div>' + esc(t) + '</div>').join('') + '</div>';
       if (r.justWon) setTimeout(() => { if (R() === r) r.justWon = null; }, 900);
       const bb = main.querySelector('#round-bid'); if (bb) bb.addEventListener('click', youBid);

@@ -17,6 +17,8 @@
   function summary(mode, raw) {
     let d = null; try { d = raw ? JSON.parse(raw) : null; } catch (e) { d = null; }
     if (!d || !Array.isArray(d.line)) return { has: false };
+    const played = (+d.batches || 0) > 0 || !!(d.ext && d.ext.auction && (d.ext.auction.pending || (d.ext.auction.yard || []).length)) || !!(d.ext && d.ext.round && d.ext.round.n > 0);   // #173
+    if (!played) return { has: false };
     const out = { has: true, money: +d.money || 0, batches: +d.batches || 0, tonnes: +d.tonnes || 0, machines: d.line.length };
     if (mode === 'rivals') {
       const r = d.ext && d.ext.round, m = r && r.match;

@@ -9,7 +9,8 @@ check(M.summary('progress', null).has === false && M.summary('progress', 'junk')
 const p = M.summary('progress', JSON.stringify({ line: [{ m: 'hammer' }, { m: 'magnet' }], money: 1234.5, batches: 7, tonnes: 210 }));
 check(p.has && p.money === 1234.5 && p.batches === 7 && p.tonnes === 210 && p.machines === 2 && p.round === undefined, 'a Progress save: bank, batches, tonnes, machines');
 const r0 = M.summary('rivals', JSON.stringify({ line: [], money: 2800 }));
-check(r0.has && r0.round === 0 && r0.length === 12 && !r0.over, 'a Rivals save before round 1: round 0 of the default 12');
+check(r0.has === false, 'a Rivals save before round 1 is nothing to continue (#173)');
+check(M.summary('progress', JSON.stringify({ line: [{ m: 'hammer' }], money: 2800, batches: 0 })).has === false, 'nor is a Progress yard that never ran or bought a lot');
 const r = M.summary('rivals', JSON.stringify({ line: [], money: 900, ext: { round: { n: 5, match: { length: 8, over: false } } } }));
 check(r.round === 5 && r.length === 8 && !r.over, 'a match in progress: round 5 of 8');
 check(M.summary('rivals', JSON.stringify({ line: [], ext: { round: { n: 12, match: { length: 12, over: true } } } })).over === true, 'a finished match');

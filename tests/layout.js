@@ -153,5 +153,14 @@ check(Math.abs(up / 10 - f40) < 0.01 && Math.abs(step(logS, up, -1) - 10) < 0.06
   check(a1.find((p) => p.m === 'wood').kind === 'wood' && a1.find((p) => p.m === 'glass').kind === 'angular', "each piece carries its material's look");
 }
 
+// #125: the belt carries the mix
+{
+  const MATS = globalThis.CS.MATERIALS;
+  const p1 = L.beltPattern({ wood: 0.9, steel: 0.07, plastic: 0.03 }, MATS);
+  check(p1.seq.length === 12 && p1.seq.filter((m) => m === 'wood').length >= 9 && p1.seq.includes('steel') && p1.seq.includes('plastic'), 'twelve chunks a repeat, dealt by share, a trace still shows (' + p1.seq.join(',') + ')');
+  check(p1.seq.indexOf('steel') > 0 && p1.seq.indexOf('steel') < 11, 'the minor materials sit among the wood, not at one end');
+  check(L.beltPattern({}, MATS).period > 0 && L.beltPattern({ wood: 1 }, MATS).seq.every((m) => m === 'wood'), 'an empty or single-material belt still draws');
+}
+
 console.log('\n' + (n - fails) + '/' + n + ' checks passed');
 process.exit(fails ? 1 : 0);

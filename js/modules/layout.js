@@ -56,7 +56,7 @@
       if (!users.length) continue;
       const kg = Sim.streamMass(ev.ports[key]);
       const st = Sim.binStats(ev.ports[key].m); if (!Sim.binMatters(st)) continue;
-      next.push({ port, kg, tons: kg / 1000 * tons, to: users.map((x) => line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()), ids: topMats(st, 3) });
+      next.push({ port, kg, tons: kg / 1000 * tons, to: users.map((x) => line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()), ids: topMats(st, 3), comp: shares(st, 6) });
     }
     bins.sort((a, b) => b.tons - a.tons);
     return { bins, next };
@@ -141,7 +141,24 @@
     out.sort((p, q) => p.y - q.y);   // back to front
     return out;
   }
-  CS.Layout = { heapPieces, SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
+  /* a stream's mix as { mat: share } over its top n materials (#125: what the belt carries) */
+  function shares(st, n) { const out = {}; if (!st || !(st.total > 0)) return out; topMats(st, n).forEach((m) => { out[m] = st.perMat[m].mass / st.total; }); return out; }
+  /* #125: the belt's pattern: twelve chunks a repeat, dealt to the materials by share (largest remainder; any material over 1%
+   * gets at least one) and spread along the belt so they mix, each chunk 5-7 px with a 3 px gap. Returns { stops, period }. */
+  function beltPattern(comp, materials) {
+    const mats = Object.keys(comp || {}).filter((m) => comp[m] > 0.01).sort((a, b) => comp[b] - comp[a]);
+    if (!mats.length) return { stops: '#5a6573 0px 6px, #0b1018 6px 9px', period: 9 };
+    const N = 12; let tot = 0; mats.forEach((m) => { tot += comp[m]; });
+    const want = mats.map((m) => ({ m, x: N * comp[m] / tot })), n = want.map((w) => Math.max(1, Math.floor(w.x)));
+    let left = N - n.reduce((a, b) => a + b, 0);
+    want.map((w, k) => ({ k, r: w.x - Math.floor(w.x) })).sort((a, b) => b.r - a.r).forEach((w) => { if (left > 0) { n[w.k]++; left--; } });
+    const seq = []; mats.forEach((m, i) => { for (let j = 0; j < n[i]; j++) seq.push({ m, at: (j + 0.5 + i * 0.13) / n[i] }); });   // each material's chunks evenly spaced along the repeat
+    seq.sort((a, b) => a.at - b.at); for (let q = 0; q < seq.length; q++) seq[q] = seq[q].m;
+    let x = 0; const parts = [];
+    seq.forEach((m, i) => { const w = 5 + (i * 7) % 3; const c = materials[m] ? materials[m].color : '#5a6573'; parts.push(c + ' ' + x + 'px ' + (x + w) + 'px', '#0b1018 ' + (x + w) + 'px ' + (x + w + 3) + 'px'); x += w + 3; });
+    return { stops: parts.join(', '), period: x, seq };
+  }
+  CS.Layout = { shares, beltPattern, heapPieces, SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
@@ -498,13 +515,14 @@
   }
 
   /* ---------------- conveyors between the columns (#66) ---------------- */
-  function belt(tons, ids, label) {
+  /* #125: a conveyor carrying the mix: chunks in each material's share, thicker for more tonnes, moving at the head rate */
+  function belt(tons, comp, label) {
     if (!(tons > 0)) return '';
-    const S = app.S, frac = Math.min(1, tons / Math.max(S.tons, 1e-9)), h = Math.round(5 + 11 * Math.sqrt(frac));
-    const cols = (ids || []).map((m) => MATERIALS[m] ? MATERIALS[m].color : '#5a6573');
-    while (cols.length < 3) cols.push(cols[0] || '#5a6573');
-    const stripes = 'repeating-linear-gradient(90deg,' + cols[0] + ' 0 10px,#0b1018 10px 14px,' + cols[1] + ' 14px 22px,#0b1018 22px 26px,' + cols[2] + ' 26px 32px,#0b1018 32px 36px)';
-    return '<div class="belt" style="height:' + h + 'px"><div class="belt-load" style="background:' + stripes + '"></div><span class="belt-l">' + esc(label) + '</span></div>';
+    if (Array.isArray(comp)) { const c = {}; comp.forEach((m) => { c[m] = 1 / comp.length; }); comp = c; }   // older callers pass material ids
+    const S = app.S, frac = Math.min(1, tons / Math.max(S.tons, 1e-9)), h = Math.round(6 + 12 * Math.sqrt(frac));
+    const pat = beltPattern(comp, MATERIALS), R = S.run ? S.run.rate : (S.mr ? S.mr.R : 0);
+    const dur = R > 0 ? Math.max(0.4, Math.min(3, 30 / R)) : 1.2;   // a faster line moves its belts faster
+    return '<div class="belt" style="height:' + h + 'px;--bp:' + pat.period + 'px;--bd:' + dur.toFixed(2) + 's"><div class="belt-load" style="background:repeating-linear-gradient(90deg,' + pat.stops + ');background-size:' + pat.period + 'px 100%"></div><span class="belt-l">' + esc(label) + '</span></div>';
   }
 
   /* ---------------- sections ---------------- */
@@ -547,7 +565,7 @@
         col.appendChild(nx);
       });
       const out = f.next.reduce((a, x) => a + x.tons, 0);
-      if (out > 0) col.insertAdjacentHTML('beforeend', belt(out, f.next[0].ids, fmtW(out)));
+      if (out > 0) col.insertAdjacentHTML('beforeend', belt(out, f.next[0].comp || f.next[0].ids, fmtW(out)));
     }
     if (idleNow) col.classList.add('idle');
     const open = () => showStation(n.uid);
@@ -831,7 +849,7 @@
       '<div class="fn-s">' + (st && st.total > 0 ? 'P80 ' + fmtSz(st.p80) + ' · everything the grinder breaks falls in here' : 'Load a lot: the grinder fills it') + '</div>' +
       '<div class="bin-list">' + list + '</div>' +
       '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>' +
-      (st && st.total > 0 ? belt(tons, topMats(st, 3), fmtW(tons)) : '');
+      (st && st.total > 0 ? belt(tons, shares(st, 6), fmtW(tons)) : '');
     // #123: the heap itself
     const cv = col.querySelector('canvas.heap');
     if (cv) { const comp = {}; if (st && st.total > 0) topMats(st, 10).forEach((m) => { comp[m] = st.perMat[m].mass / st.total; }); heap = { cv, comp, level: !(st && st.total > 0) ? 0 : runProg >= 0 ? 0.55 + 0.25 * Math.sin(runProg * Math.PI) : 0.85, falls: [] }; setTimeout(() => drawHeap(0), 0); }

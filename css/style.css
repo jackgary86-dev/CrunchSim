@@ -720,3 +720,8 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 /* #124: product forms */
 .unit.svg { background: none; box-shadow: none; clip-path: none; width: var(--us); height: var(--us); }
 .unit.svg svg { display: block; width: 100%; height: 100%; }
+
+/* #125: the belt moves its own pattern at the line's pace, with rollers under it */
+.plant-running .belt-load { animation: beltmove2 var(--bd, 1.2s) linear infinite; }
+@keyframes beltmove2 { from { background-position: 0 0; } to { background-position: var(--bp, 36px) 0; } }
+.belt::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: radial-gradient(circle at 6px 50%, #6c7a89 1.4px, transparent 1.6px) 0 0 / 12px 3px repeat-x; opacity: .7; }

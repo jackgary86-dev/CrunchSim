@@ -178,10 +178,10 @@
     const bins = ev.terminals.map((t) => ({ st: Sim.binStats(t.stream.m, t.form), form: t.form || null })).filter((b) => Sim.binMatters(b.st));
     return (binCache[lid] = { R, bins });
   }
-  /* kg of mat per head-tonne in bins at or above the purity (dross never ships), as js/modules/missions.js counts a job */
+  /* kg of mat per head-tonne in bins at or above the purity (dross never ships, nor does MISC), as js/modules/missions.js counts a job */
   function jobKg(bins, mat, purity) {
     let kg = 0;
-    (bins || []).forEach((b) => { const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross') return; const pm = st.perMat && st.perMat[mat]; if (pm && pm.mass > 0 && pm.mass / st.total + 1e-9 >= purity) kg += pm.mass; });
+    (bins || []).forEach((b) => { const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross' || !st.sellable) return; const pm = st.perMat && st.perMat[mat]; if (pm && pm.mass > 0 && pm.mass / st.total + 1e-9 >= purity) kg += pm.mass; });
     return kg;
   }
   function jobHoursOn(j, bins, R) { const kg = jobKg(bins, j.mat, j.purity), rem = Math.max(0, j.tons - (j.t || 0)); return rem <= 0 ? 0 : (R > 0 && kg > 0 ? rem / (R * kg / 1000) : Infinity); }

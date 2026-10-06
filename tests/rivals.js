@@ -132,15 +132,20 @@ console.log('=== tenders');
   check(Math.abs(RV.W.fee + RV.W.rep + RV.W.time - 1) < 1e-9, 'fee, reputation and delivery weights sum to 1');
 }
 {
+  // #234: a MISC bin (not sellable) is not capability, whatever its mix says
+  const mk = (sellable) => [{ st: { total: 1000, sellable, perMat: { copper: { mass: 880 } } }, form: null }];
+  check(RV.jobHoursOn({ mat: 'copper', purity: 0.85, tons: 2, t: 0 }, mk(true), 10) < Infinity && RV.jobHoursOn({ mat: 'copper', purity: 0.85, tons: 2, t: 0 }, mk(false), 10) === Infinity, 'rivals and your line do not count unsellable (MISC) bins toward a job');
+}
+{
   // jobs on the missions board
   const rng = A.mulberry32(77), st = RV.newState(), J = M.newJobs();
-  const cu = { id: 31, mat: 'copper', tier: 0, tons: 3.6, purity: 0.87, mult: 1.4, windowH: 20, offerExpiresH: 999, client: 'Lakeside Wire & Cable', state: 'offered', t: 0, paid: 0 };
+  const cu = { id: 31, mat: 'aluminum', tier: 0, tons: 3.6, purity: 0.95, mult: 1.4, windowH: 20, offerExpiresH: 999, client: 'Lakeside Wire & Cable', state: 'offered', t: 0, paid: 0 };
   const pm = { id: 32, mat: 'potmetal', tier: 0, tons: 3, purity: 0.94, mult: 1.4, windowH: 20, offerExpiresH: 999, client: 'Two Rivers Die-casting', state: 'offered', t: 0, paid: 0 };
   J.board.push(cu, pm);
-  check(RV.jobCap(red, cu) && !RV.jobCap(iron, cu) && !RV.ROSTER.some((R) => RV.jobCap(R, pm)), 'only the sensor-sorting copper specialist makes 87% copper; nobody makes 94% zinc');
+  check(RV.jobCap(red, cu) && !RV.jobCap(iron, cu) && !RV.ROSTER.some((R) => RV.jobCap(R, pm)), 'only the zorba-line specialist makes 95% aluminum; nobody makes 94% zinc');
   RV.tenderJobs(st, 20, rng, J, {});
   const ev = RV.tenderJobs(st, 20 + RV.TENDER_H, rng, J, {});
-  check(ev.length === 1 && ev[0].R.id === 'redline' && !J.board.includes(cu) && J.board.includes(pm) && st.rjobs.length === 1, 'Redline takes the copper job off the board after the window; the zinc job stays');
+  check(ev.length === 1 && ev[0].R.id === 'redline' && !J.board.includes(cu) && J.board.includes(pm) && st.rjobs.length === 1, 'Redline takes the aluminum job off the board after the window; the zinc job stays');
   RV.settleJobs(st, st.rjobs[0].untilH);
   check(!st.rjobs.length && st.rivals.redline.tonnes === cu.tons, 'and its tonnes count when it delivers');
   const st2 = RV.newState(), J2 = M.newJobs(); J2.board.push(Object.assign({}, cu, { tier: 2 }));

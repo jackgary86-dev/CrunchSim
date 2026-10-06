@@ -107,6 +107,7 @@ node tests/furnace.js
 node tests/gallery-grid.js
 node tests/guide.js
 node tests/hotkeys.js
+node tests/hum-scenes.js
 node tests/inventory.js
 node tests/layout.js
 node tests/lines.js

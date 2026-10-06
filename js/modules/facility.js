@@ -292,7 +292,7 @@
       API.log('Dust & water treatment: ' + API.fmtMoney(credit) + ' of disposal and water cost avoided on ' + API.fmtNum(r.done, 1) + ' t.', 'ok');
     });
     window.addEventListener('keydown', function (e) {
-      if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if (!CS.hotkeyOk(e, document) || document.body.classList.contains('at-title') || e.defaultPrevented) return;
       const fx = effects(state);
       if (e.key === '4' && fx.speedMax > 60) setSpeed(fx.speedMax);
     });

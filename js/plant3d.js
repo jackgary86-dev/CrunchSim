@@ -231,7 +231,7 @@
     });
     document.querySelectorAll('.spd').forEach(function (b) { b.addEventListener('click', function () { V.speed = +b.dataset.speed; document.querySelectorAll('.spd').forEach(function (x) { x.classList.toggle('on', x === b); }); }); });
     window.addEventListener('keydown', function (e) {
-      if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if (!CS.hotkeyOk(e, document)) return;
       if (e.code === 'Space') { e.preventDefault(); runBtn.click(); }
       else if (e.key === '1' || e.key === '2' || e.key === '3') { const b = document.querySelectorAll('.spd')[+e.key - 1]; if (b) b.click(); }
     });

@@ -728,7 +728,20 @@
     ['Improving energy efficiency in aluminum melting (U.S. DOE Industrial Technologies Program)', 'https://www.energy.gov/sites/prod/files/2013/11/f4/aluminum_melting.pdf']
   ];
 
+  // May a global hotkey act on this keydown? Not while typing, on a modified key (Ctrl+1 is the browser's), with a focused
+  // button or link (Space must activate it; #btn-run is the exception, Space runs the batch), or behind an open modal (#197).
+  const HOTKEY_MODAL = '.modal:not(.hidden), .overlay:not(.hidden):not(#station)';
+  function hotkeyOk(e, doc) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    const t = e.target;
+    if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return false;
+    if (t && t.closest && !t.closest('#btn-run') && t.closest('button, a, [role="button"]')) return false;
+    if (doc && doc.querySelector && doc.querySelector(HOTKEY_MODAL)) return false;
+    return true;
+  }
+
   G.CS = G.CS || {};
+  Object.assign(G.CS, { hotkeyOk: hotkeyOk });
   Object.assign(G.CS, { PRICE_SCALE: PRICE_SCALE, STARTER_MACHINES: STARTER_MACHINES, START_BANK: START_BANK, LEVEL_MAX: LEVEL_MAX, LEVEL_FX: LEVEL_FX, levelCost: levelCost, PLANT_UPGRADES: PLANT_UPGRADES, RANKS: RANKS, MECH: MECH, MECH_LABEL: MECH_LABEL, MATERIALS: MATERIALS, MAT_ORDER: MAT_ORDER, MACHINES: MACHINES, MACHINE_GROUPS: MACHINE_GROUPS, FEEDS: FEEDS, LINES: LINES, SOURCES: SOURCES });
   Object.assign(G.CS, { OFFICE_UPGRADES: OFFICE_UPGRADES, FACILITY_UPGRADES: FACILITY_UPGRADES });
 })(typeof window !== 'undefined' ? window : globalThis);

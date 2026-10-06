@@ -973,7 +973,7 @@
     $('#scorecard').addEventListener('click', hideCard);
     $('#sources').innerHTML = SOURCES.map((s) => '<li><a href="' + esc(s[1]) + '" target="_blank" rel="noopener">' + esc(s[0]) + '</a></li>').join('');
     window.addEventListener('keydown', (e) => {
-      if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if (!CS.hotkeyOk(e, document)) return;   // typing, a focused button, a modifier key or an open modal keeps the key (#197)
       if (document.body.classList.contains('at-title') || e.defaultPrevented) return;   // the title screen is not the game; a station already took the key
       if (e.code === 'Space') { e.preventDefault(); $('#btn-run').click(); }   // through the button, so the RUN choice (#141) applies
       else if (e.key === '1') setSpeed(1); else if (e.key === '2') setSpeed(10); else if (e.key === '3') setSpeed(60);

@@ -657,3 +657,15 @@ body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-t
 .lastcard .lb-n { font-family: var(--mono); font-size: 22px; }
 .lastcard .lb-n.ok { color: var(--green); } .lastcard .lb-n.bad { color: var(--red); }
 #app { grid-template-columns: 270px minmax(420px, 1fr) 340px; }
+/* #137: drawers slide in at the side, under the header and toolbar: RUN, the bank and the batch stay in view */
+#drawer.overlay { top: 94px; left: auto; right: 0; width: min(640px, 100%); padding: 0; background: transparent; align-items: stretch; justify-content: flex-end; z-index: 38; }
+#drawer .sheet { width: 100%; max-height: none; height: 100%; border-radius: 0; border-width: 0 0 0 1px; box-shadow: -18px 0 40px rgba(0,0,0,.55); animation: drawer-in .18s ease-out; }
+@keyframes drawer-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* #136: settings */
+.set-b { display: flex; flex-direction: column; gap: 8px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel-2); }
+.set-row > span { display: flex; flex-direction: column; gap: 2px; }
+.set-row b { font-weight: 500; }
+.set-row button { min-width: 110px; }
+#settings { z-index: 210; }
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { animation: none !important; transition: none !important; }

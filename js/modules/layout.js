@@ -130,7 +130,7 @@
     ['auction', 'Auction', ['auction-panel']],
     ['plant', 'Plant', ['bank-panel', 'slots-panel', 'refinery-panel', 'line-panel', 'facility-panel', 'blueprint-panel', 'playbook-panel']],
     ['sell', 'Sell', ['inventory-panel', 'missions-panel', 'market-panel']],
-    ['records', 'Records', ['rivals-panel', 'milestones-panel', 'plant-panel', 'log-panel', 'saveio-panel']]
+    ['records', 'Records', ['rivals-panel', 'milestones-panel', 'plant-panel', 'log-panel']]
   ];
   const DRAWER_ALIAS = { flowsheet: 'plant', bank: 'plant', sales: 'sell', market: 'sell', jobs: 'sell', report: 'records', log: 'records', rivals: 'records' };   // older callers
   /* #140 #142: what each game shows. Rivals is the match: no jobs, blueprints, playbooks, facility or milestones. In Progress the
@@ -215,7 +215,13 @@
     // #144: the bank in the header opens the records (milestones, the plant report and the event log of every sale and cost)
     const bank = $('#money') && $('#money').closest('.tele'); if (bank) { bank.classList.add('clicky'); bank.title = 'Where the money went: RECORDS'; bank.addEventListener('click', () => { showDrawer('records'); const lp = document.getElementById('log-panel'); if (lp) lp.scrollIntoView({ block: 'start' }); }); }
     DRAWERS.forEach(([, , ids]) => ids.forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); }));
+    const sv = document.getElementById('saveio-panel'); if (sv) stash.appendChild(sv);   // shown in SETTINGS (#136)
     drawer.addEventListener('click', (e) => { if (e.target === drawer) closeDrawer(); });
+    // #137: the drawer sits at the side under the toolbar; a click anywhere else on the screen (not the toolbar) closes it
+    document.addEventListener('mousedown', (e) => {
+      if (!openDrawer || drawer.contains(e.target) || e.target.closest('#toolbar, #top, .overlay:not(#drawer), #scorecard, .guide, .title-screen')) return;
+      closeDrawer();
+    });
     station.addEventListener('click', (e) => { if (e.target === station) closeStation(); });
     $('#drawer-close').addEventListener('click', closeDrawer);
     $('#station-close').addEventListener('click', closeStation);

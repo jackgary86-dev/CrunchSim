@@ -46,10 +46,45 @@
           '<button type="button" class="primary" data-go="progress">' + (P.has ? 'CONTINUE' : 'START') + '</button></div>' +
         '<div class="tt-card tt-rivals"><b>RIVALS</b><p>A match of auction rounds against three yards. Three bins a round, four bidders. The highest worth after the last round wins.</p><div class="tt-save">' + esc(rLine) + '</div>' +
           (R.has && R.round && !R.over ? '<button type="button" class="primary" data-go="rivals">CONTINUE MATCH</button><button type="button" data-go="rivals-new">NEW MATCH</button>' : '<button type="button" class="primary" data-go="rivals-new">' + (R.has && R.over ? 'NEW MATCH' : 'START A MATCH') + '</button>') + '</div>' +
-        '</div><div class="small tt-foot">Each game keeps its own save in this browser. MENU in the toolbar comes back here.</div></div>';
+        '</div><div class="small tt-foot">Each game keeps its own save in this browser. MENU in the toolbar comes back here. <a href="#" id="tt-settings">Settings</a></div></div>';
       title.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+      const ts = title.querySelector('#tt-settings'); if (ts) ts.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
       title.classList.remove('hidden'); document.body.classList.add('at-title');
       title.dataset.cur = cur;
+    }
+    /* ---- settings (#136): sound, motion, the guide, the save, restarting a match: one screen ---- */
+    let sets = null;
+    const RM_KEY = 'crunchsim.reduceMotion';
+    const reduceMotion = () => { try { return localStorage.getItem(RM_KEY) === '1'; } catch (e) { return false; } };
+    function applyMotion() { document.body.classList.toggle('reduce-motion', reduceMotion()); }
+    function showSettings() {
+      if (!sets) {
+        sets = document.createElement('div'); sets.id = 'settings'; sets.className = 'overlay hidden';
+        sets.innerHTML = '<div class="sheet"><div class="sheet-h"><b>SETTINGS</b><button type="button" class="danger" id="settings-close">CLOSE</button></div><div class="sheet-b set-b"></div></div>';
+        document.body.appendChild(sets);
+        sets.addEventListener('click', (e) => { if (e.target === sets) closeSettings(); });
+        sets.querySelector('#settings-close').addEventListener('click', closeSettings);
+      }
+      const b = sets.querySelector('.set-b'), S = app.S;
+      const muted = CS.Audio && CS.Audio.isMuted && CS.Audio.isMuted();
+      b.innerHTML = '<div class="set-row"><span><b>Sound</b><span class="small">Machine sounds, sales, the gavel. Key: M</span></span><button type="button" id="set-sound">' + (muted ? 'OFF' : 'ON') + '</button></div>' +
+        '<div class="set-row"><span><b>Reduce motion</b><span class="small">No flashes, bounces or sliding panels</span></span><button type="button" id="set-motion">' + (reduceMotion() ? 'ON' : 'OFF') + '</button></div>' +
+        (S.mode === 'progress' ? '<div class="set-row"><span><b>Guided first lot</b><span class="small">A fresh $1k lot and the steps on the real screen</span></span><button type="button" id="set-guide">PLAY IT AGAIN</button></div>' : '') +
+        (S.mode === 'rivals' ? '<div class="set-row"><span><b>Restart the match</b><span class="small">Wipes this Rivals match. Your Progress yard is never wiped.</span></span><button type="button" class="danger" id="set-restart">RESTART RIVALS</button></div>' : '') +
+        '<div class="set-row"><span><b>Game</b><span class="small">Back to the title screen</span></span><button type="button" id="set-menu">MENU</button></div>' +
+        '<div id="set-save"></div>';
+      b.querySelector('#set-sound').addEventListener('click', () => { const m = document.getElementById('btn-mute'); if (m) m.click(); showSettings(); });
+      b.querySelector('#set-motion').addEventListener('click', () => { try { localStorage.setItem(RM_KEY, reduceMotion() ? '0' : '1'); } catch (e) { /* ignore */ } applyMotion(); showSettings(); });
+      const g = b.querySelector('#set-guide'); if (g) g.addEventListener('click', () => { closeSettings(); if (CS.Guide && CS.Guide.live) CS.Guide.live.begin(); });
+      const r = b.querySelector('#set-restart'); if (r) { let armed = false; r.addEventListener('click', () => { if (!armed) { armed = true; r.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; return; } closeSettings(); const ng = document.getElementById('btn-newgame'); if (ng) { ng.click(); ng.click(); } }); }
+      b.querySelector('#set-menu').addEventListener('click', () => { closeSettings(); showTitle(); });
+      const sv = document.getElementById('saveio-panel'); if (sv) b.querySelector('#set-save').appendChild(sv);
+      sets.classList.remove('hidden');
+    }
+    function closeSettings() {
+      if (!sets) return;
+      const sv = document.getElementById('saveio-panel'), stash = document.getElementById('stash'); if (sv && stash) stash.appendChild(sv);
+      sets.classList.add('hidden');
     }
     function hideTitle() { if (title) title.classList.add('hidden'); document.body.classList.remove('at-title'); }
     function go(what) {
@@ -97,13 +132,14 @@
         mb.title = 'Back to the title screen: pick Progress or Rivals (the game is saved)';
         mb.addEventListener('click', showTitle); sw.insertBefore(mb, sw.firstChild);
       }
-      render(); showTitle();
+      const gear = document.getElementById('btn-settings'); if (gear) gear.addEventListener('click', showSettings);
+      applyMotion(); render(); showTitle();
     });
     app.on('render', render);
     let acc = 0; app.on('tick', (p) => { acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; render(); } });
     app.on('modechange', render);
     app.on('newgame', () => setTimeout(render, 0));
-    CS.Modes.live = { showTitle, hideTitle, go };
+    CS.Modes.live = { showTitle, hideTitle, go, showSettings, closeSettings };
   }
   if (CS.app) start();
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

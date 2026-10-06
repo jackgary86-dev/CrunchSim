@@ -45,13 +45,14 @@
   function repApply(rep, delta) { return clamp(Math.round(((+rep || 0) + delta) * 10) / 10, REP.min, REP.max); }
 
   /* ---------------- jobs ---------------- */
+  const PURE_MIN = CS.Sim && CS.Sim.PURE_MIN || 0.9;   // the purity at which a bin is sellable (js/sim.js binStats)
   const JOB = {
     mats: ['copper', 'brass', 'potmetal', 'aluminum'],   // the non-ferrous metals: the scarce, high-value fractions of shredder output
     minFrac: 0.01,       // a feed counts as a source of a metal when it carries at least 1% of it
     recovery: 0.75,      // a sorting line recovers 70-80% of a target metal into a clean bin (eddy current and sink-float plant data)
     batches: [[1, 2], [3, 5], [6, 12]],   // job size per tier in batches of the richest available feed
     // purity a buyer requires, by ISRI-style grade: No. 2 copper (Birch/Cliff) 94-96% is out of reach of a sorted shredder
-    // stream, so copper and brass jobs ask 85-92% (sorted "meatball"-free fractions), zinc die-cast 90-96%, zorba-grade
+    // stream, so copper and brass jobs ask 85-92% (sorted "meatball"-free fractions; genJob floors it at PURE_MIN, a lower bin is MISC), zinc die-cast 90-96%, zorba-grade
     // aluminum 95-98% (a sink-float float fraction)
     purity: { copper: [0.85, 0.92], brass: [0.85, 0.90], potmetal: [0.90, 0.96], aluminum: [0.95, 0.98] },
     mult: [1.25, 1.6],   // job price over spot: smelters pay 25-60% over the index for guaranteed, sorted tonnage
@@ -81,7 +82,7 @@
     const br = JOB.batches[tier], batches = Math.round(uni(rng, br[0], br[1]));
     const tons = Math.max(JOB.minTons, Math.round(c.y * batches * 10) / 10);
     const pr = JOB.purity[c.m] || [0.9, 0.95];
-    const purity = Math.round(uni(rng, pr[0], pr[1]) * 100) / 100;
+    const purity = Math.round(Math.max(PURE_MIN, uni(rng, pr[0], pr[1])) * 100) / 100;   // a bin under PURE_MIN is MISC and never ships (#216), so no job asks for less
     const mult = Math.round(uni(rng, JOB.mult[0], JOB.mult[1]) * 100) / 100;
     const clockH = opts.clockH || 0;
     return { id: opts.id || 0, mat: c.m, tier: tier, batches: batches, tons: tons, purity: purity, mult: mult, windowH: windowFor(batches),

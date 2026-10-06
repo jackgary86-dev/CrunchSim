@@ -47,6 +47,7 @@ check(J0.every((j) => M.JOB.mats.includes(j.mat)), 'jobs ask for the non-ferrous
 check(J0.every((j) => j.tier === 0), 'a new yard (rep 0) only sees small jobs');
 check(J2.some((j) => j.tier === 2) && J2.some((j) => j.tier === 1) && J2.some((j) => j.tier === 0), 'at rep 100 all three tiers appear');
 check(J0.every((j) => j.purity >= M.JOB.purity[j.mat][0] - 1e-9 && j.purity <= M.JOB.purity[j.mat][1] + 1e-9), 'purity requirement within the grade range of its metal');
+check(jobsWith(5, 100, 400).every((j) => j.purity >= Sim.PURE_MIN - 1e-9), 'no job asks for less than the sellable purity (a lower bin is MISC and never ships)');
 check(J0.every((j) => j.mult >= M.JOB.mult[0] && j.mult <= M.JOB.mult[1]), 'job price is ' + Math.round((M.JOB.mult[0] - 1) * 100) + '-' + Math.round((M.JOB.mult[1] - 1) * 100) + '% over spot');
 check(J0.every((j) => j.offerExpiresH > 100 && j.offerExpiresH <= 100 + M.JOB.offerH[1]), 'offers close 12-48 h after posting');
 const meanT = (list, tier, mat) => { const s = list.filter((j) => j.tier === tier && j.mat === mat); return s.reduce((a, j) => a + j.tons, 0) / Math.max(1, s.length); };

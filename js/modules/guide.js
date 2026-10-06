@@ -13,7 +13,7 @@
   'use strict';
   const CS = G.CS; if (!CS) return;
   const STEPS = [
-    { id: 'buy', title: 'BUY YOUR FIRST LOT', text: 'Material only comes from the scrap auction. Open the Auction and buy the pallets in the $1k tier: wood with nails in it, a lot your hammermill and magnet can handle.', target: '#tool-auction', wait: (s) => s.loaded },
+    { id: 'buy', title: 'BUY YOUR FIRST LOT', text: 'Material only comes from the scrap auction. Open the Auction and buy the pallets in the $1k tier: wood with nails in it, a lot your hammermill and magnet can handle.', target: ['#auction-panel .crow[data-lot] .cbtns button.buy', '#tool-auction'], wait: (s) => s.loaded },   // #104: the lot's BUY once the drawer is open
     { id: 'bin', title: 'THE BIN', text: 'The hammermill breaks the pallets and everything falls into THE BIN: wood, nails and a little plastic, all mixed. Mixed material sells for nothing. Sorting is how you make money.', target: '.fcol.bincol', next: true },
     { id: 'run', title: 'RUN A BATCH', text: 'Press RUN BATCH. The magnet pulls the nails out of the BIN while the batch runs, and the wood goes on past it.', target: '#btn-run', wait: (s) => s.batches >= 1 },
     { id: 'buckets', title: 'PURE SELLS, MIXED WAITS', text: 'With the nails out, the wood is 98% pure, so it sells. The nails came off with splinters stuck to them: under 90% steel, so they wait in the MISC bucket until a sorter can clean them.', target: '.fcol.buckets', next: true },
@@ -67,7 +67,7 @@
     function place(st) {
       if (!layer) return;
       st = st || nextStep(g.done, snap()); if (!st) return;
-      const t = document.querySelector(st.target), ring = layer.querySelector('.g-ring'), box = layer.querySelector('.g-box');
+      const t = [].concat(st.target).map((q) => document.querySelector(q)).find((x) => x && x.getClientRects().length), ring = layer.querySelector('.g-ring'), box = layer.querySelector('.g-box');
       if (!t || !t.getClientRects().length) { ring.style.display = 'none'; box.style.left = '50%'; box.style.top = '120px'; box.style.transform = 'translateX(-50%)'; return; }
       const r = t.getBoundingClientRect(); ring.style.display = 'block';
       Object.assign(ring.style, { left: (r.left - 6) + 'px', top: (r.top - 6) + 'px', width: (r.width + 12) + 'px', height: (r.height + 12) + 'px' });
@@ -82,7 +82,7 @@
     window.addEventListener('resize', () => { if (g.on) place(); });
     app.on('save', () => ({ guide: { on: g.on, done: g.done, finished: g.finished } }));
     app.on('load', (ext) => { const d = ext && ext.guide; g = { on: !!(d && d.on), done: (d && d.done) || {}, finished: !!(d && d.finished) }; if (!g.on && layer) { layer.remove(); layer = null; } });
-    app.on('newgame', () => { if (layer) { layer.remove(); layer = null; } g = { on: false, done: {}, finished: false }; setTimeout(() => { if (app.S.mode === 'progress' && app.S.batches === 0) begin(); }, 0); });
+    app.on('newgame', () => { if (layer) { layer.remove(); layer = null; } g = { on: false, done: {}, finished: false }; setTimeout(() => { if (app.S.mode === 'progress' && app.S.batches === 0 && !g.finished && !g.on) begin(); }, 0); });   // #99: a skipped or finished guide stays put after a mode switch
     app.on('modechange', () => { if (layer) { layer.remove(); layer = null; } });
     app.on('boot', () => {
       // replay from the help

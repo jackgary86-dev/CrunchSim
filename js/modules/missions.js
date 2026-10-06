@@ -343,7 +343,7 @@
     });
     API.on('batchComplete', function (p) {
       if (!p || !p.r) return;
-      const dl = applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());
+      const dl = p.r.src === 'stock' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());   // #98: re-running a held bucket does not deliver it a second time
       dl.forEach(function (d) {
         const j = d.job;
         credit(d.pay);

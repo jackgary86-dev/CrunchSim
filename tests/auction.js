@@ -110,13 +110,13 @@ check(Math.abs(b.ask - Math.round(a.ask * 1.25)) <= 1, 'market factor did not sc
     const st = { board: [], nextId: 1, market: {} }, rr = A.mulberry32(seed);
     A.tickTiers(st, rr, 0, { feeds: allFeeds, limit: 15, market: {} });
     if (st.board.length !== 6 || st.board.some((l, k) => l.tier !== k)) tierOk = false;
-    st.board.forEach((l) => { const tot = l.ask * l.tons, t = A.TIERS[l.tier]; if (l.tons > 1 && l.tons < A.TIER_TONS[1] && (tot < 0.8 * t || tot > 1.25 * t)) priceOk = false; });
+    st.board.forEach((l) => { const tot = l.ask * l.tons, t = A.TIERS[l.tier]; const capped = l.tons >= A.TIER_MAX_T[l.tier] - 1e-9; if (l.tons > 1 && !capped && (tot < 0.8 * t || tot > 1.25 * t)) priceOk = false; if (tot > 1.25 * t || l.tons > A.TIER_MAX_T[l.tier] + 1e-9) priceOk = false; });
     const top = st.board[5]; if (A.worthOf(FEEDS[top.base].comp) > A.worthOf(FEEDS.elv.comp)) richTop++;
     st.board.splice(2, 1); A.tickTiers(st, rr, 0, { feeds: allFeeds, limit: 15, market: {} }); if (st.board.length !== 6) tierOk = false;
     rounds++;
   }
   check(tierOk, 'the board always shows six lots, one per tier, and a sold tier refills at once');
-  check(priceOk, 'a tier lot costs about the tier at its asking price (' + A.TIERS.map((t) => '$' + t / 1000 + 'k').join(', ') + ')');
+  check(priceOk, 'a tier lot costs about the tier at its asking price, or less when it hits the tier tonnage cap (' + A.TIERS.map((t, k) => '$' + t / 1000 + 'k up to ' + A.TIER_MAX_T[k] + ' t').join(', ') + ')');
   check(richTop > rounds / 2, 'the $100k tier mostly draws scrap richer than car hulks (' + richTop + ' of ' + rounds + ')');
 }
 

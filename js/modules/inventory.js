@@ -519,6 +519,12 @@
     /* the plant screen's bucket list sells one material at a time */
     Inv.sellMat = function (mat) { sellMat(mat); };
     Inv.misc = function () { return misc; };
+    /* #96: tonnes a stopped batch took out of a bucket and did not run go back where they came from */
+    Inv.putBack = function (src, mat, out) {
+      if (!out || !(out.t > 0)) return;
+      if (src === 'misc') addMisc(misc, mat, out.t, out.p80); else addLot(stock, mat, out.t, out.purity, out.grade, out.sf, out.p80, out.cost);
+      renderPanel(); API.save();
+    };
     Inv.withdrawMisc = function (mat, tonnes) { const out = withdrawMisc(misc, mat, tonnes); if (out.t > 0) { renderPanel(); API.save(); } return out; };
     Inv.quote = function (mat) { return stock[mat] && stock[mat].t > 0 ? lotValue(stock, mat, mv(), marketMul()) : 0; };   // what SELL would pay now (#44)
 

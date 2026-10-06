@@ -134,11 +134,11 @@
     <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
     <ol>
       <li><b>Two modes.</b> PROGRESS: build your plant on your own from the six-tier auction board. RIVALS: auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC bin. Each mode keeps its own save; switch from the toolbar.</li>
-      <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board always shows six lots, one per tier from $1k to $100k: cheap tiers are skips of mixed junk, the dear ones carry zorba, circuit boards and gold-plated pins. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Feed panel shows what is loaded; only the batch size is yours to set.</li>
+      <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board always shows six lots, one per tier from $1k to $100k, and each tier deals scrap the next machine can sort: pallets, office clear-outs and old windows (a magnet and a water tank) at $1k, tires and white goods, car hulks, zorba, and circuit boards and gold-plated pins at $100k. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Feed panel shows what is loaded; only the batch size is yours to set.</li>
       <li><b>The plant.</b> The main screen shows your stations left to right in the order you placed them, three at a time (the arrows page through longer lines). Each station shows its machine at work, the bins it fills and what is left over moving on to the next station. Click a station to sit down at it: the machine cam, its settings, upgrades and telemetry, with CLOSE to get back.</li>
       <li><b>Flowsheet.</b> Open Flowsheet in the toolbar to add machines. Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
-      <li><b>Buckets.</b> The last section, END RESULT IN BUCKETS, holds what your batches made. A sorted material (60% pure or better) has its own bucket: SELL it, or RE-RUN it as the next batch's feed at no feed cost. Everything not yet separated sits in MISC: RE-RUN it through different machines. A re-run keeps its shred size and enters past the shredders; pick another entry station above the plant if you like. The Market drawer sells at your own price.</li>
-      <li><b>Run.</b> The batch is processed at the rate the slowest machine allows. The mission clock, power, nitrogen, wear and product value are tracked live. What the products sell for, minus feed, power and consumables, lands in your bank when the batch completes.</li>
+      <li><b>Buckets.</b> The last section, END RESULT IN BUCKETS, holds what your batches made. A sorted material (90% pure or better) has its own bucket: SELL it, or RE-RUN it as the next batch's feed at no feed cost. Everything not yet separated sits in MISC: RE-RUN it through different machines. A re-run keeps its shred size and enters past the shredders; pick another entry station above the plant if you like. The Market drawer sells at your own price.</li>
+      <li><b>Run.</b> The batch is processed at the rate the slowest machine allows. The plant clock, power, nitrogen, wear and product value are tracked live. Power and consumables are paid as the batch runs; the products land in the buckets, and money comes in when you SELL them.</li>
       <li><b>Upgrade.</b> You start with a hammermill shredder, a magnetic drum and a few thousand dollars. Only sorted material sells: a bucket must be 90% one material, and purer buckets pay more. NEXT PURCHASE in Bank &amp; upgrades ranks the sorters, or pairs of sorters, that would add the most margin. Buy other machines from the Flowsheet drawer, raise a machine type's level for more capacity and efficiency, buy plant upgrades for bigger batches and cheaper power. Net worth is bank plus everything you own, and it sets your rank.</li>
     </ol>
     <h3>The science in the numbers</h3>
@@ -155,18 +155,18 @@
   </div>
 </div>
 
-<script src="js/data.js?v=ddcf9091c7"></script>
+<script src="js/data.js?v=ee03255b42"></script>
 <script src="js/sim.js?v=1140649136"></script>
 <script src="js/audio.js?v=08574345c5"></script>
 <script src="js/cam.js?v=c6d42e85a1"></script>
 <script src="js/scenes-a.js?v=f822f9574c"></script>
 <script src="js/scenes-b.js?v=b99bb3bb00"></script>
 <script src="js/score.js?v=3f348572e6"></script>
-<script src="js/app.js?v=2213ee2cce"></script>
+<script src="js/app.js?v=51f12a40ce"></script>
 <script src="js/modules/market.js?v=9f24c2cc7f"></script>
-<script src="js/modules/inventory.js?v=59da027502"></script>
-<script src="js/modules/auction.js?v=94bb5dbf94"></script>
-<script src="js/modules/missions.js?v=c9139de216"></script>
+<script src="js/modules/inventory.js?v=e82652fe4d"></script>
+<script src="js/modules/auction.js?v=232942a3e1"></script>
+<script src="js/modules/missions.js?v=2ee80cae81"></script>
 <script src="js/modules/floor.js?v=35f9e2577d"></script>
 <script src="js/modules/onboarding.js?v=26273a6775"></script>
 <script src="js/modules/blueprints.js?v=a12560407d"></script>
@@ -181,7 +181,7 @@
 <script src="js/modules/autorun.js?v=a01c31203c"></script>
 <script src="js/modules/milestones.js?v=befbf5c799"></script>
 <script src="js/modules/saveio.js?v=67088c7958"></script>
-<script src="js/modules/guide.js?v=4cd96ff9a2"></script>
-<script src="js/modules/layout.js?v=4dc39bd950"></script>
+<script src="js/modules/guide.js?v=2d1a39db2f"></script>
+<script src="js/modules/layout.js?v=a227098de7"></script>
 </body>
 </html>

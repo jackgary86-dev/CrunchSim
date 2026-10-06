@@ -122,7 +122,6 @@
     lastRankIdx = r.idx;
   }
 
-  function starsText(n) { return '\u2605\u2605\u2605'.slice(0, n) + '\u2606\u2606\u2606'.slice(0, 3 - n); }
   /* Material comes only from auction lots or a re-run bucket (#57): the mix sliders and the preset list are a read-out of what
    * is loaded. Only the batch size stays in the operator's hands. */
   const AUCTION_ONLY = true;
@@ -647,6 +646,7 @@
     if (!(effRate() > 0)) { Audio.ui('deny'); log('The line cannot run: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no feed is accepted') + '.', 'bad'); return; }
     let tot = 0; for (const m in S.comp) tot += S.comp[m] > 0 ? S.comp[m] : 0;
     if (tot <= 0) { Audio.ui('deny'); log('The feed is empty.', 'bad'); return; }
+    { const why = API.veto('startRun', {}); if (why) { Audio.ui('deny'); log(why, 'warn'); return; } }   // modules may refuse a batch (Rivals: MISC only in a round with no bin)
     if (AUCTION_ONLY && !S.feedPrepaid) { Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
     const feedC = feedCostPerT() * S.tons;
     if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) return;
@@ -823,7 +823,7 @@
     const piles = d.ext && d.ext.intake && d.ext.intake.piles;
     if (piles && typeof piles === 'object') for (const k in piles) { const p = piles[k]; if (p && +p.t > 0 && +p.paid > 0) v += +p.paid; }
     if (d.ext) delete d.ext.intake;
-    if (v > 0) setTimeout(() => log('Supplier contracts and stockpiles are retired: ' + fmtMoney(v) + ' paid for them is back in the bank.', 'ok'), 0);
+    if (v > 0) setTimeout(() => { save(); log('Supplier contracts and stockpiles are retired: ' + fmtMoney(v) + ' paid for them is back in the bank.', 'ok'); }, 0);   // #100: saved at once, so the refund is never paid twice
     return v;
   }
   let resetArmed = false;
@@ -894,7 +894,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

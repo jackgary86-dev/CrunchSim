@@ -2,8 +2,8 @@
  *
  * Main screen: the Feed panel on the left; on the right the plant as four sections divided by vertical lines: three
  * machines in the order they were placed (arrows page through longer lines) and, always last, the end result in buckets.
- * Every bucket can be sold, or re-run as the next batch's feed. Material that is not yet separated (held at under 60%
- * purity) collects in a MISC bucket, to be re-run through different machines.
+ * Every bucket can be sold, or re-run as the next batch's feed. Material that is not yet separated (under 90% one
+ * material) collects in a MISC bucket, to be re-run through different machines.
  * Everything else lives behind toolbar buttons that open it in a drawer with a CLOSE button. Clicking a machine sits you
  * down at its station: the machine cam, its settings and its telemetry, also with a CLOSE button.
  * Panels are moved, never rebuilt, so every module keeps rendering into its own section while it is out of view.
@@ -530,15 +530,22 @@
     if (!loaded) return;
     const S = app.S, Inv = CS.Inventory, l = loaded; loaded = null;
     if (!sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
-    const tons = p && p.run && p.run.total ? p.run.total : S.tons;
-    for (const m in l.comp) { if (l.src === 'misc' && Inv.withdrawMisc) Inv.withdrawMisc(m, tons * l.comp[m]); else Inv.withdraw(m, tons * l.comp[m]); }
+    if (p && p.run) p.run.src = l.src;   // #98: jobs do not count a batch of material already sold to stock
+    const tons = p && p.run && p.run.total ? p.run.total : S.tons, took = {};
+    for (const m in l.comp) took[m] = l.src === 'misc' && Inv.withdrawMisc ? Inv.withdrawMisc(m, tons * l.comp[m]) : Inv.withdraw(m, tons * l.comp[m]);
     if (l.src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live) CS.Round.live.useMisc();
-    rerunActive = l.prev || true;   // the sizes and entry station hold for this batch, then the feed is ordinary again
+    rerunActive = { prev: l.prev || true, took, tons, src: l.src };   // the sizes and entry station hold for this batch, then the feed is ordinary again
   }
   let rerunActive = false;
-  function onBatchComplete() {
+  function onBatchComplete(p) {
     if (rerunActive) {
-      const prev = rerunActive; rerunActive = false; app.S.feedOpts = null;
+      const ra = rerunActive; rerunActive = false; app.S.feedOpts = null;
+      const done = p && p.r ? p.r.done : 0;
+      if (ra.took && ra.tons > 0 && done < ra.tons - 1e-6 && CS.Inventory && CS.Inventory.putBack) {   // #96: a stopped batch gives the unrun tonnes back
+        const f = 1 - done / ra.tons;
+        for (const m in ra.took) { const o = ra.took[m]; if (o && o.t > 0) CS.Inventory.putBack(ra.src, m, Object.assign({}, o, { t: o.t * f, cost: (o.cost || 0) * f })); }
+        app.log(app.fmtNum(ra.tons - done, 1) + ' t did not run: back in the ' + (ra.src === 'misc' ? 'MISC bucket' : 'bucket') + '.');
+      }
       // nothing is bought by the tonne any more (#57): the auction module reloads the lot waiting in the yard
       app.markDirty(true);
     }
@@ -748,6 +755,12 @@
       document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#btn-run')) guardLoaded(); }, true);
     });
     app.on('batchStart', onBatchStart);
+    // #109: a MISC bucket loaded in a no-bin round cannot run once a later round has handed you a bin
+    app.on('veto:startRun', () => {
+      const S = app.S;
+      if (loaded && loaded.src === 'misc' && S.feedOwner === 'rerun' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) return 'Your MISC bin runs only in a round where you win no bin. It stays in the bucket until then.';
+      return '';
+    });
     app.on('render', () => { guardLoaded(); pruneMinis(); renderFlow(false); if (stationOpen && !app.node(app.S.sel)) closeStation(); });
     app.on('batchComplete', onBatchComplete);
     // a loaded bucket survives a reload: it is restored as the prepaid feed while the feed panel still shows its blend
@@ -761,7 +774,7 @@
     };
     app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
-    app.on('modechange', () => { offset = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
+    app.on('modechange', () => { offset = 0; closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
     app.on('newgame', () => { offset = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
   }

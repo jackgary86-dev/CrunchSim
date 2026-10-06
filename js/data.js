@@ -437,8 +437,8 @@
   /* ---- end game (ticket #15) ----
    * The Omniprocessor is the one fantasy machine: it liberates every material to the target size and sorts every particle into a
    * bin of its own (see procComminution in js/sim.js). Its size, power, capacity and price are anchored on a real mega-shredder plant
-   * with its full downstream separation hall, so the economics around it stay grounded. It unlocks at Mega-plant rank or when every
-   * the plant reaches Mega-plant rank (js/modules/endgame.js).
+   * with its full downstream separation hall, so the economics around it stay grounded. It unlocks when the plant reaches Mega-plant rank
+   * (js/modules/endgame.js).
    */
   const OMNI_OUTS = {}; MAT_ORDER.forEach(function (id) { OMNI_OUTS[id] = MATERIALS[id].name; }); OMNI_OUTS.rejects = 'Oversize rejects';
   Object.assign(MACHINES, {

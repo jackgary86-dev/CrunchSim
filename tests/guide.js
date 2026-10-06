@@ -16,5 +16,10 @@ done.buckets = true;
 check(G.nextStep(done, { loaded: true, batches: 1, sold: 0 }).id === 'sell' && G.nextStep(done, { loaded: true, batches: 1, sold: 1 }).id === 'pair', 'selling moves on to the sorters you need for MISC');
 done.pair = true; done.lot = true;
 check(G.nextStep(done, { loaded: true, batches: 1, sold: 1 }) === null, 'and the guide ends');
+// #256: keyboard and screen-reader access
+check(G.escapeSkips('Escape', false, false, true) && G.escapeSkips('Escape', false, true, false), 'Escape skips the guide from the page or from inside it');
+check(!G.escapeSkips('Escape', true, false, true) && !G.escapeSkips('Escape', false, false, false) && !G.escapeSkips('Enter', false, true, true), 'but not when something else handled it, focus is in another control, or the key is not Escape');
+const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'modules', 'guide.js'), 'utf8');
+check(/setAttribute\('role', 'region'\)/.test(src) && /aria-live="polite"/.test(src) && /tabindex="-1"/.test(src), 'the layer is a labelled region whose box is a polite live region and can take focus');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' guide checks pass');
 process.exit(fails ? 1 : 0);

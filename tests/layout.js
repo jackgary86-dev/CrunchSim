@@ -128,5 +128,17 @@ check(Math.abs(up / 10 - f40) < 0.01 && Math.abs(step(logS, up, -1) - 10) < 0.06
   check(allOk, 'every machine setting steps from its default and stays in range');
 }
 
+/* ---- #80: settings explain themselves ---- */
+{
+  const M = globalThis.CS.MACHINES; let missing = [];
+  for (const id in M) (M[id].settings || []).forEach((st) => { if (!L.settingHelp(id, st)) missing.push(id + ':' + st.id); });
+  check(!missing.length, 'every machine setting says what it does to the material' + (missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''));
+  const line = Sim.buildLine(LINES.car), before = L.binSnapshot(Sim.evalLine(line, FEEDS.elv.comp));
+  const sf = line.find((nd) => nd.m === 'sinkfloat'); sf.settings.sg = 1.2;
+  const ch = L.biggestChange(before, L.binSnapshot(Sim.evalLine(line, FEEDS.elv.comp)));
+  check(ch && ch.main && Math.abs(ch.to - ch.from) >= 0.005, 'a press reports the bin it changed most (' + (ch ? ch.main + ' ' + Math.round(ch.from * 100) + '% to ' + Math.round(ch.to * 100) + '%' : 'none') + ')');
+  check(L.biggestChange(before, before) === null, 'and says nothing when no bin moved');
+}
+
 console.log('\n' + (n - fails) + '/' + n + ' checks passed');
 process.exit(fails ? 1 : 0);

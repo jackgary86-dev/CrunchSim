@@ -573,3 +573,9 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .toast.in { transform: translate(-50%, 0); opacity: 1; }
 .toast b { font-family: var(--mono); letter-spacing: 3px; color: var(--amber); font-weight: 400; font-size: 12px; }
 .toast span { font-size: 16px; }
+.fset-q { font-style: normal; display: inline-block; width: 13px; height: 13px; line-height: 13px; text-align: center; border: 1px solid var(--line-2); border-radius: 50%; font-size: 9px; color: var(--muted); margin-left: 3px; cursor: help; }
+.fset-r[title] { cursor: help; }
+.fset-note { font-family: var(--mono); font-size: 11px; color: var(--amber); padding-top: 3px; border-top: 1px dotted var(--line); }
+.sv-row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+.sv-code { width: 100%; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; color: var(--cyan); font-family: var(--mono); font-size: 11px; padding: 6px; resize: vertical; }
+.sv-msg.bad { color: var(--red); } .sv-msg.warn { color: var(--amber); }

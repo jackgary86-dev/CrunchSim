@@ -78,7 +78,49 @@
     return (st.log && v < 1 ? v.toPrecision(2) : v.toFixed(st.log ? (v < 10 ? 1 : 0) : d)) + (st.unit ? ' ' + st.unit : '');
   }
   function MATERIALS_REF() { return CS.MATERIALS; }
-  CS.Layout = { SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting };
+  /* what each setting does to the material, in plain words (#80); keyed machine:setting, or the setting alone */
+  const SETTING_HELP = {
+    css: 'Lower: a tighter jaw, finer product, more power and slower. Higher: coarser product, more throughput.',
+    'roll:gap': 'Lower: rolls closer together, finer product, more power. Higher: coarser, faster.',
+    'hpgr:gap': 'Lower: a tighter bed, finer product and more micro-cracks, more power. Higher: coarser, faster.',
+    'colloid:gap': 'Lower: a finer rotor-stator gap, smaller droplets and particles, slower. Higher: coarser, faster.',
+    press: 'Higher: more crushing force in the bed, finer product and more liberated grains, more power and wear.',
+    tip: 'Higher: harder impacts, finer product and more breakage of brittle pieces, more power and wear.',
+    grate: 'Lower: a smaller grate, finer shred that frees more metal, but more power and a slower line. Higher: coarser shred, faster and cheaper.',
+    'hammer:rpm': 'Higher: faster hammers hit harder: finer shred, more power and wear. Lower: gentler, coarser shred.',
+    'eddy:rpm': 'Higher: a faster magnet rotor throws aluminum and copper further: more metal pulled out, but more stray pieces too.',
+    width: 'Lower: narrower cutters tear smaller strips. Higher: bigger pieces, more throughput.',
+    screen: 'Lower: a finer screen keeps material in the cutting chamber longer: smaller product, slower. Higher: coarser, faster.',
+    len: 'Lower: shorter chips. Higher: longer chips, more throughput.',
+    'ball:target': 'Lower: grind finer, a much longer and costlier mill run. Higher: a coarser powder, faster.',
+    'cryo:target': 'Lower: grind the frozen pieces finer, more nitrogen and power. Higher: coarser, cheaper.',
+    'sensor:target': 'The material the scanner looks for: those pieces are blown into the extract bin, everything else (plus 2.5% misfires) goes on.',
+    'omni:target': 'The size the all-in-one machine grinds to before it sorts.',
+    bar: 'Higher: more pressure through the nozzle, finer droplets and particles, more power.',
+    field: 'Higher: a stronger magnet pulls more steel and cast iron out, but drags some non-magnetic pieces with it. Lower: cleaner steel, some left behind.',
+    air: 'Higher: faster air lifts heavier pieces into the light fraction: more plastic and foam out, but some light metal goes with it. Lower: only the lightest fluff lifts.',
+    aperture: 'Lower: smaller holes, only fines fall through. Higher: bigger pieces fall through to the undersize bin.',
+    sg: 'The liquid\'s density: anything lighter floats, anything heavier sinks. About 1.0 floats plastic and wood off rubber and metal; 2.0 floats rubber and glass off aluminum; 3.0 floats aluminum off copper, brass and zinc.',
+    tap: 'Higher: hotter melt, so more metals melt and pour, more energy and more dross. Lower: only the low-melting metals pour.',
+    rate: 'Higher: more tonnes an hour through the machine, at more power.'
+  };
+  function settingHelp(m, st) { return SETTING_HELP[m + ':' + st.id] || SETTING_HELP[st.id] || ''; }
+  /* each end bin's main material and purity, to say what a press changed */
+  function binSnapshot(ev) {
+    const o = {}; if (!ev) return o;
+    ev.terminals.forEach((t) => { const b = CS.Sim.binStats(t.stream.m, t.form); if (CS.Sim.binMatters(b)) o[t.key] = { main: b.main || topMats(b, 1)[0], share: b.share, kg: b.total }; });
+    return o;
+  }
+  function biggestChange(a, b) {
+    let best = null;
+    for (const k in b) {
+      const x = a[k], y = b[k]; if (!y) continue;
+      const d = x ? y.share - x.share : y.share;
+      if (!best || Math.abs(d) > Math.abs(best.d)) best = { k, d, from: x ? x.share : 0, to: y.share, main: y.main };
+    }
+    return best && Math.abs(best.d) >= 0.005 ? best : null;
+  }
+  CS.Layout = { SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
@@ -87,7 +129,7 @@
     ['auction', 'Auction', ['auction-panel', 'intake-panel']],
     ['sales', 'Market', ['inventory-panel', 'market-panel']],
     ['jobs', 'Jobs', ['missions-panel']],
-    ['bank', 'Bank & upgrades', ['bank-panel', 'milestones-panel', 'slots-panel', 'refinery-panel', 'facility-panel']],
+    ['bank', 'Bank & upgrades', ['bank-panel', 'milestones-panel', 'slots-panel', 'refinery-panel', 'facility-panel', 'saveio-panel']],
     ['rivals', 'Rivals', ['rivals-panel']],
     ['report', 'Plant report', ['plant-panel']],
     ['log', 'Event log', ['log-panel']]
@@ -303,7 +345,7 @@
   }
 
   /* ---------------- the lot card (#64) and the idle plant (#65) ---------------- */
-  let idleNow = false, runProg = -1, pureSeen = null;
+  let idleNow = false, runProg = -1, pureSeen = null, lastNote = null;
   function isIdle() { const S = app.S; return !S.feedPrepaid && !(app.contract && app.contract()); }
   function compBars(c, n) {
     const e = Object.entries(c || {}).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]);
@@ -411,7 +453,8 @@
     const box = el('div', 'fset');
     M.settings.forEach((st) => {
       const row = el('div', 'fset-r');
-      row.appendChild(el('span', 'fset-l', esc(st.label)));
+      const help = settingHelp(n.m, st); if (help) row.title = st.label + ': ' + help;
+      row.appendChild(el('span', 'fset-l', esc(st.label) + (help ? ' <i class="fset-q">?</i>' : '')));
       const minus = el('button', 'fset-b', '&minus;'), plus = el('button', 'fset-b', '+');
       const val = el('span', 'fset-v', esc(fmtSetting(n.settings[st.id], st)));
       [[minus, -1], [plus, 1]].forEach(([b, dir]) => {
@@ -420,14 +463,19 @@
         if (!st.enum && ((dir < 0 && v <= st.min) || (dir > 0 && v >= st.max))) b.disabled = true;
         b.addEventListener('click', (e) => {
           e.stopPropagation();   // the column itself opens the station
+          const before = binSnapshot(app.S.ev);
           n.settings[st.id] = stepSetting(st, n.settings[st.id], dir);
           app.S.linePreset = 'custom'; const lp = document.getElementById('line-preset'); if (lp) lp.value = 'custom';
+          if (app.recompute) app.recompute();
+          const ch = biggestChange(before, binSnapshot(app.S.ev));   // #80: say which bin the press changed
+          lastNote = { uid: n.uid, at: Date.now(), text: ch ? (MATERIALS[ch.main] ? MATERIALS[ch.main].name.toLowerCase() : 'mixed') + ' bin ' + Math.round(ch.from * 100) + '% \u2192 ' + Math.round(ch.to * 100) + '%' + (ch.from < 0.9 && ch.to >= 0.9 ? ': it sells now' : ch.from >= 0.9 && ch.to < 0.9 ? ': it no longer sells' : '') : 'no bin changed much' };
           app.markDirty(true);
         });
       });
       const ctl = el('span', 'fset-c'); ctl.appendChild(minus); ctl.appendChild(val); ctl.appendChild(plus);
       row.appendChild(ctl); box.appendChild(row);
     });
+    if (lastNote && lastNote.uid === n.uid && Date.now() - lastNote.at < 8000) box.appendChild(el('div', 'fset-note', esc(lastNote.text)));
     box.addEventListener('click', (e) => e.stopPropagation());
     box.addEventListener('keydown', (e) => e.stopPropagation());   // Enter on a button must not open the station
     return box;

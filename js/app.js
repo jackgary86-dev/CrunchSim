@@ -931,6 +931,18 @@
     $('#help').classList.remove('hidden');
   }
 
+  /* load this mode's save into the running game, in place (no page reload): mode switches and save imports (#82) */
+  function restoreSave() {
+    hideCard();
+    if (!load()) { softReset(); $('#help').classList.add('hidden'); return false; }
+    S.feedPrepaid = false; S.feedOpts = null; S.feedOwner = null;
+    Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
+    API.emit('newgame'); API.emit('load', S.ext);   // modules clear their state, then restore this mode's
+    setFeedLock(!!S.contract); applyPlant(); renderFeedSelect(); syncFeedRows();
+    $('#log').innerHTML = '';
+    lastRankIdx = rankOf(netWorth()).idx;
+    return true;
+  }
   /* switch game mode in place: save this mode's game, then load the other mode's save (or start it fresh) */
   function switchMode(mode) {
     if (MODES.indexOf(mode) < 0) return;
@@ -940,16 +952,7 @@
     if (mode === S.mode && !first) return;
     if (!first) save();
     S.mode = mode;
-    hideCard();
-    if (!load()) { softReset(); $('#help').classList.add('hidden'); }
-    else {
-      S.feedPrepaid = false; S.feedOpts = null; S.feedOwner = null;
-      Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
-      API.emit('newgame'); API.emit('load', S.ext);   // modules clear their state, then restore this mode's
-      setFeedLock(!!S.contract); applyPlant(); renderFeedSelect(); syncFeedRows();
-      $('#log').innerHTML = '';
-      lastRankIdx = rankOf(netWorth()).idx;
-    }
+    restoreSave();
     log('Game mode: ' + (mode === 'rivals' ? 'RIVALS. Auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC.' : 'PROGRESS. Build your plant on your own: buy lots from the six-tier auction board and level up.'), 'ok');
     API.emit('modechange', { mode }); renderAll(); save();
   }
@@ -961,7 +964,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

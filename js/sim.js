@@ -605,10 +605,20 @@
     return nodes;
   }
 
+  /* #199: panels that rebuild their DOM on the sim clock must not do it under a pressed pointer (the click would be lost) or while hidden.
+     busy() says to hold the redraw; onIdle runs once the pointer is released (after the click has been delivered). */
+  function panelGate(panel, doc, onIdle) {
+    let down = false;
+    const up = () => { if (!down) return; down = false; setTimeout(onIdle, 0); };
+    panel.addEventListener('pointerdown', () => { down = true; });
+    doc.addEventListener('pointerup', up); doc.addEventListener('pointercancel', up);
+    return { busy: () => down || panel.getClientRects().length === 0 };
+  }
+
   G.CS.Sim = {
     makeNode, buildLine, nextUid,
     NB, LOW, EDGE, MID, makePSD, percentile, sum, newStream, addArr, streamMass, aggregate, aggregateMap, makeFeed,
     profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, binMatters, PRECIOUS, ingotGrade, pureGrade, PURE_MIN, cumCurve, pExtract,
-    prices, levelOf
+    prices, levelOf, panelGate
   };
 })(typeof window !== 'undefined' ? window : globalThis);

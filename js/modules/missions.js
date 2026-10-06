@@ -217,7 +217,7 @@
     const API = CS.app; if (!API || API.missionsStarted) return; API.missionsStarted = true;
     const hasDom = typeof document !== 'undefined' && !!document.body;
     let st = newState(); const rng = mulberry32(0); let seeded = false;
-    let panel = null, els = null, lastKey = -1, armed = null;
+    let panel = null, els = null, lastKey = -1, armed = null, gate = null, stale = false, bankStale = false;
     const S = function () { return API.S; };
     const clockH = function () { return (API.S ? API.S.clock || 0 : 0) / 3600; };
     const log = function (msg, cls) { if (typeof API.log === 'function') API.log(msg, cls); };
@@ -289,9 +289,11 @@
         '.mission-cd{font-family:var(--mono);font-size: 11px;letter-spacing:1px;color:var(--cyan)}.mission-cd.late{color:var(--amber)}.mission-cd.bad{color:var(--red)}.mission-cd.ok{color:var(--green)}';
       panel.appendChild(css);
       els = { ro: ro, jb: jb, tag: panel.querySelector('h2 .tag') };
+      gate = CS.Sim && CS.Sim.panelGate ? CS.Sim.panelGate(panel, document, function () { if (stale) refresh(); }) : null;
     }
     function render() {
       if (!els) return;
+      stale = false;
       const h = clockH(), R = headRate(), bl = bins();
       const tier = tierOf(st.rep);
       els.tag.textContent = st.jobs.active.length + ' JOB' + (st.jobs.active.length === 1 ? '' : 'S') + ' · ' + st.jobs.board.length + ' OPEN';
@@ -339,8 +341,16 @@
       if (!p || !(p.dh > 0)) return;
       const changed = advance(p.dh);
       const key = Math.floor(clockH() * 12);   // every five sim minutes the countdowns move
-      if (changed || key !== lastKey) { lastKey = key; render(); if (changed && typeof API.renderBank === 'function') API.renderBank(); }
+      if (changed || key !== lastKey) { lastKey = key; stale = true; }
+      if (changed) bankStale = true;
+      if (stale) refresh();
     });
+    /* #199: hold the rebuild while the pointer is down in the panel or the panel is hidden; it runs on release or the next tick */
+    function refresh() {
+      if (gate && gate.busy()) return;
+      const bank = bankStale; bankStale = false;
+      render(); if (bank && typeof API.renderBank === 'function') API.renderBank();
+    }
     API.on('batchComplete', function (p) {
       if (!p || !p.r) return;
       const dl = p.r.src === 'stock' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());   // #98: re-running a held bucket does not deliver it a second time

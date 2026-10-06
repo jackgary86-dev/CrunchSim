@@ -141,5 +141,20 @@ check(Math.abs(b.ask - Math.round(a.ask * 1.25)) <= 1, 'market factor did not sc
   check(/2 lots weighed/.test(A.repText(rec)) && /optimistic/.test(A.repText(rec)) && /1 padded/.test(A.repText(rec)) && A.repText(null) === 'new to you', 'and reads in plain words: ' + A.repText(rec));
 }
 
+// 10. #199: the panel redraw gate holds while the pointer is down in the panel or the panel is hidden, and releases afterwards
+console.log('=== redraw gate');
+{
+  const ls = {}, doc = { addEventListener: (t, f) => { ls[t] = f; } }, pl = {};
+  let rects = 1, idle = 0;
+  const panel = { addEventListener: (t, f) => { pl[t] = f; }, getClientRects: () => ({ length: rects }) };
+  const g = CS.Sim.panelGate(panel, doc, () => { idle++; });
+  check(!g.busy(), 'a visible panel with no pointer down is free to redraw');
+  pl.pointerdown(); check(g.busy(), 'busy while the pointer is down in the panel');
+  ls.pointerup(); check(!g.busy(), 'free again once the pointer is up');
+  ls.pointerup(); rects = 0; check(g.busy(), 'busy while the panel is hidden');
+  setTimeout(() => { check(idle === 1, 'onIdle ran once, after the release (ran ' + idle + ')'); finish(); }, 5);
+}
+function finish() {
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nauction checks pass');
 process.exit(fails ? 1 : 0);
+}

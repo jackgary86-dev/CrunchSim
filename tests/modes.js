@@ -16,5 +16,9 @@ check(r.round === 5 && r.length === 8 && !r.over, 'a match in progress: round 5 
 check(M.summary('rivals', JSON.stringify({ line: [], ext: { round: { n: 12, match: { length: 12, over: true } } } })).over === true, 'a finished match');
 check(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd'].join() === [1, 2, 3, 4, 11, 12, 13, 21, 22].map(M.ord).join(), 'place names');
 
+const L = M.liveMatch;   // #195: only a match under way needs the NEW MATCH confirm
+check(L(M.summary('rivals', JSON.stringify({ line: [], ext: { round: { n: 3, match: { length: 8, over: false } } } }))) === true, 'a match under way asks before NEW MATCH wipes it (#195)');
+check(!L(r0) && !L(M.summary('rivals', null)) && !L(M.summary('rivals', JSON.stringify({ line: [], ext: { round: { n: 12, match: { length: 12, over: true } } } }))), 'no confirm for no save, round 0 or a finished match (#195)');
+
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' modes checks pass'));
 process.exit(fails ? 1 : 0);

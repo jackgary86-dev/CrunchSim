@@ -15,5 +15,8 @@ check(!hotkeyOk(key(target('A')), none), 'a focused link keeps the key');
 check(hotkeyOk(key(target('BUTTON', 'btn-run')), none), '#btn-run is the exception: Space still runs the batch');
 check(!hotkeyOk(key(target('BODY'), { ctrlKey: true }), none) && !hotkeyOk(key(target('BODY'), { metaKey: true }), none) && !hotkeyOk(key(target('BODY'), { altKey: true }), none), 'Ctrl, Meta or Alt held leaves the key to the browser');
 check(!hotkeyOk(key(target('BODY')), modal), 'an open modal, drawer, Settings or round overlay swallows the hotkeys');
+// the end-game card is a modal layer too (#236): the real selector must name it, and a closed one must not block
+const real = { querySelector: (sel) => (/#endgame:not(.hidden)/.test(sel) ? {} : null) };
+check(!hotkeyOk(key(target('BODY')), real), 'the open end-game card swallows the hotkeys');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' hotkey checks pass');
 process.exit(fails ? 1 : 0);

@@ -30,7 +30,7 @@
   function start() {
     const app = CS.app; if (!app || app.modesStarted) return; app.modesStarted = true;
     const $ = (s) => document.querySelector(s), esc = (s) => app.esc(s), money = (x) => app.fmtMoney(x);
-    let title = null, bar = null;
+    let title = null, bar = null, lastPlace = 0;
     const read = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
     /* ---- the title screen's yard (#128): a crane drops scrap into a shredder, a belt carries the sorted pieces to their piles ---- */
@@ -93,6 +93,7 @@
       title.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
       const ts = title.querySelector('#tt-settings'); if (ts) ts.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
       title.classList.remove('hidden'); document.body.classList.add('at-title');
+      if (CS.Audio && CS.Audio.duck) CS.Audio.duck('plant', true); if (CS.Music) CS.Music.setTheme('title');   // #121: the title has only its own theme
       startYard();
       title.dataset.cur = cur;
     }
@@ -111,12 +112,16 @@
       }
       const b = sets.querySelector('.set-b'), S = app.S;
       const muted = CS.Audio && CS.Audio.isMuted && CS.Audio.isMuted();
+      const V = CS.Audio && CS.Audio.volumes ? CS.Audio.volumes() : { master: 1, plant: 0.8, fx: 0.9, music: 0 };
+      const slider = (k, label, note) => '<div class="set-row vol"><span><b>' + label + '</b><span class="small">' + note + '</span></span><input type="range" min="0" max="100" step="5" data-vol="' + k + '" value="' + Math.round((V[k] || 0) * 100) + '"><span class="num vol-v">' + Math.round((V[k] || 0) * 100) + '%</span></div>';
       b.innerHTML = '<div class="set-row"><span><b>Sound</b><span class="small">Machine sounds, sales, the gavel. Key: M</span></span><button type="button" id="set-sound">' + (muted ? 'OFF' : 'ON') + '</button></div>' +
+        slider('master', 'Volume', 'Everything') + slider('plant', 'Plant', 'Machines, crunches, belts') + slider('fx', 'Effects', 'Sales, the auction, alerts') + slider('music', 'Music', 'Off at 0: a calm loop in Progress, a tense one in Rivals') +
         '<div class="set-row"><span><b>Reduce motion</b><span class="small">No flashes, bounces or sliding panels</span></span><button type="button" id="set-motion">' + (reduceMotion() ? 'ON' : 'OFF') + '</button></div>' +
         (S.mode === 'progress' ? '<div class="set-row"><span><b>Guided first lot</b><span class="small">A fresh $1k lot and the steps on the real screen</span></span><button type="button" id="set-guide">PLAY IT AGAIN</button></div>' : '') +
         (S.mode === 'rivals' ? '<div class="set-row"><span><b>Restart the match</b><span class="small">Wipes this Rivals match. Your Progress yard is never wiped.</span></span><button type="button" class="danger" id="set-restart">RESTART RIVALS</button></div>' : '') +
         '<div class="set-row"><span><b>Game</b><span class="small">Back to the title screen</span></span><button type="button" id="set-menu">MENU</button></div>' +
         '<div id="set-save"></div>';
+      b.querySelectorAll('input[data-vol]').forEach((r) => r.addEventListener('input', () => { if (CS.Audio) { CS.Audio.init(); CS.Audio.setVolume(r.dataset.vol, r.value / 100); } r.parentElement.querySelector('.vol-v').textContent = r.value + '%'; }));
       b.querySelector('#set-sound').addEventListener('click', () => { const m = document.getElementById('btn-mute'); if (m) m.click(); showSettings(); });
       b.querySelector('#set-motion').addEventListener('click', () => { try { localStorage.setItem(RM_KEY, reduceMotion() ? '0' : '1'); } catch (e) { /* ignore */ } applyMotion(); showSettings(); });
       const g = b.querySelector('#set-guide'); if (g) g.addEventListener('click', () => { closeSettings(); if (CS.Guide && CS.Guide.live) CS.Guide.live.begin(); });
@@ -130,7 +135,7 @@
       const sv = document.getElementById('saveio-panel'), stash = document.getElementById('stash'); if (sv && stash) stash.appendChild(sv);
       sets.classList.add('hidden');
     }
-    function hideTitle() { if (title) title.classList.add('hidden'); document.body.classList.remove('at-title'); }
+    function hideTitle() { if (title) title.classList.add('hidden'); document.body.classList.remove('at-title'); if (CS.Audio && CS.Audio.duck) CS.Audio.duck('plant', false); if (CS.Music) CS.Music.setTheme(app.S.mode === 'rivals' ? 'rivals' : 'progress'); }
     function go(what) {
       const mode = what === 'progress' ? 'progress' : 'rivals';
       hideTitle();
@@ -158,6 +163,8 @@
       const sub = document.querySelector('#top .brand .sub');
       if (app.S.mode === 'rivals' && CS.Round && CS.Round.live && CS.Round.live.table) {
         const me = CS.Round.live.table().find((r) => r.id === 'you');
+        if (me && lastPlace && me.place < lastPlace && CS.Round.live.round().n > 0 && CS.Audio && CS.Audio.sfx) CS.Audio.sfx('place');   // #118: you moved up
+        lastPlace = me ? me.place : 0;
         if (lbl) lbl.textContent = 'MATCH PLACE'; $('#rank').textContent = me ? ord(me.place) + ' of 4' : '--';
         if (sub) sub.textContent = 'RIVALS · AUCTION MATCH';
       } else {
@@ -181,7 +188,7 @@
     });
     app.on('render', render);
     let acc = 0; app.on('tick', (p) => { acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; render(); } });
-    app.on('modechange', render);
+    app.on('modechange', () => { render(); if (CS.Music && !document.body.classList.contains('at-title')) CS.Music.setTheme(app.S.mode === 'rivals' ? 'rivals' : 'progress'); });
     app.on('newgame', () => setTimeout(render, 0));
     CS.Modes.live = { showTitle, hideTitle, go, showSettings, closeSettings };
   }

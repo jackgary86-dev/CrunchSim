@@ -343,6 +343,7 @@
     if (!m && CS.Cam) {
       const cv = el('canvas', 'fn-cam'); cv.setAttribute('aria-hidden', 'true');
       const cam = new CS.Cam(cv); cam.view = null;
+      const A = CS.Audio; if (A) { cam.audioHook = (p, k) => A.crunch(p.mat, k * 0.45, cam.st && cam.st.temp > 0); cam.soundHook = (kind, k) => A.sfx && A.sfx(kind, (k == null ? 1 : k) * 0.6); }   // #114 #115: the stations, heard from the plant screen
       m = { cv, cam }; minis.set(uid, m);
     }
     return m;
@@ -694,6 +695,7 @@
   }
   let rerunActive = false;
   function onBatchComplete(p) {
+    if (p && p.r && p.why === 'complete' && CS.Audio && CS.Audio.sfx && (p.bins || []).some((b) => b.st && b.st.sellable)) CS.Audio.sfx('thud');   // #116: product lands in the buckets
     if (p && p.r) {   // #132: the LAST BATCH card
       const sel = (p.bins || []).filter((b) => b.st && b.st.sellable && b.st.main).sort((x, y) => y.st.value - x.st.value)[0];
       lastBatch = { t: p.r.done || 0, net: (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0), why: p.why || 'complete', best: sel ? MATERIALS[sel.st.main].name.toLowerCase() + ' ' + Math.round(sel.st.share * 100) + '%' : '' };

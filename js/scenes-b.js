@@ -229,7 +229,7 @@
         if (p.mode === 'belt') {
           p.x += v * dt; p.ang *= 0.9;
           if (p.x >= MAG.cx) {
-            if (p.fate) { p.mode = 'stick'; p.a = -Math.PI / 2; if (Math.random() < 0.6) cam.spark(p.x, p.y, 2, '#bfe3ff'); }   // #126: a flick as steel snaps to the drum else { p.mode = 'air'; p.vx = 150 + rnd(-15, 15); p.vy = -rnd(10, 40); }
+            if (p.fate) { p.mode = 'stick'; p.a = -Math.PI / 2; if (Math.random() < 0.6) cam.spark(p.x, p.y, 2, '#bfe3ff'); cam.sound('clank'); }   // #126: a flick as steel snaps to the drum else { p.mode = 'air'; p.vx = 150 + rnd(-15, 15); p.vy = -rnd(10, 40); }
           }
         } else if (p.mode === 'stick') {
           p.a += v / MAG.R * dt; const rr = MAG.R + p.r * 0.8;
@@ -273,7 +273,7 @@
         const p = arr[i]; if (p.state !== 'free') continue;
         if (p.mode === 'belt') {
           p.x += 125 * dt; p.ang *= 0.9;
-          if (p.x >= ECS.cx + 12) { p.mode = 'air'; p.vx = p.fate ? 125 + 150 + rnd(-20, 30) : 120 + rnd(-10, 10); p.vy = p.fate ? -rnd(60, 110) : -rnd(0, 25); if (p.fate && Math.random() < 0.5) cam.spark(p.x, p.y, 2, '#ffcf8a'); }   // #126: thrown off the rotor
+          if (p.x >= ECS.cx + 12) { p.mode = 'air'; p.vx = p.fate ? 125 + 150 + rnd(-20, 30) : 120 + rnd(-10, 10); p.vy = p.fate ? -rnd(60, 110) : -rnd(0, 25); if (p.fate) { if (Math.random() < 0.5) cam.spark(p.x, p.y, 2, '#ffcf8a'); cam.sound('tick'); } }   // #126: thrown off the rotor
         } else {
           p.vy += 520 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.ang += p.spin * dt;
           if (p.y > 318) { count(cam, p.fate ? 'a' : 'b'); p.state = 'gone'; }
@@ -318,7 +318,7 @@
       for (let i = 0; i < arr.length; i++) {
         const p = arr[i]; if (p.state !== 'free') continue;
         p.ang += p.spin * dt;
-        if (p.mode === 'feed') { p.x += p.vx * dt; p.vy += 300 * dt; p.y += p.vy * dt * 0.2; if (p.x > 400) { p.mode = p.fate ? 'up' : 'down'; if (p.fate && Math.random() < 0.5) cam.mist(p.x, p.y, 2, 'rgba(223,244,255,.5)', 40); } }   // #126: the air takes it
+        if (p.mode === 'feed') { p.x += p.vx * dt; p.vy += 300 * dt; p.y += p.vy * dt * 0.2; if (p.x > 400) { p.mode = p.fate ? 'up' : 'down'; if (p.fate) { if (Math.random() < 0.5) cam.mist(p.x, p.y, 2, 'rgba(223,244,255,.5)', 40); cam.sound('puff'); } } }   // #126: the air takes it
         else if (p.mode === 'up') {
           p.y -= (80 + st.s.air * 4) * dt * (0.8 + 0.4 * Math.sin(p.seed2)); p.x = 450 + 42 * Math.sin(p.y * 0.07 + p.seed2) * 0.9;
           if (p.y < 52) { p.mode = 'out'; p.vx = 120; }
@@ -403,7 +403,7 @@
       for (let i = 0; i < arr.length; i++) {
         const p = arr[i]; if (p.state !== 'free') continue;
         p.ang += p.spin * dt * 0.3;
-        if (p.mode === 'fall') { p.vy += 480 * dt; p.y += p.vy * dt; if (p.y > TANK.top) { p.mode = p.fate ? 'rise' : 'sink'; cam.spark(p.x, TANK.top, 4, '#8fd0ff'); } }   // #126: a splash
+        if (p.mode === 'fall') { p.vy += 480 * dt; p.y += p.vy * dt; if (p.y > TANK.top) { p.mode = p.fate ? 'rise' : 'sink'; cam.spark(p.x, TANK.top, 4, '#8fd0ff'); cam.sound('splash'); } }   // #126: a splash
         else if (p.mode === 'rise') { p.vy = Math.max(p.vy - 700 * dt, -90); p.y += p.vy * dt; if (p.y < TANK.top - p.r * 0.2) { p.y = TANK.top - p.r * 0.2; p.vy = 0; p.mode = 'skim'; } }
         else if (p.mode === 'sink') { p.vy = Math.min(p.vy + 100 * dt, 110); p.y += p.vy * dt; if (p.y > TANK.bot - p.r) { p.y = TANK.bot - p.r; p.mode = 'crawl'; } }
         else if (p.mode === 'skim') { p.x += 52 * dt; p.y = TANK.top - p.r * 0.2 + Math.sin(cam.t * 3 + p.seed * 9) * 1.2; if (p.x > TANK.x1 + 20) { p.mode = 'out'; p.vx = 70; p.vy = -10; } }
@@ -453,7 +453,7 @@
           if (p.x >= SNS.x1) {
             p.mode = 'air';
             if (p.tagged) {   // air jet fires: the piece is kicked up and over the splitter
-              p.vx = 250 + rnd(-15, 25); p.vy = -rnd(120, 160);
+              p.vx = 250 + rnd(-15, 25); p.vy = -rnd(120, 160); cam.sound('pop');
               for (let k = 0; k < 4; k++) cam.fx.push({ x: SNS.jet + rnd(-4, 4), y: SNS.y + 8, vx: rnd(-10, 40), vy: -rnd(120, 220), g: 0, life: 0.22, max: 0.22, size: rnd(2, 4), grow: 14, col: '#ffffff', soft: true });
             } else { p.vx = 130 + rnd(-10, 10); p.vy = 0; }
           }

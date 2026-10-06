@@ -38,6 +38,7 @@
     function buy() {
       const p = nextPrice(owned); if (!p) return;
       if (!API.spend(p, 'Sorter slot ' + (owned + 1))) { render(); return; }
+      if (CS.Audio && CS.Audio.sfx) CS.Audio.sfx('buy');   // #118
       owned++;
       if (CS.Audio) CS.Audio.ui('ok');
       API.log('Sorter slot ' + owned + ' built for $' + p.toLocaleString('en-US') + ': the plant can now hold ' + owned + ' sorters.', 'ok');

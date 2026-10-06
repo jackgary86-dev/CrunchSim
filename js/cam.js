@@ -233,6 +233,7 @@
       this.fx.push({ x: x + rnd(-8, 8), y: y + rnd(-4, 4), vx: rnd(-(spread || 20), spread || 20), vy: rnd(10, 50), g: 20, life, max: life, size: rnd(2, 4), grow: 8, col: col || '#dff4ff', soft: true });
     }
   };
+  Cam.prototype.sound = function (kind, k) { if (this.soundHook) this.soundHook(kind, k); };   // #115: a sorter's voice
   Cam.prototype.crunch = function (p, strength) {
     this.flash = Math.min(1, this.flash + 0.15);
     if (this.audioHook) this.audioHook(p, strength || 1);

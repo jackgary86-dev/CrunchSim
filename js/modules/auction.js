@@ -346,7 +346,7 @@
       if (!L || L.sample) return !!(L && L.sample);
       const fee = sampleFee(L, perT);
       if (!app.spend(fee, 'a sample of lot #' + L.id)) return false;
-      L.sample = sampleOf(L);
+      L.sample = sampleOf(L); if (CS.Audio && CS.Audio.sfx) CS.Audio.sfx('beep');   // #117: the lab's reading
       app.log('Sampled lot #' + L.id + ' for ' + app.fmtMoney(fee) + ': ' + compText(L.sample, 5).replace(/&amp;/g, '&') + ' (within about 3%). Declared: ' + compText(L.declared, 5).replace(/&amp;/g, '&') + '.', 'ok');
       render(); app.save(); return true;
     }
@@ -372,6 +372,7 @@
       st.board = st.board.filter((x) => x !== L);
       const lot = Object.assign({}, L, { ask: perT, listAsk: L.ask, paid: total, boughtTons: L.tons, bid: undefined });
       app.emit('lotBought', { lot, total });   // milestones (#73)
+      if (CS.Audio && CS.Audio.sfx) CS.Audio.sfx('buy');   // #117
       if (st.pending) st.yard.push(lot); else st.pending = lot;   // #49: lots queue in the yard
       const cap = app.plantValue('logistics');
       app.log(how + ' lot #' + L.id + ' from ' + L.seller + ': ' + L.tons + ' t of ' + L.headline + ' at ' + app.fmtMoney(perT) + '/t, ' + app.fmtMoney(total) + ' paid. Declared ' + compText(L.declared, 4).replace(/&amp;/g, '&') + '.' + (L.tons > cap ? ' Only ' + cap + ' t fit a batch; the rest waits in the yard.' : ''), 'ok');
@@ -386,6 +387,7 @@
       if (p.run.total > P.tons) { p.run.total = P.tons; S().tons = P.tons; app.syncFeedRows(); }   // #93: the slider cannot run more than was paid for
       const tons = p.run.total;
       const extra = P.tramp ? ' ' + (P.padded ? 'A lot of ' : 'Some ') + TRAMP.find((t) => t.m === P.tramp).what + ' in the load.' : '';
+      if (CS.Audio && CS.Audio.sfx) CS.Audio.sfx('beep');   // #117: the weighbridge ticket
       app.log('Weighbridge, lot #' + P.id + ': ' + compText(P.truth, 8).replace(/&amp;/g, '&') + '.' + extra, P.padded ? 'warn' : 'ok');
       if (!P.weighed && P.seller) { P.weighed = true; st.sellers[P.seller] = recordLot(st.sellers[P.seller], P); app.log(P.seller + ': ' + repText(st.sellers[P.seller]) + '.'); }
       st.settle = { lot: P, tons };

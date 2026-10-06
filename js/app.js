@@ -95,7 +95,7 @@
   function buyMachine(id) {
     const M = MACHINES[id];
     if (!spend(M.price, M.name)) return false;
-    S.owned.add(id); S.units[id] = unitsOf(id) + 1; Audio.ui('ok');
+    S.owned.add(id); S.units[id] = unitsOf(id) + 1; Audio.ui('ok'); if (Audio.sfx) Audio.sfx('buy');   // #118
     log('Bought ' + M.name + ' for ' + fmtMoney(M.price) + (S.units[id] > 1 ? ' (unit ' + S.units[id] + ')' : '') + '.', 'ok'); checkRank(); return true;
   }
   function upgradeMachine(id) {
@@ -909,6 +909,7 @@
     setSpeed(S.speed); setMuted(S.muted);
     cam = new CS.Cam($('#cam'));
     cam.audioHook = (p, k) => { const st = cam.st; Audio.crunch(p.mat, k, st && st.temp > 0); };
+    cam.soundHook = (kind, k) => { if (Audio.sfx) Audio.sfx(kind, k); };
     $('#btn-run').addEventListener('click', startRun);
     $('#btn-stop').addEventListener('click', () => stopRun('stopped'));
     document.querySelectorAll('.spd').forEach((b) => b.addEventListener('click', () => { setSpeed(+b.dataset.speed); Audio.ui('click'); }));
@@ -945,7 +946,10 @@
       if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0) hideCard(); }
       const st = camState(); cam.setState(st);
       if (cam.cv.getClientRects().length) cam.frame(dt);   // not drawn while its station view is closed (#45)
-      if (st) Audio.setHum(st.M.scene, st.running ? 0.5 + 0.5 * st.load : 0); else Audio.setHum('jaw', 0);
+      const stationOpen = !!(document.getElementById('station') && !document.getElementById('station').classList.contains('hidden'));
+      const hs = stationOpen ? st : (S.line[0] ? camState(S.line[0].uid) : null);   // #114: the main screen hears the head of the line
+      if (hs) Audio.setHum(hs.M.scene, hs.running ? (stationOpen ? 0.5 : 0.35) + 0.5 * hs.load : 0); else Audio.setHum('jaw', 0);
+      if (Audio.setBelt) Audio.setBelt(S.run ? Math.min(1, 0.3 + (S.run.rate || 0) / 60) : 0);   // #116
       next();
     }
     /* animation frames stop in a background tab; a timer keeps a running batch (or a whole lot) going there */

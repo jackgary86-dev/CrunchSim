@@ -125,6 +125,7 @@
     function checkEnd() {
       const m = M_(); if (!m.ending || m.over || app.S.run || !yardEmpty()) return false;
       m.over = true; m.ending = false;
+      setTimeout(() => { const top = standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, worth: m.final ? m.final[id] : 0 })))[0]; snd(top && top.id === 'you' ? 'matchwin' : 'matchlose'); }, 400);   // #118
       m.final = {}; ['you'].concat(PLAYERS.filter((id) => rival(id))).forEach((id) => { m.final[id] = id === 'you' ? app.netWorth() + stockValue() : rivalRec(id).worth; });
       app.log('The match is over after ' + st.n + ' rounds. Final standings are on the auction screen.', 'ok');
       app.save(); render(); return true;
@@ -142,10 +143,12 @@
       const scales = {}; players.forEach((id) => { if (id !== 'you') scales[id] = purseScale(rivalRec(id).worth, M_().start); });
       const maxes = cards.map((L) => { const o = {}; players.forEach((id) => { if (id !== 'you') o[id] = rivalMax(rival(id), L, factor, size, scales[id]); }); return o; });
       st.open = { n: st.n, size, cards, maxes, scales, k: 0, price: 0, leader: null, out: [], won: {}, passed: false, log: [], done: false, folded: {}, pop: 0 };
+      snd('bell');   // #117: the round opens
       app.log('Auction round ' + st.n + ': three bins on the table, ' + cards.map((L) => L.catName.toLowerCase() + ' (' + fmtT(L.tons) + ' of ' + L.headline + ')').join(', ') + '.', 'ok');
       return true;
     }
     const fmtT = (t) => t >= 10 ? Math.round(t) + ' t' : t.toFixed(1) + ' t';
+    const snd = (kind, k) => { if (CS.Audio && CS.Audio.sfx) CS.Audio.sfx(kind, k); };
     const R = () => st.open, card = () => R() && R().cards[R().k];
     const inFor = (id) => !R().won[id] && R().out.indexOf(id) < 0;
     function say(t) { R().log.push(t); if (R().log.length > 40) R().log.shift(); }
@@ -155,7 +158,7 @@
       for (const id of order) {
         if (!rival(id) || !inFor(id) || r.leader === id) continue;
         const nb = nextBid(r.price, L.opening);
-        if ((r.maxes[r.k][id] || 0) >= nb) { r.price = nb; r.leader = id; r.pop++; say(nameOf(id) + ' bids ' + money(nb) + '/t'); return true; }
+        if ((r.maxes[r.k][id] || 0) >= nb) { if (r.leader === 'you') snd('outbid'); r.price = nb; r.leader = id; r.pop++; snd('bid', 2 + PLAYERS.indexOf(id) * 3); say(nameOf(id) + ' bids ' + money(nb) + '/t'); return true; }
         const key = r.k + ':' + id;
         if (!r.folded[key] && r.price > 0) { r.folded[key] = true; say(nameOf(id) + ' folds: ' + foldReason(rival(id), L, factor, r.size, r.scales[id], nb)); }
       }
@@ -165,9 +168,13 @@
       const r = R(), L = card(); if (!r || r.done || busy || !inFor('you') || r.leader === 'you') return;
       const nb = nextBid(r.price, L.opening);
       if (nb * L.tons > app.S.money) { app.log('A bid of ' + money(nb) + '/t on ' + fmtT(L.tons) + ' commits ' + money(nb * L.tons) + '; the bank holds ' + money(app.S.money) + '.', 'warn'); return; }
-      r.price = nb; r.leader = 'you'; r.pop++; say('You bid ' + money(nb) + '/t');
+      r.price = nb; r.leader = 'you'; r.pop++; r.bidOn = r.k; snd('bid', 0); say('You bid ' + money(nb) + '/t');
       busy = true; render();
-      setTimeout(() => { busy = false; if (!rivalsAnswer()) sold(); render(); }, 450);
+      setTimeout(() => {
+        if (rivalsAnswer()) { busy = false; render(); return; }
+        snd('going'); say('Going once...'); render();   // #117: the auctioneer's count before the gavel
+        setTimeout(() => { snd('going'); say('Going twice...'); render(); setTimeout(() => { busy = false; sold(); render(); }, 380); }, 380);
+      }, 450);
     }
     function youPass() {
       const r = R(); if (!r || r.done || busy) return;
@@ -200,6 +207,7 @@
         }
       } else { say('No bids: the ' + L.catName.toLowerCase() + ' bin goes unsold'); app.log(L.catName + ' bin unsold: nobody met the opening price.'); }
       if (r.leader && CS.Audio && CS.Audio.fx) CS.Audio.fx('gavel');   // #81
+      if (r.leader === 'you') setTimeout(() => snd('win'), 350); else if (r.leader && r.bidOn === r.k) setTimeout(() => snd('lose'), 350);   // #117
       if (!r.leader) r.justWon = null;
       r.k++; r.price = 0; r.leader = null; r.out = [];
       if (r.k >= r.cards.length) return finish();

@@ -754,3 +754,8 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 @keyframes rf-pour { from { stroke-dasharray: 2 3; stroke-dashoffset: 0; } to { stroke-dasharray: 2 3; stroke-dashoffset: -5; } }
 .refbox.pour .rf-ingot { fill: #ff9a4a; transition: fill 2.4s; }
 .refbox .rf-smoke { opacity: .5; }
+
+/* #120: volume sliders */
+.set-row.vol { display: grid; grid-template-columns: 1fr 160px 44px; }
+.set-row.vol input { width: 100%; }
+.set-row .vol-v { text-align: right; font-size: 12px; color: var(--muted); }

@@ -114,6 +114,7 @@ node tests/market.js
 node tests/milestones.js
 node tests/missions.js
 node tests/modes.js
+node tests/networth-lots.js
 node tests/networth-stock.js
 node tests/onboarding.js
 node tests/overlays.js

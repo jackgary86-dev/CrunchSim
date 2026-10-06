@@ -443,7 +443,7 @@
     /* a line from the help dialog to the panel */
     function mountHelpLink() {
       const box = document.querySelector('#help .modal-box'); if (!box || box.querySelector('#pb-help-link')) return;
-      const p = app.el('p', 'small', 'Stuck on a lot? The <a href="#playbook-panel" id="pb-help-link">Playbooks</a> (in the Flowsheet drawer) hold a card for every bucket type (steel, aluminum, copper and brass, wood, plastic, rubber, glass, aggregate, gel): the machine sequence, the settings, the traps and a LOAD THIS SETUP button, plus a fit readout of the lot in the feed against your line.');
+      const p = app.el('p', 'small', 'Stuck on a lot? The <a href="#playbook-panel" id="pb-help-link">Playbooks</a> (in the Plant drawer) hold a card for every bucket type (steel, aluminum, copper and brass, wood, plastic, rubber, glass, aggregate, gel): the machine sequence, the settings, the traps and a LOAD THIS SETUP button, plus a fit readout of the lot in the feed against your line.');
       const heads = box.querySelectorAll('h3'); let before = null;
       heads.forEach(function (h) { if (!before && /sources/i.test(h.textContent)) before = h; });
       if (before) box.insertBefore(p, before); else box.appendChild(p);

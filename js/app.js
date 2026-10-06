@@ -617,6 +617,8 @@
       box.appendChild(d);
     });
   }
+  /* #141: a module may name the RUN button (RUN THE LOT / STOP THE LOT when the whole lot is chosen) */
+  function runLabel(on) { const f = API.runLabel; const t = typeof f === 'function' ? f(on) : ''; return t || (on ? '&#9632; STOP' : '&#9654; RUN BATCH'); }
   /* #18: the RUN BATCH button carries the projected net of this batch and turns amber, with a one-line reason in the
    * header, when the projection is negative. While a batch runs the header shows the live net instead. */
   function renderRunProjection(m) {
@@ -624,7 +626,7 @@
     const b = $('#btn-run'), rn = $('#run-net'), E = Eco();
     const nothing = AUCTION_ONLY && !S.feedPrepaid;   // #65: no projection for material you do not have
     const pr = !nothing && E && m && S.line.length && m.R > 0 ? E.projectBatch(m, S.tons, S.ev.nodes) : null;
-    b.innerHTML = '&#9654; RUN BATCH' + (pr ? '<small class="proj">' + (pr.net >= 0 ? '+' : '') + fmtMoney(pr.net) + '</small>' : '');
+    b.innerHTML = runLabel(false) + (pr ? '<small class="proj">' + (pr.net >= 0 ? '+' : '') + fmtMoney(pr.net) + '</small>' : '');
     b.classList.toggle('neg', !!(pr && pr.negative)); b.title = pr && pr.reason ? pr.reason : 'Run a batch (Space)';
     rn.textContent = pr && pr.reason ? pr.reason : ''; rn.className = 'num small' + (pr && pr.reason ? ' reason' : ''); rn.title = rn.textContent;
   }
@@ -708,7 +710,7 @@
   }
   function renderRunState() {
     const on = !!S.run;
-    $('#btn-run').innerHTML = on ? '&#9632; STOP' : '&#9654; RUN BATCH'; $('#btn-run').classList.toggle('running', on); if (on) $('#btn-run').classList.remove('neg');
+    $('#btn-run').innerHTML = runLabel(on); $('#btn-run').classList.toggle('running', on); if (on) $('#btn-run').classList.remove('neg');
     if (!on && S.ev) renderRunProjection(marginPerT());
     $('#btn-stop').disabled = !on;
     const cs = $('#cam-status'); cs.classList.remove('hidden'); cs.textContent = on ? 'RUNNING' : 'STANDBY'; cs.classList.toggle('on', on); cs.classList.toggle('idle', !on);
@@ -750,7 +752,7 @@
     let head = '<h2>BATCH ' + esc(why.toUpperCase()) + '<span>' + fmtNum(r.done, 1) + ' t \u00b7 ' + fmtClock(dt).slice(2) + '</span></h2>';
     card.innerHTML = '<div class="card">' + head +
       (r.held
-        ? '<div class="net ' + (result >= 0 ? 'ok' : 'bad') + '"><small>BATCH RESULT · CASH PLUS STOCK</small>' + (result >= 0 ? '+' : '') + fmtMoney(result) + '</div><div class="small" style="margin:-6px 0 8px">Bank ' + (net >= 0 ? '+' : '') + fmtMoney(net) + ' now · ' + fmtMoney(r.rev) + ' of product in ' + esc(r.held) + ', sell it from the end buckets or the Market drawer</div>'
+        ? '<div class="net ' + (result >= 0 ? 'ok' : 'bad') + '"><small>BATCH RESULT · CASH PLUS STOCK</small>' + (result >= 0 ? '+' : '') + fmtMoney(result) + '</div><div class="small" style="margin:-6px 0 8px">Bank ' + (net >= 0 ? '+' : '') + fmtMoney(net) + ' now · ' + fmtMoney(r.rev) + ' of product in ' + esc(r.held) + ', sell it from the end buckets or the Sell drawer</div>'
         : '<div class="net ' + (net >= 0 ? 'ok' : 'bad') + '"><small>NET TO BANK</small>' + (net >= 0 ? '+' : '') + fmtMoney(net) + '</div>') +
       '<dl><dt>' + (r.held ? 'Products to ' + esc(r.held) + ' (worth ' + fmtMoney(r.rev) + ')' : 'Products sold') + '</dt><dd class="ok">' + fmtMoney(r.held ? 0 : r.rev) + '</dd><dt>Feed</dt><dd>' + fmtMoney(-r.feedC) + '</dd><dt>Power (' + fmtNum(r.kwh, 0) + ' kWh, ' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t)</dt><dd>' + fmtMoney(-powerC) + '</dd>' + (r.extra > 0 ? '<dt>Consumables</dt><dd>' + fmtMoney(-r.extra) + '</dd>' : '') + svcRow + wearRow + projRow +
       (best ? '<dt>Best product</dt><dd>' + esc(best.M ? best.M.short + ' / ' + (best.M.outs ? best.M.outs[best.port] : best.port) : '') + ' · ' + fmtMoney(best.st.value) + '/t</dd>' : '') +
@@ -901,7 +903,7 @@
     API.emit('load', S.ext);
     buildFeed(); buildLineUI(); applyPlant();
     setFeedLock(true);
-    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Only sorted material sells: the magnet pulls the steel out clean, and everything still mixed waits in MISC until you buy another sorter. Run a few batches, run a few batches, then buy your first sorter from NEXT PURCHASE in Bank & upgrades (toolbar).', 'ok'); }
+    if (!had) { applyLinePreset('starter'); log('Welcome to the yard. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Only sorted material sells: the magnet pulls the steel out clean, and everything still mixed waits in MISC until you buy another sorter. Run a few batches, run a few batches, then buy your first sorter from NEXT PURCHASE in the Plant drawer (toolbar).', 'ok'); }
     else { renderFeedSelect(); syncFeedRows(); log('Session restored.', 'ok'); }
     lastRankIdx = rankOf(netWorth()).idx;
     setSpeed(S.speed); setMuted(S.muted);
@@ -919,7 +921,7 @@
     $('#sources').innerHTML = SOURCES.map((s) => '<li><a href="' + esc(s[1]) + '" target="_blank" rel="noopener">' + esc(s[0]) + '</a></li>').join('');
     window.addEventListener('keydown', (e) => {
       if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-      if (e.code === 'Space') { e.preventDefault(); startRun(); }
+      if (e.code === 'Space') { e.preventDefault(); $('#btn-run').click(); }   // through the button, so the RUN choice (#141) applies
       else if (e.key === '1') setSpeed(1); else if (e.key === '2') setSpeed(10); else if (e.key === '3') setSpeed(60);
       else if (e.key === 'm' || e.key === 'M') { Audio.init(); setMuted(!S.muted); }
       else if (e.key === '?') $('#help').classList.toggle('hidden');

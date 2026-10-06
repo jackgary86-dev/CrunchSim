@@ -49,12 +49,12 @@
     const c = check(nodes, level), need = machineArea(m);
     if (need <= c.free + 1e-9) return '';
     const f = footprint(m);
-    return 'No floor space for the ' + M.name + ': it needs ' + fmtArea(need) + ' m² (' + f.w + ' × ' + f.d + ' m plus access) and the plant hall has ' + fmtArea(Math.max(0, c.free)) + ' m² free of ' + fmtArea(c.cap) + '. Buy a bigger Plant hall in Bank & upgrades, or remove a machine.';
+    return 'No floor space for the ' + M.name + ': it needs ' + fmtArea(need) + ' m² (' + f.w + ' × ' + f.d + ' m plus access) and the plant hall has ' + fmtArea(Math.max(0, c.free)) + ' m² free of ' + fmtArea(c.cap) + '. Buy a bigger Plant hall in the Plant drawer, or remove a machine.';
   }
   /* reason a preset line cannot be laid out, or '' when it fits */
   function lineVeto(nodes, level, name) {
     const c = check(nodes, level); if (c.ok) return '';
-    return 'The ' + (name || 'preset line') + ' needs ' + fmtArea(c.used) + ' m² of floor and the plant hall is ' + fmtArea(c.cap) + ' m² (' + hallDims(level) + '). Buy a bigger Plant hall in Bank & upgrades first.';
+    return 'The ' + (name || 'preset line') + ' needs ' + fmtArea(c.used) + ' m² of floor and the plant hall is ' + fmtArea(c.cap) + ' m² (' + hallDims(level) + '). Buy a bigger Plant hall in the Plant drawer first.';
   }
   /* smallest room level at which a line fits, or -1 if none */
   function levelFor(nodes) {

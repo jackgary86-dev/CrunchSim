@@ -1,6 +1,9 @@
-/* CrunchSim module: run the whole lot (#74). RUN THE LOT, next to RUN BATCH, runs batch after batch until the loaded
+/* CrunchSim module: run the whole lot (#74). RUN THE LOT runs batch after batch until the loaded
  * lot is used up, without a score card in between, and stops early for trouble: STOP, a halted batch, a machine about to
  * wear out (98%), or a bank in the red. One summary card at the end covers the whole lot.
+ * #141: one RUN control in the header. A small choice beside RUN picks 1 BATCH or THE LOT (the lot when one is loaded, by
+ * default); RUN becomes STOP while running; one speed button cycles 1x / 10x / 60x. The separate STOP, RUN THE LOT and three
+ * speed buttons are hidden (kept in the page for the keyboard and the app's own wiring).
  */
 (function (G) {
   'use strict';
@@ -8,7 +11,9 @@
   const WEAR_STOP = 0.98;
   function start() {
     const app = CS.app; if (!app || app.autorunStarted) return; app.autorunStarted = true;
-    let run = null, btn = null;   // run: { lot, batches, t, net, kwh, stock0, misc0, money0 }
+    let run = null, btn = null, pick = null, spd = null;
+    let choice = 'lot';   // 'lot' | 'batch': what RUN starts when a lot is loaded (per browser)
+    try { const c = localStorage.getItem('crunchsim.runChoice'); if (c === 'batch' || c === 'lot') choice = c; } catch (e) { /* ignore */ }   // run: { lot, batches, t, net, kwh, stock0, misc0, money0 }
     const lotNow = () => { const A = CS.Auction && CS.Auction.live, P = A && A.pending(); return P && app.S.feedOwner === 'auction' ? P.id : null; };
     const totals = () => { const I = CS.Inventory; if (!I) return { stock: 0, misc: 0 }; let t = 0; const s = I.stock(); for (const m in s) t += s[m].t; return { stock: t, misc: I.miscTotal(I.misc()) }; };
     function label() {
@@ -61,14 +66,42 @@
         if (!app.S.run) finish('the line could not start');
       }, 250);
     });
+    const lotChosen = () => choice === 'lot' && !!lotNow();
+    app.runLabel = (on) => on ? (run ? '&#9632; STOP THE LOT' : '&#9632; STOP') : (lotChosen() ? '&#9654; RUN THE LOT' : '');
+    function renderPick() {
+      if (!pick) return;
+      const has = !!lotNow() || !!run;
+      pick.classList.toggle('hidden', !has);
+      pick.querySelectorAll('button').forEach((b) => { b.classList.toggle('on', b.dataset.c === choice); b.disabled = !!app.S.run; });
+      if (spd) spd.textContent = (app.S.speed || 1) + '\u00d7';
+    }
     app.on('boot', () => {
       const ref = document.getElementById('btn-run'); if (!ref) return;
-      btn = document.createElement('button'); btn.type = 'button'; btn.id = 'btn-runlot';
+      btn = document.createElement('button'); btn.type = 'button'; btn.id = 'btn-runlot'; btn.className = 'hidden';
       btn.addEventListener('click', go);
       ref.parentNode.insertBefore(btn, ref.nextSibling);
-      label();
+      // RUN starts the whole lot when that is the choice; while anything runs the same button is STOP (app.startRun stops)
+      ref.addEventListener('click', (e) => {
+        if (run || app.S.run || !lotChosen()) return;
+        e.stopImmediatePropagation(); go();
+      }, true);
+      pick = document.createElement('div'); pick.className = 'runpick'; pick.id = 'run-pick';
+      pick.innerHTML = '<button type="button" data-c="batch" title="RUN runs one batch">1 BATCH</button><button type="button" data-c="lot" title="RUN runs batch after batch until the lot is used up">THE LOT</button>';
+      pick.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { choice = b.dataset.c; try { localStorage.setItem('crunchsim.runChoice', choice); } catch (e) { /* ignore */ } renderPick(); app.renderAll(); }));
+      ref.parentNode.insertBefore(pick, btn);
+      const stop = document.getElementById('btn-stop'); if (stop) stop.classList.add('hidden');
+      const sp = document.querySelector('#top .speed');
+      if (sp) {
+        sp.querySelectorAll('.spd').forEach((b) => b.classList.add('hidden'));
+        spd = document.createElement('button'); spd.type = 'button'; spd.className = 'spd-cycle'; spd.id = 'btn-speed'; spd.title = 'Sim speed: click to cycle 1x / 10x / 60x';
+        spd.addEventListener('click', () => { const order = [1, 10, 60], i = order.indexOf(app.S.speed || 1), nx = order[(i + 1) % order.length]; const b = sp.querySelector('.spd[data-speed="' + nx + '"]'); if (b) b.click(); renderPick(); });
+        sp.appendChild(spd);
+      }
+      label(); renderPick();
     });
-    app.on('render', label);
+    app.on('render', () => { label(); renderPick(); });
+    app.on('batchStart', renderPick);
+    app.on('tick', () => { if (spd && spd.textContent !== (app.S.speed || 1) + '×') spd.textContent = (app.S.speed || 1) + '×'; });   // the 1 2 3 keys
     app.on('newgame', () => { run = null; label(); });
     app.on('modechange', () => { run = null; label(); });
     CS.Autorun = { live: { active: () => !!run, go, finish } };

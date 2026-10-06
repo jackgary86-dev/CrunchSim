@@ -124,16 +124,32 @@
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
+  /* #138: the toolbar follows the game loop. AUCTION buys, PLANT builds (next purchase, sorter slots, refinery, upgrades, the
+   * line), SELL sells (buckets, jobs, prices), RECORDS looks back. MENU (modes.js) is the title screen. */
   const DRAWERS = [
-    ['flowsheet', 'Flowsheet', ['line-panel', 'blueprint-panel', 'playbook-panel']],
     ['auction', 'Auction', ['auction-panel']],
-    ['sales', 'Market', ['inventory-panel', 'market-panel']],
-    ['jobs', 'Jobs', ['missions-panel']],
-    ['bank', 'Bank & upgrades', ['bank-panel', 'milestones-panel', 'slots-panel', 'refinery-panel', 'facility-panel', 'saveio-panel']],
-    ['rivals', 'Rivals', ['rivals-panel']],
-    ['report', 'Plant report', ['plant-panel']],
-    ['log', 'Event log', ['log-panel']]
+    ['plant', 'Plant', ['bank-panel', 'slots-panel', 'refinery-panel', 'line-panel', 'facility-panel', 'blueprint-panel', 'playbook-panel']],
+    ['sell', 'Sell', ['inventory-panel', 'missions-panel', 'market-panel']],
+    ['records', 'Records', ['rivals-panel', 'milestones-panel', 'plant-panel', 'log-panel', 'saveio-panel']]
   ];
+  const DRAWER_ALIAS = { flowsheet: 'plant', bank: 'plant', sales: 'sell', market: 'sell', jobs: 'sell', report: 'records', log: 'records', rivals: 'records' };   // older callers
+  /* #140 #142: what each game shows. Rivals is the match: no jobs, blueprints, playbooks, facility or milestones. In Progress the
+   * depth arrives when it is useful: jobs, playbooks and the facility at Recycler rank, blueprints once the line has four machines. */
+  const RIVALS_HIDE = ['missions-panel', 'blueprint-panel', 'playbook-panel', 'facility-panel', 'milestones-panel'];
+  const UNLOCK = {
+    'missions-panel': (S, rank) => rank >= 1, 'playbook-panel': (S, rank) => rank >= 1, 'facility-panel': (S, rank) => rank >= 1,
+    'blueprint-panel': (S) => S.line.length >= 4
+  };
+  function panelShown(id) {
+    const S = app.S;
+    if (id === 'rivals-panel') return S.mode === 'rivals';
+    if (S.mode === 'rivals') return RIVALS_HIDE.indexOf(id) < 0;
+    const u = UNLOCK[id]; if (!u) return true;
+    const rank = app.rankOf && app.netWorth ? app.rankOf(app.netWorth()).idx : 0;
+    return u(S, rank);
+  }
+  const drawerLabel = (key, label) => app.S.mode === 'rivals' ? ({ auction: 'Auction round', records: 'Standings' }[key] || label) : label;
+  let seenPanels = {};   // panels the player has already been shown (a NEW badge marks the drawer the first time one appears)
   const MACHINE_COLS = 3;          // three machine sections, then the buckets section
   const CLEAN = 0.9;               // a station bin at 90% purity or better is a straight grade (drawn green)
   let app = null, offset = 0, openDrawer = null, stationOpen = false, lastSig = '';
@@ -150,7 +166,7 @@
     const appEl = $('#app');
     const bar = el('nav', null); bar.id = 'toolbar';
     DRAWERS.forEach(([key, label]) => {
-      const b = el('button', 'tool', esc(label)); b.type = 'button'; b.id = 'tool-' + key; b.dataset.key = key;
+      const b = el('button', 'tool', esc(label)); b.type = 'button'; b.id = 'tool-' + key; b.dataset.key = key; b.dataset.label = label;
       b.addEventListener('click', () => (openDrawer === key ? closeDrawer() : showDrawer(key)));
       bar.appendChild(b);
     });
@@ -205,8 +221,8 @@
   const LOOP = [['auction', 'AUCTION', 'buy a lot'], ['shred', 'SHRED', 'grind into the BIN'], ['sort', 'SORT', 'up to 10 sorters'], ['refine', 'REFINE', 'ingots and bars'], ['sell', 'SELL', 'pure buckets only']];
   function goStep(key) {
     if (key === 'auction') return showDrawer('auction');
-    if (key === 'sell') return showDrawer('sales');
-    if (key === 'refine') { showDrawer('bank'); const r = document.getElementById('refinery-panel'); if (r) r.scrollIntoView({ block: 'start' }); return; }
+    if (key === 'sell') return showDrawer('sell');
+    if (key === 'refine') { showDrawer('plant'); const r = document.getElementById('refinery-panel'); if (r) r.scrollIntoView({ block: 'start' }); return; }
     closeDrawer(); closeStation();
     const seq = flowSeq(), k = key === 'shred' ? 0 : Math.max(0, seq.findIndex((x) => x.n && MACHINES[x.n.m].kind === 'separator'));
     offset = k; renderFlow(true);
@@ -236,10 +252,11 @@
   function showDrawer(key) {
     if (key === 'auction' && app.S.mode === 'rivals' && CS.Round && CS.Round.live) { closeStation(); closeDrawer(); CS.Round.live.open(); return; }
     closeStation(); closeDrawer();
+    key = DRAWER_ALIAS[key] || key;
     const d = DRAWERS.find((x) => x[0] === key); if (!d) return;
     const body = $('#drawer-body');
-    d[2].forEach((id) => { const s = document.getElementById(id); if (s) body.appendChild(s); });
-    $('#drawer-title').textContent = d[1].toUpperCase();
+    d[2].forEach((id) => { const s = document.getElementById(id); if (s && panelShown(id)) { body.appendChild(s); seenPanels[id] = true; } });
+    $('#drawer-title').textContent = drawerLabel(key, d[1]).toUpperCase();
     $('#drawer').classList.remove('hidden'); openDrawer = key;
     document.querySelectorAll('#toolbar .tool').forEach((b) => b.classList.toggle('on', b.dataset.key === key));
     app.renderAll();
@@ -661,8 +678,14 @@
   function renderMode() {
     const m = app.S.mode;
     document.querySelectorAll('#mode-switch .mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
-    const rv = document.getElementById('tool-rivals'); if (rv) rv.classList.toggle('hidden', m !== 'rivals');
     document.body.dataset.mode = m;
+    // labels per game, and a NEW badge on a drawer the first time one of its panels appears (#140)
+    if (!seenPanels.__primed) { DRAWERS.forEach(([, , ids]) => ids.forEach((id) => { if (panelShown(id)) seenPanels[id] = true; })); seenPanels.__primed = true; }
+    DRAWERS.forEach(([key, label, ids]) => {
+      const b = document.getElementById('tool-' + key); if (!b) return;
+      const fresh = ids.some((id) => panelShown(id) && !seenPanels[id]);
+      b.innerHTML = esc(drawerLabel(key, label)) + (fresh ? ' <i class="newb">NEW</i>' : '');
+    });
   }
   /* the first launch asks which game to play */
   function chooseMode() {
@@ -764,9 +787,10 @@
     app.on('render', () => { guardLoaded(); pruneMinis(); renderFlow(false); if (stationOpen && !app.node(app.S.sel)) closeStation(); });
     app.on('batchComplete', onBatchComplete);
     // a loaded bucket survives a reload: it is restored as the prepaid feed while the feed panel still shows its blend
-    app.on('save', () => ({ layout: { loaded, rerunActive } }));
+    app.on('save', () => ({ layout: { loaded, rerunActive, seen: seenPanels } }));
     const restore = (ext) => {
       const d = ext && ext.layout, S = app.S; loaded = null; rerunActive = false;
+      seenPanels = d && d.seen && typeof d.seen === 'object' ? Object.assign({}, d.seen) : {};
       if (!d || !S) return;
       if (d.loaded && !S.run && sameComp(S.comp, d.loaded.comp)) {
         loaded = d.loaded; S.feedPrepaid = true; S.feedOwner = 'rerun'; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
@@ -775,7 +799,7 @@
     app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
     app.on('modechange', () => { offset = 0; closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
-    app.on('newgame', () => { offset = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
+    app.on('newgame', () => { offset = 0; seenPanels = {}; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
   }
   if (CS.app) init();

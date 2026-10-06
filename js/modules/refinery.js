@@ -1,6 +1,6 @@
 /* CrunchSim module: refinery (#54). Metals can be refined for big paydays.
  *
- * Two levels, bought in Bank & upgrades:
+ * Two levels, bought in the Plant drawer:
  *   1  Smelting furnace: melts a sorted base-metal bucket (steel, cast iron, aluminum, copper, brass, zinc) into ingots or
  *      billet. Paid at the ingot price for the metal in it, less melt loss (dross); costs the melt energy at the power
  *      contract's price and a casting charge per tonne.
@@ -40,7 +40,7 @@
     const cost = kwh * (power || 0.12) + (need === 2 ? PREC_FEE * value + PREC_PER_T * e.t : CAST_PER_T * e.t);
     const net = value - cost;
     const out = { ok: level >= need, need, needName: LEVELS[need].name, metalT, value, kwh, cost, net, gain: net - (rawValue || 0), form: need === 2 ? 'bars' : 'ingots' };
-    if (!out.ok) out.why = 'Needs a ' + LEVELS[need].name.toLowerCase() + ' (Bank & upgrades).';
+    if (!out.ok) out.why = 'Needs a ' + LEVELS[need].name.toLowerCase() + ' (the Plant drawer).';
     return out;
   }
   /* Quote selling a MISC concentrate to the precious refinery by assay. misc = { mat: { t } }; prices = { gold, silver } $/t
@@ -51,7 +51,7 @@
     if (!(t > 0) || !(pv > 0)) return { ok: false, why: 'No gold or silver in MISC.', t, pv: 0 };
     const perT = pv / t, value = CONC_PAY * pv, cost = CONC_PER_T * t, net = value - cost;
     const out = { ok: level >= 2 && perT >= CONC_MIN && net > 0, t, metal, pv, perT, value, cost, net };
-    if (level < 2) out.why = 'Needs a precious-metals refinery (Bank & upgrades).';
+    if (level < 2) out.why = 'Needs a precious-metals refinery (the Plant drawer).';
     else if (perT < CONC_MIN) out.why = 'Too lean: ' + Math.round(perT) + ' $/t of precious metal, the refiner wants ' + CONC_MIN + ' $/t. Concentrate it with a sensor sorter first.';
     else if (net <= 0) out.why = 'The treatment charge would eat it all.';
     return out;

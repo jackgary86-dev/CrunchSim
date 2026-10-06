@@ -1,5 +1,5 @@
 /* CrunchSim module: milestones (#73). Goals to chase beyond the next rank: each one is checked as the game goes, ticks off
- * on a list in Bank & upgrades, and pops a short notice with a fanfare when it is reached. A rank up gets the fanfare too.
+ * on a list in the Records drawer, and pops a short notice with a fanfare when it is reached. A rank up gets the fanfare too.
  * The definitions and the checks are pure (CS.Milestones) so tests/milestones.js can run them in Node.
  */
 (function (G) {

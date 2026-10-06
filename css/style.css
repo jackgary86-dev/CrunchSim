@@ -618,3 +618,11 @@ body[data-mode="rivals"] #top { border-bottom-color: #5a2a1c; }
 .mb-go { padding: 8px 14px; letter-spacing: 2px; }
 .title-screen { --cyan: #7fe3ff; }
 body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-title .toast { display: none; }
+/* #140: a drawer with something new in it */
+.tool .newb { font-style: normal; font-size: 9px; letter-spacing: 1px; color: #0b1018; background: var(--amber); border-radius: 2px; padding: 0 4px; margin-left: 4px; vertical-align: middle; }
+/* #141: one RUN control: RUN / STOP, what it runs, one speed button */
+.runpick { display: inline-flex; border: 1px solid var(--line-2); border-radius: 3px; overflow: hidden; }
+.runpick.hidden { display: none; }
+.runpick button { border: 0; border-radius: 0; padding: 4px 7px; font-size: 10px; letter-spacing: 1px; background: transparent; color: var(--muted); }
+.runpick button.on { background: #103142; color: var(--cyan); }
+.spd-cycle { min-width: 44px; font-family: var(--mono); }

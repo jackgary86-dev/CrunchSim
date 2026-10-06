@@ -495,7 +495,7 @@
       const sto = chargeStorage(stock, ownedBays(storageLevel()), miscTotal(misc));
       if (sto.rent > 0) {
         API.S.money -= sto.rent;
-        API.log('Yard storage: ' + sto.bays + ' bay' + (sto.bays === 1 ? '' : 's') + ' in use (' + sto.own + ' owned, ' + sto.hired + ' hired), rent ' + fmtPrice(sto.rent) + ' this batch.' + (sto.hired > 0 ? ' Sell stock or buy Yard storage in Bank & upgrades.' : ''), sto.hired > 0 ? 'warn' : '');
+        API.log('Yard storage: ' + sto.bays + ' bay' + (sto.bays === 1 ? '' : 's') + ' in use (' + sto.own + ' owned, ' + sto.hired + ' hired), rent ' + fmtPrice(sto.rent) + ' this batch.' + (sto.hired > 0 ? ' Sell stock or buy Yard storage in the Plant drawer.' : ''), sto.hired > 0 ? 'warn' : '');
       }
       const card = document.querySelector('#scorecard .card');
       if (card) {

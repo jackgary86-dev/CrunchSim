@@ -90,7 +90,7 @@
       const id = omniId(), M = MACHINES[id];
       if (S().owned.has(id)) { status.innerHTML = 'END GAME · <b class="ok">' + API.esc(M.name.toUpperCase()) + ' OWNED</b>'; return; }
       const u = unlockStatus(id, rankIdx());
-      status.innerHTML = 'END GAME · ' + (u.ok ? '<b class="ok">' + API.esc(M.name.toUpperCase()) + ' UNLOCKED</b> · ' + API.fmtMoney(M.price) + ' in the Flowsheet drawer'
+      status.innerHTML = 'END GAME · ' + (u.ok ? '<b class="ok">' + API.esc(M.name.toUpperCase()) + ' UNLOCKED</b> · ' + API.fmtMoney(M.price) + ' in the Plant drawer'
         : '<b class="lock">' + API.esc(M.name.toUpperCase()) + ' LOCKED</b> · reach ' + API.esc(u.rankName) + ' rank');
     }
 

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=aa5c8e7a7d">
+  <link rel="stylesheet" href="css/style.css?v=f9e923b358">
 </head>
 <body>
 <div id="app">
@@ -61,7 +61,7 @@
       </div>
     </section>
     <section class="panel" id="bank-panel">
-      <h2>Bank &amp; upgrades</h2>
+      <h2>Next purchase &amp; upgrades</h2>
       <div class="readouts two" id="bank-readouts"></div>
       <div class="rankbar"><span id="rank-from"></span><div class="track"><i id="rank-fill"></i></div><span id="rank-to"></span></div>
       <h3>Next purchase</h3>
@@ -136,10 +136,10 @@
       <li><b>Two games.</b> PROGRESS is the long game: earn money and keep building out your plant from the six-tier auction board, with no end. RIVALS is a match of auction rounds (12 by default) against three rival yards: three bins a round, four bidders, whoever goes home without a bin runs one batch of their MISC bin, and the highest worth after the last round wins. Each keeps its own save. MENU in the toolbar goes back to the title screen; RESTART RIVALS starts a new match (a Progress yard is never wiped).</li>
       <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board always shows six lots, one per tier from $1k to $100k, and each tier deals scrap the next machine can sort: pallets, office clear-outs and old windows (a magnet and a water tank) at $1k, tires and white goods, car hulks, zorba, and circuit boards and gold-plated pins at $100k. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Feed panel shows what is loaded; only the batch size is yours to set.</li>
       <li><b>The plant.</b> The main screen shows your stations left to right in the order you placed them, three at a time (the arrows page through longer lines). Each station shows its machine at work, the bins it fills and what is left over moving on to the next station. Click a station to sit down at it: the machine cam, its settings, upgrades and telemetry, with CLOSE to get back.</li>
-      <li><b>Flowsheet.</b> Open Flowsheet in the toolbar to add machines. Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
-      <li><b>Buckets.</b> The last section, END RESULT IN BUCKETS, holds what your batches made. A sorted material (90% pure or better) has its own bucket: SELL it, or RE-RUN it as the next batch's feed at no feed cost. Everything not yet separated sits in MISC: RE-RUN it through different machines. A re-run keeps its shred size and enters past the shredders; pick another entry station above the plant if you like. The Market drawer sells at your own price.</li>
+      <li><b>Flowsheet.</b> Open PLANT in the toolbar to add machines (NEXT PURCHASE there names the best one). Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
+      <li><b>Buckets.</b> The last section, END RESULT IN BUCKETS, holds what your batches made. A sorted material (90% pure or better) has its own bucket: SELL it, or RE-RUN it as the next batch's feed at no feed cost. Everything not yet separated sits in MISC: RE-RUN it through different machines. A re-run keeps its shred size and enters past the shredders; pick another entry station above the plant if you like. The Sell drawer sells at your own price.</li>
       <li><b>Run.</b> The batch is processed at the rate the slowest machine allows. The plant clock, power, nitrogen, wear and product value are tracked live. Power and consumables are paid as the batch runs; the products land in the buckets, and money comes in when you SELL them.</li>
-      <li><b>Upgrade.</b> You start with a hammermill shredder, a magnetic drum and a few thousand dollars. Only sorted material sells: a bucket must be 90% one material, and purer buckets pay more. NEXT PURCHASE in Bank &amp; upgrades ranks the sorters, or pairs of sorters, that would add the most margin. Buy other machines from the Flowsheet drawer, raise a machine type's level for more capacity and efficiency, buy plant upgrades for bigger batches and cheaper power. Net worth is bank plus everything you own, and it sets your rank.</li>
+      <li><b>Upgrade.</b> You start with a hammermill shredder, a magnetic drum and a few thousand dollars. Only sorted material sells: a bucket must be 90% one material, and purer buckets pay more. NEXT PURCHASE in the Plant drawer ranks the sorters, or pairs of sorters, that would add the most margin. Buy other machines from the Flowsheet drawer, raise a machine type's level for more capacity and efficiency, buy plant upgrades for bigger batches and cheaper power. Net worth is bank plus everything you own, and it sets your rank.</li>
     </ol>
     <h3>The science in the numbers</h3>
     <ul>
@@ -162,27 +162,27 @@
 <script src="js/scenes-a.js?v=f822f9574c"></script>
 <script src="js/scenes-b.js?v=b99bb3bb00"></script>
 <script src="js/score.js?v=3f348572e6"></script>
-<script src="js/app.js?v=51f12a40ce"></script>
+<script src="js/app.js?v=f6d0f0f21b"></script>
 <script src="js/modules/market.js?v=9f24c2cc7f"></script>
-<script src="js/modules/inventory.js?v=e82652fe4d"></script>
+<script src="js/modules/inventory.js?v=7dc73e1f91"></script>
 <script src="js/modules/auction.js?v=232942a3e1"></script>
 <script src="js/modules/missions.js?v=2ee80cae81"></script>
-<script src="js/modules/floor.js?v=35f9e2577d"></script>
+<script src="js/modules/floor.js?v=a56bc6c78f"></script>
 <script src="js/modules/onboarding.js?v=26273a6775"></script>
 <script src="js/modules/blueprints.js?v=a12560407d"></script>
-<script src="js/modules/playbooks.js?v=8d6d0b5863"></script>
+<script src="js/modules/playbooks.js?v=ac40c8d8a9"></script>
 <script src="js/modules/economics.js?v=34ee0ad7dc"></script>
 <script src="js/modules/facility.js?v=495b2e126b"></script>
 <script src="js/modules/rivals.js?v=0456ac70c0"></script>
-<script src="js/modules/endgame.js?v=7c57ab28a3"></script>
-<script src="js/modules/refinery.js?v=d8ce3e118f"></script>
-<script src="js/modules/slots.js?v=4d5fb7c5c6"></script>
+<script src="js/modules/endgame.js?v=af4b401a85"></script>
+<script src="js/modules/refinery.js?v=35f23b05ee"></script>
+<script src="js/modules/slots.js?v=32c8ea322a"></script>
 <script src="js/modules/round.js?v=08d471e2ef"></script>
-<script src="js/modules/autorun.js?v=a01c31203c"></script>
-<script src="js/modules/milestones.js?v=befbf5c799"></script>
+<script src="js/modules/autorun.js?v=f0ae701b0c"></script>
+<script src="js/modules/milestones.js?v=79f1f1804d"></script>
 <script src="js/modules/saveio.js?v=67088c7958"></script>
-<script src="js/modules/guide.js?v=2d1a39db2f"></script>
-<script src="js/modules/layout.js?v=0244ab5dee"></script>
-<script src="js/modules/modes.js?v=8950861e8c"></script>
+<script src="js/modules/guide.js?v=264a10c38e"></script>
+<script src="js/modules/layout.js?v=0e6269683b"></script>
+<script src="js/modules/modes.js?v=cc3196b620"></script>
 </body>
 </html>

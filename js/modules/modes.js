@@ -6,7 +6,7 @@
  * - A title screen on every launch shows both games with what their saves hold, and CONTINUE / START (Rivals: NEW MATCH).
  * - A MENU button in the toolbar takes you back to it (the game saves first); it replaces the old PROGRESS / RIVALS switch.
  * - The Rivals screen has its own colour, a match bar over the plant (round N of M, every yard's worth and place, the
- *   AUCTION ROUND button) and PLACE in the header instead of the rank. Jobs belong to the sandbox and are hidden there.
+ *   AUCTION ROUND button) and PLACE in the header instead of the rank. Jobs belong to the sandbox (layout.js hides them in Rivals).
  * The save summaries are pure (CS.Modes.summary) so tests/modes.js can check them in Node.
  */
 (function (G) {
@@ -85,7 +85,6 @@
         if (lbl) lbl.textContent = 'RANK';
         if (sub) sub.textContent = 'PROGRESS · BUILD YOUR PLANT';
       }
-      const jobs = document.getElementById('tool-jobs'); if (jobs) jobs.classList.toggle('hidden', app.S.mode === 'rivals');
     }
     function render() { renderBar(); renderHeader(); }
 

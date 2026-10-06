@@ -1,5 +1,5 @@
 /* CrunchSim module: sorter slots (#51). The plant can hold a limited number of sorters (separators): 5 to start, and slots
- * 6 to 10 are bought one at a time in Bank & upgrades, each dearer than the last. Grinders, furnaces and conditioners do
+ * 6 to 10 are bought one at a time in the Plant drawer, each dearer than the last. Grinders, furnaces and conditioners do
  * not use a slot. Adding a sorter beyond the slots owned is refused with the price of the next slot, and so is a preset,
  * blueprint or playbook with more sorters than slots. A saved line that already has more keeps running.
  * Slot prices: each one is a bay of the sorting hall (feed conveyor, chutes, a bunker and its share of the dust extraction
@@ -22,11 +22,11 @@
     const used = sortersIn(line) + (pending || 0);
     if (used < owned) return '';
     const p = nextPrice(owned);
-    return 'All ' + owned + ' sorter slots are in use. ' + (p ? 'Buy slot ' + (owned + 1) + ' for $' + p.toLocaleString('en-US') + ' in Bank & upgrades, or remove a sorter.' : 'Ten is the most the sorting hall takes: remove a sorter first.');
+    return 'All ' + owned + ' sorter slots are in use. ' + (p ? 'Buy slot ' + (owned + 1) + ' for $' + p.toLocaleString('en-US') + ' in the Plant drawer, or remove a sorter.' : 'Ten is the most the sorting hall takes: remove a sorter first.');
   }
   function lineVeto(nodes, owned, name) {
     const n = sortersIn(nodes); if (n <= owned) return '';
-    return (name || 'That line') + ' has ' + n + ' sorters and you own ' + owned + ' sorter slots. ' + (n > MAX ? 'It is bigger than any sorting hall.' : 'Buy ' + (n - owned) + ' more slot' + (n - owned === 1 ? '' : 's') + ' in Bank & upgrades first.');
+    return (name || 'That line') + ' has ' + n + ' sorters and you own ' + owned + ' sorter slots. ' + (n > MAX ? 'It is bigger than any sorting hall.' : 'Buy ' + (n - owned) + ' more slot' + (n - owned === 1 ? '' : 's') + ' in the Plant drawer first.');
   }
   function assetValue(owned) { let v = 0; for (let k = START; k < owned && k < MAX; k++) v += PRICES[k - START]; return v; }
   CS.Slots = { START, MAX, PRICES, isSorter, sortersIn, nextPrice, addVeto, lineVeto, assetValue };

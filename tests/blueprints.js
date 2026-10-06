@@ -45,6 +45,15 @@ check(junk.nodes[3].src === 'feed', 'wrong port falls back to feed');
 check(BP.sanitise({ nodes: [{ m: 'nope' }] }) === null && BP.sanitise(null) === null && BP.deserialise('x').length === 0, 'nothing usable gives null / empty line');
 check(Sim.evalLine(BP.deserialise(junk), FEEDS.elv.comp).terminals.length > 0, 'the sanitised junk still evaluates');
 
+console.log('=== enum settings (sensor target) survive a round trip');
+const sline = Sim.buildLine({ nodes: [{ m: 'sensor', s: { target: 'aluminum' }, src: 'feed' }] });
+const sdef = BP.serialise(sline);
+check(sdef.nodes[0].s.target === 'aluminum', 'serialise keeps the target');
+check(BP.sanitise(sdef).nodes[0].s.target === 'aluminum', 'sanitise keeps a valid enum value (' + BP.sanitise(sdef).nodes[0].s.target + ')');
+check(BP.deserialise(sdef)[0].settings.target === 'aluminum', 'deserialise keeps the target');
+check(BP.sanitise({ nodes: [{ m: 'sensor', s: { target: 'unobtainium' }, src: 'feed' }] }).nodes[0].s.target === MACHINES.sensor.settings[0].def, 'unknown enum value takes the default');
+check(BP.sanitise({ nodes: [{ m: 'sensor', s: {}, src: 'feed' }] }).nodes[0].s.target === MACHINES.sensor.settings[0].def, 'missing enum value takes the default');
+
 console.log('=== auto-offer ordering');
 const saved = [
   { id: 'a', name: 'rock', feed: 'quarry', contract: null, def: BP.serialise(Sim.buildLine(LINES.quarry)) },

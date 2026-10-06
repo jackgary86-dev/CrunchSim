@@ -48,7 +48,9 @@
       if (!d || !MACHINES[d.m]) return;
       const M = MACHINES[d.m], s = {};
       (M.settings || []).forEach(function (st) {
-        const raw = d.s && d.s[st.id] != null ? +d.s[st.id] : NaN;
+        const given = d.s ? d.s[st.id] : null;
+        if (st.enum) { s[st.id] = st.enum.indexOf(given) >= 0 ? given : st.def; return; }   // e.g. the sensor's target material
+        const raw = given != null ? +given : NaN;
         const v = isFinite(raw) ? raw : st.def;
         s[st.id] = Math.min(st.max, Math.max(st.min, v));
       });

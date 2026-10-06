@@ -26,7 +26,8 @@
     }
     return out;
   }
-  CS.Modes = { summary, ord };
+  const liveMatch = (R) => !!(R && R.has && R.round > 0 && !R.over);   // a Rivals match worth confirming before NEW MATCH wipes it (#195)
+  CS.Modes = { summary, ord, liveMatch };
 
   if (typeof document === 'undefined') return;
   function start() {
@@ -90,9 +91,15 @@
         '<div class="tt-card tt-progress"><svg class="tt-ic" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 30 H46" stroke="#7fe3ff" stroke-width="2"/><rect x="6" y="14" width="12" height="16" fill="#7fe3ff" opacity=".35"/><rect x="20" y="8" width="10" height="22" fill="#7fe3ff" opacity=".55"/><rect x="32" y="18" width="12" height="12" fill="#7fe3ff" opacity=".8"/><path d="M25 8 V3 H29" stroke="#7fe3ff" stroke-width="2" fill="none"/></svg><b>PROGRESS</b><p>The long game. Earn money, keep building out your plant: more sorters, bigger lots, a refinery. Nobody to beat, no end.</p><div class="tt-save">' + esc(pLine) + '</div>' +
           '<button type="button" class="primary" data-go="progress">' + (P.has ? 'CONTINUE' : 'START') + '</button></div>' +
         '<div class="tt-card tt-rivals"><svg class="tt-ic" viewBox="0 0 48 32" aria-hidden="true"><rect x="8" y="4" width="16" height="9" rx="2" fill="#ff8a5c" transform="rotate(-30 16 8)"/><path d="M18 12 L30 28" stroke="#ff8a5c" stroke-width="3" stroke-linecap="round"/><rect x="28" y="24" width="16" height="5" rx="1" fill="#ff8a5c" opacity=".6"/><circle cx="40" cy="9" r="3" fill="#ffb25c"/><circle cx="33" cy="6" r="3" fill="#5cffb1"/><circle cx="44" cy="15" r="3" fill="#7fe3ff"/></svg><b>RIVALS</b><p>A match of auction rounds against three yards. Three bins a round, four bidders. The highest worth after the last round wins.</p><div class="tt-save">' + esc(rLine) + '</div>' +
-          (R.has && R.round && !R.over ? '<button type="button" class="primary" data-go="rivals">CONTINUE MATCH</button><button type="button" data-go="rivals-new">NEW MATCH</button>' : '<button type="button" class="primary" data-go="rivals-new">' + (R.has && R.over ? 'NEW MATCH' : 'START A MATCH') + '</button>') + '</div>' +
+          (liveMatch(R) ? '<button type="button" class="primary" data-go="rivals">CONTINUE MATCH</button><button type="button" data-go="rivals-new">NEW MATCH</button>' : '<button type="button" class="primary" data-go="rivals-new">' + (R.has && R.over ? 'NEW MATCH' : 'START A MATCH') + '</button>') + '</div>' +
         '</div><div class="small tt-foot">Each game keeps its own save in this browser. MENU in the toolbar comes back here. <a href="#" id="tt-settings">Settings</a></div></div>';
-      title.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
+      title.querySelectorAll('[data-go]').forEach((b) => {
+        let armed = false;   // #195: NEW MATCH over a live match needs a second click, like RESTART RIVALS
+        b.addEventListener('click', () => {
+          if (b.dataset.go === 'rivals-new' && liveMatch(R) && !armed) { armed = true; b.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; b.classList.add('danger'); setTimeout(() => { if (armed && b.isConnected) { armed = false; b.textContent = 'NEW MATCH'; b.classList.remove('danger'); } }, 3000); return; }
+          go(b.dataset.go);
+        });
+      });
       const ts = title.querySelector('#tt-settings'); if (ts) ts.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
       title.classList.remove('hidden'); document.body.classList.add('at-title');
       if (CS.Audio && CS.Audio.duck) CS.Audio.duck('plant', true); if (CS.Music) CS.Music.setTheme('title');   // #121: the title has only its own theme

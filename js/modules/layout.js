@@ -210,6 +210,8 @@
     const left = $('#left'); left.insertBefore(lc, left.firstChild);
     const tonsRow = $('#feed-tons') && $('#feed-tons').closest('.row'); if (tonsRow) { tonsRow.classList.add('lot-tons'); lc.appendChild(tonsRow); }
     const fp = $('#feed-panel'); if (fp) stash.appendChild(fp);
+    // #144: the bank in the header opens the records (milestones, the plant report and the event log of every sale and cost)
+    const bank = $('#money') && $('#money').closest('.tele'); if (bank) { bank.classList.add('clicky'); bank.title = 'Where the money went: RECORDS'; bank.addEventListener('click', () => { showDrawer('records'); const lp = document.getElementById('log-panel'); if (lp) lp.scrollIntoView({ block: 'start' }); }); }
     DRAWERS.forEach(([, , ids]) => ids.forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); }));
     drawer.addEventListener('click', (e) => { if (e.target === drawer) closeDrawer(); });
     station.addEventListener('click', (e) => { if (e.target === station) closeStation(); });
@@ -478,7 +480,16 @@
   function addCol() {
     const col = el('div', 'fcol add'); col.tabIndex = 0; col.setAttribute('role', 'button');
     col.innerHTML = '<div class="fn-plus">+</div><div class="fn-s">Add a machine</div>';
-    const go = () => showDrawer('flowsheet');
+    // #143: the best next sorter, bought and placed in one click (NEXT PURCHASE's top pick)
+    const picks = app.nextPurchases && !app.S.run && app.S.line.length ? app.nextPurchases() : null, p = picks && picks[0];
+    if (p && app.buyAndAdd) {
+      const price = p.ms.reduce((c, m) => c + (app.unitsOf(m) > app.S.line.filter((x) => x.m === m).length ? 0 : MACHINES[m].price), 0);
+      const sug = el('div', 'add-sug', '<div class="fn-sub">NEXT PURCHASE</div><b>' + esc(p.ms.map((m) => MACHINES[m].name).join(' + ')) + '</b><div class="ok">+' + app.fmtMoney(p.gain) + '/t</div>');
+      const b = el('button', 'buy' + (app.S.money < price ? ' poor' : ''), 'BUY &amp; PLACE ' + app.fmtMoney(price)); b.type = 'button';
+      b.addEventListener('click', (e) => { e.stopPropagation(); app.buyAndAdd(p); });
+      sug.appendChild(b); col.appendChild(sug);
+    }
+    const go = () => showDrawer('plant');
     col.addEventListener('click', go);
     col.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     return col;
@@ -630,6 +641,8 @@
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re);
       const rf = refineButton(x.m); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
+      row.classList.add('clicky'); row.title = D.name + ': prices, jobs and selling part of it are in SELL';   // #144
+      row.addEventListener('click', (e) => { if (!e.target.closest('button')) showDrawer('sell'); });
       list.appendChild(row);
     });
     if (b.misc.t > 0) {
@@ -673,6 +686,9 @@
       '<div class="bin-list">' + list + '</div>' +
       '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>' +
       (st && st.total > 0 ? belt(tons, topMats(st, 3), fmtW(tons)) : '');
+    // #144: THE BIN leads to where its material comes from: the auction when nothing is loaded, else the loaded lot's card
+    col.classList.add('clicky'); col.title = idleNow ? 'Nothing loaded: open the auction' : 'Show the loaded lot';
+    col.addEventListener('click', () => { if (idleNow) { showDrawer('auction'); return; } const lc = document.getElementById('lot-card'); if (lc) { lc.classList.remove('flash'); void lc.offsetWidth; lc.classList.add('flash'); } });
     return col;
   }
   function renderMode() {

@@ -503,7 +503,7 @@
       const name = p.ms.map((m) => MACHINES[m].name).join(' + ');
       const where = p.ms.length > 1 ? 'on ' + from + ', then the second on its ' + p.port2.toUpperCase() : 'on ' + from;
       const row = el('div', 'urow', '<span class="ic ok">&#9650;</span><span><div class="nm">' + esc(name) + ' <b class="ok">+' + fmtMoney(p.gain) + '/t</b></div><div class="cur">' + esc(where) + ' · pays back in ' + fmtNum(Math.ceil(price / p.gain), 0) + ' t</div></span>');
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = fmtMoney(price); b.className = 'buy' + (S.money < price ? ' poor' : ''); b.title = p.ms.length > 1 ? 'Buy both and add them to the line' : 'Buy it and add it to the line';
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = 'BUY & PLACE ' + fmtMoney(price); b.className = 'buy' + (S.money < price ? ' poor' : ''); b.title = p.ms.length > 1 ? 'Buy both and add them to the line' : 'Buy it and add it to the line';
       b.addEventListener('click', () => buyAndAdd(p));
       row.appendChild(b); box.appendChild(row);
     });
@@ -896,7 +896,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

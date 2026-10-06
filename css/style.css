@@ -626,3 +626,13 @@ body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-t
 .runpick button { border: 0; border-radius: 0; padding: 4px 7px; font-size: 10px; letter-spacing: 1px; background: transparent; color: var(--muted); }
 .runpick button.on { background: #103142; color: var(--cyan); }
 .spd-cycle { min-width: 44px; font-family: var(--mono); }
+/* #143: the next sorter on the empty station */
+.fcol.add .add-sug { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; font-size: 12px; }
+.fcol.add .add-sug b { font-weight: 500; }
+.fcol.add .add-sug .ok { color: var(--green); font-family: var(--mono); }
+/* #144: things on the plant screen that open their menu */
+.clicky { cursor: pointer; }
+.fcol.bincol.clicky:hover .bigbin { border-color: var(--cyan); }
+.bk.clicky:hover { border-color: var(--line-2); background: var(--panel-2); }
+#lot-card.flash { animation: lc-flash .9s ease-out; }
+@keyframes lc-flash { 0% { box-shadow: 0 0 0 2px var(--cyan), 0 0 24px rgba(127,227,255,.5); } 100% { box-shadow: none; } }

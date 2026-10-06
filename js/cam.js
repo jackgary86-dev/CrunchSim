@@ -167,8 +167,10 @@
   Cam.prototype.resize = function () {
     const r = this.cv.getBoundingClientRect();
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.W = Math.max(200, r.width); this.H = Math.max(160, r.height);
-    this.cv.width = Math.round(this.W * this.dpr); this.cv.height = Math.round(this.H * this.dpr);
+    this.W = Math.max(1, r.width); this.H = Math.max(1, r.height);   // #215: the true box (draw() letterboxes), so callers comparing the rect to W/H settle
+    const bw = Math.round(this.W * this.dpr), bh = Math.round(this.H * this.dpr);
+    if (this.cv.width !== bw) this.cv.width = bw;   // assigning width/height reallocates and clears the bitmap, so only when it changed
+    if (this.cv.height !== bh) this.cv.height = bh;
   };
   Cam.prototype.setState = function (st) {
     if (!st) return;

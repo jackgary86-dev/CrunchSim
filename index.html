@@ -10,9 +10,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=51f56bc352">
+  <link rel="stylesheet" href="css/style.css?v=9d9682cb66">
 </head>
 <body>
+<!-- shown only when css/style.css did not load (the page opened on its own, without its css/ and js/ folders) -->
+<div id="asset-warn" style="font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:40px auto;padding:20px;border:2px solid #ffb25c;border-radius:8px;background:#fff8ef;color:#222">
+  <b>CrunchSim could not load its files.</b><br>
+  This page needs the <code>css</code> and <code>js</code> folders next to it, so it does not work opened on its own.
+  Play it at <a href="https://jackgary86-dev.github.io/CrunchSim/">jackgary86-dev.github.io/CrunchSim</a>,
+  or open <code>dist/crunchsim.html</code> (one file, works offline; <code>python tools/build.py</code> makes it).
+</div>
 <div id="app">
   <header id="top">
     <div class="brand"><span class="logo">CRUNCH<b>SIM</b></span><span class="sub">COMMINUTION &amp; RECYCLING SIMULATOR</span></div>

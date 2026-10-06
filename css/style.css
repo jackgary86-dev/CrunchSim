@@ -763,3 +763,6 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 /* the bid guide on lots and bins */
 .est { color: var(--green); font-family: var(--mono); font-size: 11px; }
 .est.bad { color: var(--amber); }
+
+/* the 'could not load its files' notice in index.html: hidden whenever this stylesheet loads */
+#asset-warn { display: none !important; }

@@ -84,7 +84,7 @@
       if (app.S.run) { app.log('Stop the running batch before going to the menu.', 'warn'); return; }
       app.save();
       const k = app.saveKeys(), P = summary('progress', read(k.progress)), R = summary('rivals', read(k.rivals)), cur = app.S.mode;
-      if (!title) { title = document.createElement('div'); title.id = 'title'; title.className = 'title-screen'; document.body.appendChild(title); }
+      if (!title) { title = document.createElement('div'); title.id = 'title'; title.className = 'title-screen'; document.body.appendChild(title); if (CS.Overlays) CS.Overlays.attach(title, { label: 'CrunchSim: choose a game' }); }
       const pLine = P.has ? 'Bank ' + money(P.money) + ' · ' + P.machines + ' machine' + (P.machines === 1 ? '' : 's') + ' · ' + app.fmtNum(P.tonnes, 0) + ' t processed' : 'No yard yet.';
       const rLine = !R.has || !R.round ? 'No match in progress.' : R.over ? 'Last match finished after ' + R.round + ' rounds.' : 'Round ' + R.round + ' of ' + R.length + ' · bank ' + money(R.money);
       title.innerHTML = '<div class="tt-box"><div class="tt-logo">CRUNCH<b>SIM</b></div><div class="tt-sub">BUY THE JUNK · GRIND IT · SORT IT · SELL IT PURE</div><div class="tt-cards">' +
@@ -116,6 +116,7 @@
         sets = document.createElement('div'); sets.id = 'settings'; sets.className = 'overlay hidden';
         sets.innerHTML = '<div class="sheet"><div class="sheet-h"><b>SETTINGS</b><button type="button" class="danger" id="settings-close">CLOSE</button></div><div class="sheet-b set-b"></div></div>';
         document.body.appendChild(sets);
+        if (CS.Overlays) CS.Overlays.attach(sets, { label: 'Settings', close: '#settings-close' });
         sets.addEventListener('click', (e) => { if (e.target === sets) closeSettings(); });
         sets.querySelector('#settings-close').addEventListener('click', closeSettings);
       }

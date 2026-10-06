@@ -29,6 +29,7 @@ button.danger:hover { border-color: var(--red); color: var(--red); }
 button.icon { width: 32px; height: 32px; padding: 0; text-align: center; }
 select { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 4px 6px; max-width: 100%; }
 input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; background: var(--line-2); border-radius: 2px; outline: none; flex: 1; min-width: 60px; }
+input[type=range]:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }   /* #198: outline:none above took the only focus cue */
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--cyan); border: 2px solid var(--panel); cursor: pointer; }
 input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--cyan); border: 2px solid var(--panel); cursor: pointer; }
 .hidden { display: none !important; }

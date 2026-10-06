@@ -10,7 +10,8 @@
   /* Two game modes, each with its own save: PROGRESS (level up your plant on your own; the six-tier auction board, no
    * rivals) and RIVALS (round-based auctions against three rival yards). The last mode played is remembered. */
   const MODE_KEY = 'crunchsim.mode', MODES = ['progress', 'rivals'];
-  function storedMode() { try { const m = localStorage.getItem(MODE_KEY); return MODES.indexOf(m) >= 0 ? m : null; } catch (e) { return null; } }
+  let memMode = null;   // #254: the mode last chosen, for when localStorage throws
+  function storedMode() { try { const m = localStorage.getItem(MODE_KEY); return MODES.indexOf(m) >= 0 ? m : null; } catch (e) { return memMode; } }
   function saveKey() { return S && S.mode === 'rivals' ? SAVE_KEY + '.rivals' : SAVE_KEY; }
   const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
@@ -851,18 +852,29 @@
   /* #194: each save carries a revision. A tab that loaded revision N only writes N+1 while storage still holds N; if another
    * tab has saved since (storage holds more), this tab is stale and stops writing, so an idle tab cannot undo a busy one. */
   let loadedRev = 0, staleWarned = false;
+  /* #254: when localStorage throws (private window, blocked site data) each mode's latest save is kept in memory, so a mode switch
+   * keeps the game; the player is told once that nothing reaches the disk. */
+  const memSaves = {}; let storageDown = false;
+  function warnStorage() { log('Progress is not being saved: this browser is blocking storage. Switching modes keeps your games for now, but closing or reloading the page loses them.', 'warn'); }
+  function storageFailed() { if (storageDown) return; storageDown = true; warnStorage(); }
+  function readSave(key) {
+    if (!storageDown) { try { return localStorage.getItem(key); } catch (e) { storageFailed(); } }
+    return memSaves[key] || null;
+  }
   function warnStale() { if (staleWarned) return; staleWarned = true; log('Another tab has saved this game, so this tab stopped saving. Reload the page to pick up that progress.', 'warn'); }
   function save() {
     try {
       const key = saveKey();
-      if (CS.SaveIO.isNewer(localStorage.getItem(key), loadedRev)) { warnStale(); return; }
+      if (!storageDown && CS.SaveIO.isNewer(localStorage.getItem(key), loadedRev)) { warnStale(); return; }
       loadedRev++;
-      localStorage.setItem(key, JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, shelf: S.shelf, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() }));
-    } catch (e) { /* storage unavailable */ }
+      const json = JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, shelf: S.shelf, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() });
+      memSaves[key] = json;
+      if (!storageDown) localStorage.setItem(key, json);
+    } catch (e) { storageFailed(); }
   }
   function load() {
     try {
-      const d = JSON.parse(localStorage.getItem(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
+      const d = JSON.parse(readSave(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
       loadedRev = Math.max(0, Math.floor(+d.rev) || 0); staleWarned = false;
       S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
       S.line = CS.SaveIO.cleanLine(d.line).map((n) => ({ uid: n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src || 'feed', autoService: !!n.autoService }));   // #262: cleanLine drops bad uids and ports
@@ -904,6 +916,7 @@
     if (S.mode !== 'rivals') return;
     if (S.run) { Audio.ui('deny'); log('Stop the running batch before restarting the match.', 'warn'); return; }
     if (!resetArmed) { resetArmed = true; b.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; b.classList.add('bad'); setTimeout(() => { resetArmed = false; b.textContent = RESTART_LABEL; b.classList.remove('bad'); }, 4000); return; }
+    delete memSaves[saveKey()];
     try { localStorage.removeItem(saveKey()); } catch (e) { /* ignore */ }
     // a page reload is the cleanest reset, but inside a hosted viewer's frame a reload can land on a blank page
     let topLevel = false; try { topLevel = window.top === window; } catch (e) { topLevel = false; }
@@ -940,6 +953,7 @@
     API.emit('newgame'); API.emit('load', S.ext);   // modules clear their state, then restore this mode's
     setFeedLock(true); applyPlant(); renderFeedSelect(); syncFeedRows();
     $('#log').innerHTML = '';
+    if (storageDown) warnStorage();   // the log was just cleared: keep the notice on screen
     lastRankIdx = rankOf(netWorth()).idx;
     setMuted(S.muted);   // the sound switch follows this game's save
     return true;
@@ -949,6 +963,7 @@
     if (MODES.indexOf(mode) < 0) return;
     if (S.run) { Audio.ui('deny'); log('Finish or stop the running batch before switching modes.', 'warn'); return; }
     const first = !storedMode();
+    memMode = mode;
     try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* ignore */ }
     if (mode === S.mode && !first) return;
     if (!first) save();

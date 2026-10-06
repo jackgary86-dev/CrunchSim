@@ -111,8 +111,9 @@
           let ok = false;
           try { put(r.saves); app.S.mode = r.saves.mode; ok = app.restoreSave() !== false; } catch (e) { ok = false; }
           if (!ok) {   // the game would not load it: put the old saves back (a failed load starts a fresh game over the key) and reload them
-            try { put(old); app.S.mode = oldMode; app.restoreSave(); app.renderAll(); } catch (e) { /* storage gone: nothing more to do */ }
-            msg.textContent = 'That save could not be loaded, so your current games are unchanged.'; msg.className = 'small sv-msg bad'; return;
+            let restored = true;
+            try { put(old); app.S.mode = oldMode; app.restoreSave(); app.renderAll(); } catch (e) { restored = false; app.S.mode = oldMode; }   // storage gone: the game in this tab was never replaced
+            msg.textContent = restored ? 'That save could not be loaded, so your current games are unchanged.' : 'This browser is blocking storage, so the save could not be imported. The game in this tab is unchanged.'; msg.className = 'small sv-msg bad'; return;
           }
           app.emit('modechange', { mode: r.saves.mode }); app.renderAll();
           app.log('Save imported' + (r.saves.at ? ' (exported ' + String(r.saves.at).slice(0, 10) + ')' : '') + '. You are playing ' + r.saves.mode.toUpperCase() + '.', 'ok');

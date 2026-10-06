@@ -94,6 +94,7 @@ Run the checks with (`tests/app-env.js` is a shared DOM stub, not a test):
 
 ```bash
 node tests/app-run.js
+node tests/app-storage.js
 node tests/auction.js
 node tests/audio-idle.js
 node tests/blueprints.js

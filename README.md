@@ -102,6 +102,7 @@ node tests/endgame.js
 node tests/facility.js
 node tests/floor.js
 node tests/furnace.js
+node tests/gallery-grid.js
 node tests/guide.js
 node tests/hotkeys.js
 node tests/inventory.js
@@ -125,6 +126,7 @@ node tests/refinery.js
 node tests/rivals-match.js
 node tests/rivals.js
 node tests/round.js
+node tests/save-clamp.js
 node tests/saveio.js
 node tests/sensor.js
 node tests/slots.js

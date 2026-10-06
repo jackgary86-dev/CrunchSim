@@ -596,6 +596,18 @@
   function makeNode(machineId, settings, src) {
     return { uid: nextUid(), m: machineId, settings: Object.assign({}, MACHINES[machineId].defaults, settings || {}), wear: 0, level: 0, src: src || 'feed' };
   }
+  /* machine id + untrusted settings object -> a complete, in-range settings object: numbers clamp to [min,max] (junk takes the
+   * default), an enum keeps only a listed value. Shared by load() and Blueprints.sanitise (#232). */
+  function cleanSettings(machineId, raw) {
+    const s = {};
+    (MACHINES[machineId].settings || []).forEach(function (st) {
+      const r = raw && raw[st.id];
+      if (st.enum) { s[st.id] = st.enum.indexOf(r) >= 0 ? r : st.def; return; }
+      const v = r != null && r !== '' && isFinite(+r) ? +r : st.def;
+      s[st.id] = Math.min(st.max, Math.max(st.min, v));
+    });
+    return s;
+  }
   function buildLine(preset) {
     const nodes = preset.nodes.map(function (d) { return makeNode(d.m, d.s, 'feed'); });
     preset.nodes.forEach(function (d, i) {
@@ -616,7 +628,7 @@
   }
 
   G.CS.Sim = {
-    makeNode, buildLine, nextUid,
+    makeNode, buildLine, cleanSettings, nextUid,
     NB, LOW, EDGE, MID, makePSD, percentile, sum, newStream, addArr, streamMass, aggregate, aggregateMap, makeFeed,
     profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, binMatters, PRECIOUS, ingotGrade, pureGrade, PURE_MIN, cumCurve, pExtract,
     prices, levelOf, panelGate

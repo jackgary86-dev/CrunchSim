@@ -43,10 +43,12 @@
     return { used: used, cap: cap, free: cap - used, frac: cap > 0 ? used / cap : 1, ok: used <= cap + 1e-9 };
   }
   function fmtArea(a) { return (a >= 100 ? Math.round(a) : Math.round(a * 10) / 10).toLocaleString('en-US'); }
-  /* reason a machine cannot be added to the line, or '' when it fits */
-  function addVeto(nodes, m, level) {
+  /* reason a machine cannot be added to the line, or '' when it fits. pendingMs: ids of machines bought in the same purchase
+   * (a pair) that are not on the line yet, so their floor counts too */
+  function addVeto(nodes, m, level, pendingMs) {
     const M = MACHINES[m]; if (!M) return '';
     const c = check(nodes, level), need = machineArea(m);
+    if (pendingMs && pendingMs.length) c.free -= floorUsed(pendingMs.map(function (id) { return { m: id }; }));
     if (need <= c.free + 1e-9) return '';
     const f = footprint(m);
     return 'No floor space for the ' + M.name + ': it needs ' + fmtArea(need) + ' m² (' + f.w + ' × ' + f.d + ' m plus access) and the plant hall has ' + fmtArea(Math.max(0, c.free)) + ' m² free of ' + fmtArea(c.cap) + '. Buy a bigger Plant hall in the Plant drawer, or remove a machine.';
@@ -96,7 +98,7 @@
 
     /* hooks */
     API.on('load', initRoom);
-    API.on('veto:addMachine', function (p) { return addVeto(API.S.line, p && p.m, room()); });
+    API.on('veto:addMachine', function (p) { return addVeto(API.S.line, p && p.m, room(), p && p.pendingMs); });
     API.on('veto:applyLine', function (p) { const L = p && CS.LINES[p.id]; return lineVeto(p && p.nodes, room(), L ? L.name : ''); });
     API.on('render', renderReadout);
     if (API.booted) { initRoom(); API.renderBank(); renderReadout(); }   // boot already ran: the bank panel was drawn before room existed

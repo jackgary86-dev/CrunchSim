@@ -52,6 +52,12 @@ const bigNodes = big.map((x) => ({ m: x.m }));
 const lineV = Floor.lineVeto(bigNodes, 0, 'Big line');
 ok(lineV && lineV.indexOf('Big line') >= 0, 'a preset bigger than the hall is refused at level 0');
 ok(Floor.lineVeto(bigNodes, 1, 'Big line') === '', 'and loads after the upgrade');
+// #231: a pair bought together needs both footprints: three hammermills leave room for one sink-float, not two
+const trio = [1, 2, 3].map(() => Sim.makeNode('hammer', {}, 'feed')), sfNeed = Floor.machineArea('sinkfloat');
+ok(Floor.check(trio, 0).free >= sfNeed && Floor.check(trio, 0).free < 2 * sfNeed, 'setup: one sink-float fits and two do not (' + f(Floor.check(trio, 0).free) + ' m2 free)');
+ok(Floor.addVeto(trio, 'sinkfloat', 0) === '' && Floor.addVeto(trio, 'sinkfloat', 0, []) === '', 'the first of the pair fits');
+ok(/Plant hall/.test(Floor.addVeto(trio, 'sinkfloat', 0, ['sinkfloat'])), 'the second sink-float is refused once the first is pending');
+ok(Floor.addVeto(trio, 'sinkfloat', 1, ['sinkfloat']) === '', 'and fits after a hall upgrade');
 console.log('  ' + addHammer);
 console.log('  ' + lineV);
 

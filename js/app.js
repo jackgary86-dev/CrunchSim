@@ -516,7 +516,7 @@
     if (singles.length) return singles.sort((a, b) => b.gain - a.gain).slice(0, 3);
     const pairs = [], SORT = TRIAL_MACHINES.filter((m) => MACHINES[m].kind === 'separator');
     SORT.forEach((a) => SORT.forEach((b) => {
-      if (API.veto('addMachine', { m: a }) || API.veto('addMachine', { m: b, pending: 1 })) return;
+      if (API.veto('addMachine', { m: a }) || API.veto('addMachine', { m: b, pending: 1, pendingMs: [a] })) return;
       let best = null;
       ports.forEach((src) => trialSettings(a, true).forEach((sa) => {
         const na = Sim.makeNode(a, sa, src); na.level = levelOf(a);
@@ -559,7 +559,7 @@
     return c;
   }
   function buyAndAdd(p) {
-    for (let i = 0; i < p.ms.length; i++) { const why = API.veto('addMachine', { m: p.ms[i], pending: i }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; } }   // pending: the pair's first sorter is not on the line yet
+    for (let i = 0; i < p.ms.length; i++) { const why = API.veto('addMachine', { m: p.ms[i], pending: i, pendingMs: p.ms.slice(0, i) }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; } }   // pending: the pair's first sorter is not on the line yet
     const price = pairPrice(p);
     if (S.money < price) { Audio.ui('deny'); log('Not enough in the bank: ' + fmtMoney(price) + ' needed.', 'bad'); renderBank(); return; }
     const need = {}; p.ms.forEach((m) => { need[m] = (need[m] || 0) + 1; });

@@ -234,7 +234,7 @@
     const drawer = el('div', 'overlay hidden'); drawer.id = 'drawer';
     drawer.innerHTML = '<div class="sheet"><div class="sheet-h"><b id="drawer-title"></b><button type="button" class="danger" id="drawer-close">CLOSE</button></div><div class="sheet-b" id="drawer-body"></div></div>';
     document.body.appendChild(drawer);
-    if (CS.Overlays) CS.Overlays.attach(drawer, { labelledby: 'drawer-title', close: '#drawer-close', modal: false });   // #198: the toolbar stays usable beside it
+    if (CS.Overlays) CS.Overlays.attach(drawer, { labelledby: 'drawer-title', close: '#drawer-close', modal: '(max-width: 900px)' });   // #198: the toolbar stays usable beside it; #240: not once it covers the screen (matches the CSS breakpoint)
     const station = el('div', 'overlay hidden'); station.id = 'station';
     station.innerHTML = '<div class="sheet wide"><div class="sheet-h"><b id="station-title">Station</b><button type="button" class="danger" id="station-close">CLOSE</button></div><div class="sheet-b station-b"><div class="st-main"></div><div class="st-side"></div></div></div>';
     document.body.appendChild(station);

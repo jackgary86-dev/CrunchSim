@@ -3,8 +3,9 @@
  * Every layer that covers the game (help, the station, the auction round, settings, the title screen) and the plant
  * drawer is a dialog: role=dialog with a name, focus moves into it when it opens and goes back to where it came from
  * when it closes, and Escape closes the topmost one (one handler, here, for all of them). A modal layer also makes
- * the page behind it, and any layer under it, inert so Tab cannot walk behind it. The drawer is not modal: the
- * toolbar stays usable beside it (#137), so it gets the dialog, the focus and Escape but no inert.
+ * the page behind it, and any layer under it, inert so Tab cannot walk behind it. The drawer is not modal while it
+ * sits beside the toolbar (#137), so it gets the dialog, the focus and Escape but no inert; at 900px and below it covers
+ * the whole screen (#240), so it is modal there (modal: a media query, followed live when the window is resized).
  *
  * The modules keep opening and closing their layers the way they always did (toggling .hidden); a MutationObserver
  * here notices. The stack of open layers is pure (CS.Overlays.createStack) so tests/overlays.js can check it in Node.
@@ -37,7 +38,18 @@
   let seq = 0;
   const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const isOpen = (el) => el.isConnected && !el.classList.contains('hidden');
-  const modalMap = () => { const m = {}; Object.keys(reg).forEach((id) => { m[id] = reg[id].o.modal !== false; }); return m; };
+  /* o.modal: false (never), a media query string (only while it matches), anything else (always) */
+  function isModal(o, mm) {
+    if (o.modal === false) return false;
+    if (typeof o.modal === 'string') return !!(mm && mm(o.modal).matches);
+    return true;
+  }
+  const mq = (q) => window.matchMedia(q);
+  const modalMap = () => { const m = {}; Object.keys(reg).forEach((id) => { m[id] = isModal(reg[id].o, mq); }); return m; };
+  function syncModal(id) {
+    const r = reg[id]; if (isModal(r.o, mq)) r.el.setAttribute('aria-modal', 'true'); else r.el.removeAttribute('aria-modal');
+    applyInert();
+  }
 
   function applyInert() {
     const modal = modalMap(), under = stack.inert(modal), page = document.getElementById('app');
@@ -65,9 +77,10 @@
     if (!el || el.dataset.ovId) return;
     o = o || {}; const id = 'ov' + (++seq); el.dataset.ovId = id;
     el.setAttribute('role', 'dialog');
-    if (o.modal !== false) el.setAttribute('aria-modal', 'true');
     if (o.labelledby) el.setAttribute('aria-labelledby', o.labelledby); else if (o.label) el.setAttribute('aria-label', o.label);
     reg[id] = { el, o, opener: null, was: false };
+    if (typeof o.modal === 'string' && window.matchMedia) window.matchMedia(o.modal).addEventListener('change', () => syncModal(id));   // resized across the breakpoint with the layer open
+    if (o.modal !== false) syncModal(id);
     new MutationObserver(() => sync(id)).observe(el, { attributes: true, attributeFilter: ['class'] });
     sync(id);
   }
@@ -83,5 +96,5 @@
     const help = () => attach(document.getElementById('help'), { label: 'How to play', close: '#btn-help-close' });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', help); else help();
   }
-  CS.Overlays = { createStack, attach, closeTop, focusIn };
+  CS.Overlays = { createStack, isModal, attach, closeTop, focusIn };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -22,7 +22,9 @@
     if (!d.progress && !d.rivals) return { ok: false, why: 'The code holds no game.' };
     return { ok: true, saves: { progress: d.progress, rivals: d.rivals, mode: d.mode === 'rivals' ? 'rivals' : 'progress', at: d.at } };
   }
-  CS.SaveIO = { PREFIX, encode, decode };
+  /* #194: true when the raw stored save holds a newer revision than the one a tab loaded (so that tab must not overwrite it) */
+  function isNewer(raw, rev) { try { const d = raw ? JSON.parse(raw) : null; return !!d && (Math.floor(+d.rev) || 0) > rev; } catch (e) { return false; } }
+  CS.SaveIO = { PREFIX, encode, decode, isNewer };
 
   if (typeof document === 'undefined') return;
   function start() {

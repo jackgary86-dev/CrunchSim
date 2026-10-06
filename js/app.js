@@ -499,7 +499,7 @@
     if (picks[0].ms.length > 1) note('No single sorter pulls anything pure out of what is left: these pairs do, one sorter feeding the next.');
     picks.forEach((p) => {
       const at = S.line.findIndex((n) => n.uid === p.src.uid), from = (at + 1) + ':' + MACHINES[S.line[at].m].short + '/' + p.src.port.toUpperCase();
-      const price = p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
+      const price = pairPrice(p);
       const name = p.ms.map((m) => MACHINES[m].name).join(' + ');
       const where = p.ms.length > 1 ? 'on ' + from + ', then the second on its ' + p.port2.toUpperCase() : 'on ' + from;
       const row = el('div', 'urow', '<span class="ic ok">&#9650;</span><span><div class="nm">' + esc(name) + ' <b class="ok">+' + fmtMoney(p.gain) + '/t</b></div><div class="cur">' + esc(where) + ' · pays back in ' + fmtNum(Math.ceil(price / p.gain), 0) + ' t</div></span>');
@@ -508,11 +508,19 @@
       row.appendChild(b); box.appendChild(row);
     });
   }
+  /* what a NEXT PURCHASE pick costs: a unit for every machine in it beyond the spare units already owned (a pair of the same
+   * sorter needs two) */
+  function pairPrice(p) {
+    const need = {}; p.ms.forEach((m) => { need[m] = (need[m] || 0) + 1; });
+    let c = 0; for (const m in need) c += Math.max(0, need[m] - Math.max(0, unitsOf(m) - S.line.filter((x) => x.m === m).length)) * MACHINES[m].price;
+    return c;
+  }
   function buyAndAdd(p) {
     for (let i = 0; i < p.ms.length; i++) { const why = API.veto('addMachine', { m: p.ms[i], pending: i }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; } }   // pending: the pair's first sorter is not on the line yet
-    const price = p.ms.reduce((c, m) => c + (freeUnit(m) ? 0 : MACHINES[m].price), 0);
+    const price = pairPrice(p);
     if (S.money < price) { Audio.ui('deny'); log('Not enough in the bank: ' + fmtMoney(price) + ' needed.', 'bad'); renderBank(); return; }
-    for (const m of p.ms) if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }
+    const need = {}; p.ms.forEach((m) => { need[m] = (need[m] || 0) + 1; });
+    for (const m in need) { let buy = need[m] - Math.max(0, unitsOf(m) - S.line.filter((x) => x.m === m).length); while (buy-- > 0) if (!buyMachine(m)) { renderBank(); return; } }
     const na = Sim.makeNode(p.ms[0], {}, p.src); S.line.push(na);
     let last = na;
     if (p.ms[1]) { last = Sim.makeNode(p.ms[1], {}, { uid: na.uid, port: p.port2 }); S.line.push(last); }
@@ -718,7 +726,7 @@
   function renderHeader() {
     $('#clock').textContent = fmtClock(S.clock);
     $('#money').textContent = fmtMoney(S.money); $('#money').classList.toggle('bad', S.money < 0);
-    const nw = netWorth(); $('#worth').textContent = fmtMoney(nw); $('#rank').textContent = rankOf(nw).name;
+    const nw = netWorth(); $('#worth').textContent = fmtMoney(nw); if (S.mode !== 'rivals') $('#rank').textContent = rankOf(nw).name;   // Rivals shows the match place there (modes.js)
     $('#tonnes').textContent = fmtNum(S.tonnes + (S.run ? S.run.done : 0), S.tonnes > 100 ? 0 : 1) + ' t';
     $('#prog').style.width = S.run ? (100 * S.run.done / S.run.total) + '%' : '0%';
     const rn = $('#run-net');
@@ -873,6 +881,7 @@
     setFeedLock(true); applyPlant(); renderFeedSelect(); syncFeedRows();
     $('#log').innerHTML = '';
     lastRankIdx = rankOf(netWorth()).idx;
+    setMuted(S.muted);   // the sound switch follows this game's save
     return true;
   }
   /* switch game mode in place: save this mode's game, then load the other mode's save (or start it fresh) */
@@ -896,7 +905,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};
@@ -922,6 +931,7 @@
     $('#sources').innerHTML = SOURCES.map((s) => '<li><a href="' + esc(s[1]) + '" target="_blank" rel="noopener">' + esc(s[0]) + '</a></li>').join('');
     window.addEventListener('keydown', (e) => {
       if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if (document.body.classList.contains('at-title') || e.defaultPrevented) return;   // the title screen is not the game; a station already took the key
       if (e.code === 'Space') { e.preventDefault(); $('#btn-run').click(); }   // through the button, so the RUN choice (#141) applies
       else if (e.key === '1') setSpeed(1); else if (e.key === '2') setSpeed(10); else if (e.key === '3') setSpeed(60);
       else if (e.key === 'm' || e.key === 'M') { Audio.init(); setMuted(!S.muted); }
@@ -954,8 +964,10 @@
     }
     /* animation frames stop in a background tab; a timer keeps a running batch (or a whole lot) going there */
     function hidden() { return typeof document.hidden === 'boolean' && document.hidden; }
-    function next() { if (hidden()) setTimeout(() => tick(performance.now()), 100); else requestAnimationFrame(tick); }
-    document.addEventListener('visibilitychange', () => { lastRealT = performance.now(); });
+    let gen = 0;   // one live chain: a frame or timer from an older chain stops itself
+    function next() { const g = gen; if (hidden()) setTimeout(() => { if (g === gen) tick(performance.now()); }, 100); else requestAnimationFrame((t) => { if (g === gen) tick(t); }); }
+    // a pending animation frame freezes when the tab hides: start a fresh chain on every visibility change
+    document.addEventListener('visibilitychange', () => { lastRealT = performance.now(); gen++; next(); });
     next();
     setInterval(save, 15000);
   }

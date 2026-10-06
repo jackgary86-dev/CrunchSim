@@ -73,7 +73,7 @@
       if (!cv) { cv = document.createElement('canvas'); cv.className = 'tt-yard'; cv.setAttribute('aria-hidden', 'true'); title.insertBefore(cv, title.firstChild); }
       if (!yard || yard.cv !== cv) yard = { cv, drop: [], belt: [], heaps: {}, raf: 0, last: 0 };
       if (!yard.raf) yard.raf = requestAnimationFrame(yardLoop);
-      setTimeout(() => { if (yard && !yard.last) yardLoop(performance.now()); }, 50);   // a first frame even where animation frames are paused
+      setTimeout(() => { if (yard && !yard.last) { if (yard.raf) cancelAnimationFrame(yard.raf); yard.raf = 0; yardLoop(performance.now()); } }, 50);   // a first frame even where animation frames are paused
     }
 
     /* ---- the title screen ---- */
@@ -98,10 +98,10 @@
       title.dataset.cur = cur;
     }
     /* ---- settings (#136): sound, motion, the guide, the save, restarting a match: one screen ---- */
-    let sets = null;
+    let sets = null, svPanel = null;
     const RM_KEY = 'crunchsim.reduceMotion';
     const reduceMotion = () => { try { return localStorage.getItem(RM_KEY) === '1'; } catch (e) { return false; } };
-    function applyMotion() { document.body.classList.toggle('reduce-motion', reduceMotion()); }
+    function applyMotion() { document.body.classList.toggle('reduce-motion', reduceMotion()); if (title && !title.classList.contains('hidden')) startYard(); }
     function showSettings() {
       if (!sets) {
         sets = document.createElement('div'); sets.id = 'settings'; sets.className = 'overlay hidden';
@@ -111,6 +111,7 @@
         sets.querySelector('#settings-close').addEventListener('click', closeSettings);
       }
       const b = sets.querySelector('.set-b'), S = app.S;
+      svPanel = svPanel || document.getElementById('saveio-panel'); const stash = document.getElementById('stash'); if (svPanel && stash) stash.appendChild(svPanel);   // out of the way before the rows are rebuilt
       const muted = CS.Audio && CS.Audio.isMuted && CS.Audio.isMuted();
       const V = CS.Audio && CS.Audio.volumes ? CS.Audio.volumes() : { master: 1, plant: 0.8, fx: 0.9, music: 0 };
       const slider = (k, label, note) => '<div class="set-row vol"><span><b>' + label + '</b><span class="small">' + note + '</span></span><input type="range" min="0" max="100" step="5" data-vol="' + k + '" value="' + Math.round((V[k] || 0) * 100) + '"><span class="num vol-v">' + Math.round((V[k] || 0) * 100) + '%</span></div>';
@@ -127,19 +128,21 @@
       const g = b.querySelector('#set-guide'); if (g) g.addEventListener('click', () => { closeSettings(); if (CS.Guide && CS.Guide.live) CS.Guide.live.begin(); });
       const r = b.querySelector('#set-restart'); if (r) { let armed = false; r.addEventListener('click', () => { if (!armed) { armed = true; r.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; return; } closeSettings(); const ng = document.getElementById('btn-newgame'); if (ng) { ng.click(); ng.click(); } }); }
       b.querySelector('#set-menu').addEventListener('click', () => { closeSettings(); showTitle(); });
-      const sv = document.getElementById('saveio-panel'); if (sv) b.querySelector('#set-save').appendChild(sv);
+      if (svPanel) b.querySelector('#set-save').appendChild(svPanel);
       sets.classList.remove('hidden');
     }
     function closeSettings() {
       if (!sets) return;
-      const sv = document.getElementById('saveio-panel'), stash = document.getElementById('stash'); if (sv && stash) stash.appendChild(sv);
+      const stash = document.getElementById('stash'); if (svPanel && stash) stash.appendChild(svPanel);
       sets.classList.add('hidden');
     }
     function hideTitle() { if (title) title.classList.add('hidden'); document.body.classList.remove('at-title'); if (CS.Audio && CS.Audio.duck) CS.Audio.duck('plant', false); if (CS.Music) CS.Music.setTheme(app.S.mode === 'rivals' ? 'rivals' : 'progress'); }
     function go(what) {
       const mode = what === 'progress' ? 'progress' : 'rivals';
+      if (app.S.run) { app.log('A batch is running: let it finish (or STOP it) before switching games.', 'warn'); hideTitle(); render(); return; }
       hideTitle();
       if (mode !== app.S.mode || !app.storedMode()) app.switchMode(mode);
+      if (app.S.mode !== mode) { render(); return; }   // the switch was refused: never reset the game that is still loaded
       if (what === 'rivals-new') { app.softReset(); const h = $('#help'); if (h) h.classList.add('hidden'); if (CS.Round && CS.Round.live) CS.Round.live.open(); }
       render();
     }
@@ -152,9 +155,11 @@
       if (app.S.mode !== 'rivals' || !RL || !RL.table) { bar.classList.add('hidden'); return; }
       const rows = RL.table(), rd = RL.round(), C = (CS.Round.COLORS || {});
       bar.classList.remove('hidden');
-      bar.innerHTML = '<div class="mb-round"><b>' + (rd.over ? 'MATCH OVER' : rd.n ? 'ROUND ' + rd.n + ' OF ' + rd.length : 'MATCH OF ' + rd.length) + '</b><span>highest worth wins</span></div>' +
+      const html = '<div class="mb-round"><b>' + (rd.over ? 'MATCH OVER' : rd.n ? 'ROUND ' + rd.n + ' OF ' + rd.length : 'MATCH OF ' + rd.length) + '</b><span>highest worth wins</span></div>' +
         '<div class="mb-table">' + rows.map((r) => '<div class="mb-p' + (r.id === 'you' ? ' you' : '') + '" style="--pc:' + (C[r.id] || '#7fe3ff') + '"><i>' + ord(r.place) + '</i><b>' + esc(r.id === 'you' ? 'You' : r.name) + '</b><span>' + money(r.worth) + '</span></div>').join('') + '</div>' +
         '<button type="button" class="primary mb-go">' + (rd.over ? 'STANDINGS' : rd.n ? 'AUCTION ROUND' : 'START THE MATCH') + '</button>';
+      if (html === bar.dataset.html) return;   // unchanged: keep the button under the pointer
+      bar.dataset.html = html; bar.innerHTML = html;
       bar.querySelector('.mb-go').addEventListener('click', () => RL.open());
     }
     /* header: Rivals shows your place in the match where Progress shows the rank */

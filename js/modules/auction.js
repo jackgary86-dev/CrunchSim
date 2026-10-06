@@ -340,7 +340,7 @@
 
     /* ---- buying and settlement ---- */
     /* the batch a lot of t tonnes fills: all of it when it fits (or would leave under a tonne behind), else the batch limit */
-    function batchTons(t, cap) { return t <= cap + 1 ? Math.round(t * 10) / 10 : cap; }
+    function batchTons(t, cap) { return t <= cap + 1 ? t : cap; }   // all of it, unrounded: rounding would strand a sliver
     function loadPending() {
       const P = st.pending; if (!P || S().run) return false;
       S().feedOwner = null;   // setFeed renders before the flag is set: no guard may read this as someone else's feed

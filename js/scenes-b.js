@@ -229,7 +229,7 @@
         if (p.mode === 'belt') {
           p.x += v * dt; p.ang *= 0.9;
           if (p.x >= MAG.cx) {
-            if (p.fate) { p.mode = 'stick'; p.a = -Math.PI / 2; if (Math.random() < 0.6) cam.spark(p.x, p.y, 2, '#bfe3ff'); cam.sound('clank'); }   // #126: a flick as steel snaps to the drum else { p.mode = 'air'; p.vx = 150 + rnd(-15, 15); p.vy = -rnd(10, 40); }
+            if (p.fate) { p.mode = 'stick'; p.a = -Math.PI / 2; if (Math.random() < 0.6) cam.spark(p.x, p.y, 2, '#bfe3ff'); cam.sound('clank'); } else { p.mode = 'air'; p.vx = 150 + rnd(-15, 15); p.vy = -rnd(10, 40); }   // #126: a flick as steel snaps to the drum
           }
         } else if (p.mode === 'stick') {
           p.a += v / MAG.R * dt; const rr = MAG.R + p.r * 0.8;

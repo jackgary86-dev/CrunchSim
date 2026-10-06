@@ -170,10 +170,12 @@
       if (nb * L.tons > app.S.money) { app.log('A bid of ' + money(nb) + '/t on ' + fmtT(L.tons) + ' commits ' + money(nb * L.tons) + '; the bank holds ' + money(app.S.money) + '.', 'warn'); return; }
       r.price = nb; r.leader = 'you'; r.pop++; r.bidOn = r.k; snd('bid', 0); say('You bid ' + money(nb) + '/t');
       busy = true; render();
+      const live = () => R() === r && !r.done && r.k < r.cards.length;   // a reload, a new game or a mode switch ends these timers
       setTimeout(() => {
+        if (!live()) { busy = false; return; }
         if (rivalsAnswer()) { busy = false; render(); return; }
         snd('going'); say('Going once...'); render();   // #117: the auctioneer's count before the gavel
-        setTimeout(() => { snd('going'); say('Going twice...'); render(); setTimeout(() => { busy = false; sold(); render(); }, 380); }, 380);
+        setTimeout(() => { if (!live()) { busy = false; return; } snd('going'); say('Going twice...'); render(); setTimeout(() => { busy = false; if (live()) { sold(); render(); } }, 380); }, 380);
       }, 450);
     }
     function youPass() {
@@ -211,7 +213,7 @@
       if (!r.leader) r.justWon = null;
       r.k++; r.price = 0; r.leader = null; r.out = [];
       if (r.k >= r.cards.length) return finish();
-      if (!inFor('you')) { setTimeout(() => { settleWithoutYou(); }, 350); }   // you hold a card: the rest go among the rivals
+      if (!inFor('you')) { const rr = r, kk = r.k; setTimeout(() => { if (R() === rr && !rr.done && rr.k === kk) settleWithoutYou(); }, 350); }   // you hold a card: the rest go among the rivals
       render();
     }
     function finish() {
@@ -239,7 +241,7 @@
     }
     function open() {
       build(); ov.classList.remove('hidden'); render();
-      const r = R(); if (r && !r.done && !busy && card() && !inFor('you')) setTimeout(() => { if (R() === r && !r.done) { settleWithoutYou(); render(); } }, 350);   // a restored round where you are out: the rivals finish the bin
+      const r = R(); if (r && !r.done && !busy && card() && !inFor('you') && !r.settling) { r.settling = true; const kk = r.k; setTimeout(() => { r.settling = false; if (R() === r && !r.done && r.k === kk) { settleWithoutYou(); render(); } }, 350); }   // a restored round where you are out: the rivals finish the bin
     }
     function close() { if (ov) ov.classList.add('hidden'); }
     function compBar(c) { return '<div class="rc-comp">' + Object.entries(c).sort((a, b) => b[1] - a[1]).map((e) => '<i style="flex:' + e[1].toFixed(4) + ';background:' + MATERIALS[e[0]].color + '"></i>').join('') + '</div>'; }
@@ -347,7 +349,7 @@
     if (app.S && app.S.ext && app.S.ext.round) { const d = app.S.ext.round; st.n = d.n || 0; st.misc = !!d.misc; }
     app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? st.open : null } }));
     app.on('batchComplete', () => { setTimeout(checkEnd, 0); });
-    app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; render(); });
+    app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; busy = false; render(); });
     app.on('boot', build);
     app.on('render', render);
     CS.Round.live = {

@@ -470,7 +470,7 @@
     if (best && best.v >= 50) return { title: 'SELL', label: 'SELL ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(best.v), sub: 'A pure bucket is money waiting: ' + fmtW(stock[best.m].t) + ' of ' + MATERIALS[best.m].name.toLowerCase() + '.', go: () => { if (I.sellMat) I.sellMat(best.m); } };
     const p = topPurchase();
     if (p) {
-      const price = p.ms.reduce((c, m) => c + (app.unitsOf(m) > S.line.filter((x) => x.m === m).length ? 0 : MACHINES[m].price), 0);
+      const price = app.pairPrice ? app.pairPrice(p) : 0;
       if (price <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
     if (mt >= 1) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material is waiting for your sorters.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
@@ -480,9 +480,12 @@
   let lastBatch = null;
   function renderSideCards() {
     const nb = $('#next-body'); if (nb) {
-      const a = nextStep();
-      nb.innerHTML = '<div class="ns-t">' + esc(a.title) + '</div><div class="ns-s">' + esc(a.sub) + '</div>';
-      if (!a.quiet || app.S.run) { const b = el('button', 'primary', esc(a.label)); b.type = 'button'; b.addEventListener('click', () => a.go()); nb.appendChild(b); }
+      const a = nextStep(), key = a.title + '|' + a.sub + '|' + a.label;
+      if (nb.dataset.key !== key) {   // unchanged: keep the button (and its focus) under the pointer
+        nb.dataset.key = key;
+        nb.innerHTML = '<div class="ns-t">' + esc(a.title) + '</div><div class="ns-s">' + esc(a.sub) + '</div>';
+        if (!a.quiet || app.S.run) { const b = el('button', 'primary', esc(a.label)); b.type = 'button'; b.addEventListener('click', () => nextStep().go()); nb.appendChild(b); }
+      }
     }
     const lb = $('#last-body'); if (lb) {
       lb.parentElement.classList.toggle('hidden', !lastBatch);
@@ -610,9 +613,9 @@
     const col = el('div', 'fcol add'); col.tabIndex = 0; col.setAttribute('role', 'button');
     col.innerHTML = '<div class="fn-plus">+</div><div class="fn-s">Add a machine</div>';
     // #143: the best next sorter, bought and placed in one click (NEXT PURCHASE's top pick)
-    const picks = app.nextPurchases && !app.S.run && app.S.line.length ? app.nextPurchases() : null, p = picks && picks[0];
+    const p = topPurchase();   // cached: the ranking evaluates the line for every candidate
     if (p && app.buyAndAdd) {
-      const price = p.ms.reduce((c, m) => c + (app.unitsOf(m) > app.S.line.filter((x) => x.m === m).length ? 0 : MACHINES[m].price), 0);
+      const price = app.pairPrice ? app.pairPrice(p) : 0;
       const sug = el('div', 'add-sug', '<div class="fn-sub">NEXT PURCHASE</div><b>' + esc(p.ms.map((m) => MACHINES[m].name).join(' + ')) + '</b><div class="ok">+' + app.fmtMoney(p.gain) + '/t</div>');
       const b = el('button', 'buy' + (app.S.money < price ? ' poor' : ''), 'BUY &amp; PLACE ' + app.fmtMoney(price)); b.type = 'button';
       b.addEventListener('click', (e) => { e.stopPropagation(); app.buyAndAdd(p); });
@@ -673,8 +676,8 @@
     const S = app.S, stock = srcMap(loaded.src);
     if (!S.run && S.feedPrepaid && S.feedOwner === 'rerun' && sameComp(S.comp, loaded.comp)) {
       let have = 0; for (const m in loaded.comp) have += stock[m] ? stock[m].t : 0;   // never run more than the bucket holds
-      if (S.tons > have && have >= 1) { S.tons = Math.floor(have); app.syncFeedRows(); }
-      return;
+      if (have >= 1) { if (S.tons > have) { S.tons = Math.floor(have); app.syncFeedRows(); } return; }
+      // emptied (sold or refined) since it was loaded: there is nothing left to run
     }
     if (S.run) return;
     const label = loaded.label; loaded = null;
@@ -886,7 +889,7 @@
     DRAWERS.forEach(([key, label, ids]) => {
       const b = document.getElementById('tool-' + key); if (!b) return;
       const fresh = ids.some((id) => panelShown(id) && !seenPanels[id]);
-      b.innerHTML = esc(drawerLabel(key, label)) + (fresh ? ' <i class="newb">NEW</i>' : '');
+      const h = esc(drawerLabel(key, label)) + (fresh ? ' <i class="newb">NEW</i>' : ''); if (b.innerHTML !== h) b.innerHTML = h;
     });
   }
   /* the first launch asks which game to play */

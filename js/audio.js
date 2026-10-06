@@ -25,7 +25,7 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
 
   function init() {
-    if (ctx) return true;
+    if (ctx) { if (ctx.state === 'suspended' && ctx.resume) ctx.resume(); return true; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     try {
       ctx = new AC(); master = ctx.createGain(); master.gain.value = masterLevel();

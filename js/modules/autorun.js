@@ -30,7 +30,7 @@
       const P = CS.Auction.live.pending();
       run = { lot, batches: 0, t: 0, net: 0, kwh: 0, stock0: t0.stock, misc0: t0.misc, money0: app.S.money, paid: P && P.paid > 0 ? P.paid * (P.tons / (P.boughtTons || P.tons)) : 0 };
       app.log('Running the whole of lot #' + lot + ': batch after batch until it is used up.', 'ok');
-      app.startRun(); if (!app.S.run) finish('the line could not start');
+      app.startRun(); if (!app.S.run) { run = null; label(); return; }   // nothing ran: no card, the app has said why
       label();
     }
     function trouble() {
@@ -58,7 +58,7 @@
       run.net += (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0);   // cash plus the products put into stock, as the batch card counts it
       if (p.why !== 'complete') { finish(p.why === 'stopped' ? 'stopped by you' : 'the line halted'); return; }
       setTimeout(() => {
-        if (!run) return;
+        if (!run || app.S.run) return;
         if (app.hideCard) app.hideCard();
         const why = trouble(); if (why) { finish('stopped: ' + why); return; }
         if (lotNow() !== run.lot || !app.S.feedPrepaid) { finish('the lot is used up'); return; }
@@ -82,6 +82,7 @@
       ref.parentNode.insertBefore(btn, ref.nextSibling);
       // RUN starts the whole lot when that is the choice; while anything runs the same button is STOP (app.startRun stops)
       ref.addEventListener('click', (e) => {
+        if (run && !app.S.run) { e.stopImmediatePropagation(); finish('stopped by you'); return; }   // between two of the lot's batches: STOP means stop
         if (run || app.S.run || !lotChosen()) return;
         e.stopImmediatePropagation(); go();
       }, true);

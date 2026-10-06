@@ -457,6 +457,9 @@
     }
     function render() {
       if (!els) return;
+      const RL = CS.Round && CS.Round.live;
+      if (app.S && app.S.mode === 'rivals' && RL && RL.table) { renderMatch(RL); return; }   // #111: in Rivals the panel is the match, not the old yards
+      els.tog.classList.remove('hidden');
       const h = clockH(), act = activeAt(h);
       els.tag.textContent = st.on ? act.length + ' IN THE MARKET' : 'SANDBOX';
       els.tog.textContent = st.on ? 'SANDBOX: TURN RIVALS OFF' : 'TURN RIVALS ON';
@@ -473,6 +476,17 @@
       st.rjobs.forEach((rj) => { hb += '<div class="rv"><b>Job #' + rj.job.id + '</b> ' + fnum(rj.job.tons, 1) + ' t ' + esc(MATERIALS[rj.job.mat].name.toLowerCase()) + ' · ' + esc(nameOf(rj.by)) + ' · due in ' + fmtH(Math.max(0, rj.untilH - h)) + '</div>'; });
       els.held.innerHTML = st.on ? (hb || '<div class="small">Nothing. An offered job you leave untaken for ' + TENDER_H + ' h of plant time goes to tender.</div>') : '<div class="small">Sandbox: no rival bids and no tenders. Lots sell at the ask and every contract stays open.</div>';
       els.wire.innerHTML = st.news.length ? st.news.map((n) => '<div class="' + esc(n.cls) + '">' + (typeof app.fmtClock === 'function' ? app.fmtClock(n.h * 3600) + ' ' : '') + esc(n.text) + '</div>').join('') : '<div>Quiet so far.</div>';
+    }
+    /* Rivals mode (#111): the three yards at the table and the match standings by worth; no sandbox switch, no old league */
+    function renderMatch(RL) {
+      const rows = RL.table(), rd = RL.round(), me = rows.find((r) => r.id === 'you');
+      els.tag.textContent = rd.over ? 'MATCH OVER' : rd.n ? 'ROUND ' + rd.n + ' OF ' + rd.length : 'MATCH NOT STARTED';
+      els.tog.classList.add('hidden');
+      els.ro.innerHTML = app.ro('YOUR PLACE', me.place + '/' + rows.length, me.place === 1 ? 'LEADING' : 'BY WORTH', me.place === 1 ? 'good' : '') + app.ro('ROUND', rd.n + '/' + rd.length, rd.over ? 'OVER' : '', '');
+      els.lg.innerHTML = '<div class="r h"><span>#</span><span>YARD</span><span>WORTH</span><span>BINS</span><span>T</span></div>' + rows.map((r) => '<div class="r' + (r.id === 'you' ? ' you' : '') + '"><span>' + r.place + '</span><span>' + esc(r.name) + '</span><span>' + money(r.worth) + '</span><span>' + r.bins + '</span><span>' + fnum(r.t, 0) + '</span></div>').join('');
+      els.roster.innerHTML = rows.filter((r) => r.id !== 'you').map((r) => { const R = rivalById(r.id); return '<div class="rv"><span class="k">' + esc(r.label.toUpperCase()) + '</span> <b>' + esc(r.name) + '</b>' + (R && R.blurb ? ' · ' + esc(R.blurb) : '') + '</div>'; }).join('');
+      els.held.innerHTML = '<div class="small">Bins are won in the auction rounds: highest worth after the last round wins the match.</div>';
+      els.wire.innerHTML = '<div>The round log is on the auction screen.</div>';
     }
     /* the auction board: bid state and a BID button on each lot, buy-now on the BUY button, closed lots at the bottom */
     app.on('auctionRender', (p) => {

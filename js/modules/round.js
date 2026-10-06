@@ -116,14 +116,24 @@
     const nameOf = (id) => id === 'you' ? 'You' : (rival(id) ? rival(id).name : id);
     const yardEmpty = () => { const L = A() && A().live; return !L || (!L.pending() && !(L.yard() && L.yard().length)); };
     const stockValue = () => { const I = CS.Inventory; if (!I) return 0; let v = 0; const s = I.stock(); for (const m in s) v += I.quote ? I.quote(m) : 0; return v; };
-    function canStart() { return !app.S.run && yardEmpty() && !(st.open && !st.open.done) && !st.match.over; }
+    function canStart() { return !app.S.run && yardEmpty() && !(st.open && !st.open.done) && !st.match.over && !st.match.ending; }
     const M_ = () => st.match;
     function rivalRec(id) { const m = M_(); return m.rivals[id] || (m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }); }
+    const blank = () => ({ worth: app.netWorth() + stockValue(), bins: 0, t: 0, best: null });   // #112: before round 1 every yard starts where you do
+    const recOf = (id) => (st.n === 0 ? blank() : rivalRec(id));
+    /* #108: the match ends once the last round's bin is processed (yard empty, line idle); the standings are then frozen */
+    function checkEnd() {
+      const m = M_(); if (!m.ending || m.over || app.S.run || !yardEmpty()) return false;
+      m.over = true; m.ending = false;
+      m.final = {}; ['you'].concat(PLAYERS.filter((id) => rival(id))).forEach((id) => { m.final[id] = id === 'you' ? app.netWorth() + stockValue() : rivalRec(id).worth; });
+      app.log('The match is over after ' + st.n + ' rounds. Final standings are on the auction screen.', 'ok');
+      app.save(); render(); return true;
+    }
 
     /* ---- a round ---- */
     function newRound() {
       if (!canStart()) return false;
-      if (st.n === 0) { const m = M_(); m.start = app.netWorth(); m.over = false; PLAYERS.forEach((id) => { if (rival(id)) m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }; }); }
+      if (st.n === 0) { const m = M_(); m.start = app.netWorth() + stockValue(); m.over = false; m.ending = false; m.final = null; PLAYERS.forEach((id) => { if (rival(id)) m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }; }); }
       st.n++; st.misc = false;
       const rng = CS.Auction.mulberry32((st.seed ^ Math.imul(st.n, 2654435761) ^ Math.floor(app.S.clock)) >>> 0);
       const size = roundSize(app.S.money, stockValue());
@@ -179,7 +189,7 @@
         r.won[r.leader] = { k: r.k, perT: r.price };
         if (r.leader === 'you') {
           const ok = A().live.deliver(Object.assign({}, L), r.price, 'Won at auction round ' + r.n + ':');
-          if (!ok) { delete r.won.you; say('You could not pay: the bin goes back to the seller'); }
+          if (!ok) { delete r.won.you; say('You could not pay: the bin goes to the next bidder'); r.out.push('you'); r.leader = null; r.price = 0; settleWithoutYou(); return; }
           else { M_().you.bins++; M_().you.t += L.tons; }
         } else {
           const rec = rivalRec(r.leader), pr = rivalProfit(r.leader, L, r.price);
@@ -201,10 +211,10 @@
       if (!r.won.you) {
         st.misc = true;
         const I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0;
-        app.log('Round ' + r.n + ': no bin for you. ' + (mt >= 1 ? 'Run your MISC bin: ' + fmtT(mt) + ' of mixed material is waiting (RE-RUN on the MISC bucket).' : 'Your MISC bin is empty; open the next round when you are ready.'), 'warn');
+        app.log('Round ' + r.n + ': no bin for you. ' + (mt >= 1 ? 'Run your MISC bin: one batch of the ' + fmtT(mt) + ' of mixed material waiting (RE-RUN on the MISC bucket).' : 'Your MISC bin is empty; open the next round when you are ready.'), 'warn');
       }
       empty.filter((id) => id !== 'you').forEach((id) => { rivalRec(id).worth += MISC_RUN * r.size; app.log(nameOf(id) + ' left round ' + r.n + ' without a bin and re-ran its MISC.'); });
-      if (st.n >= M_().length) { M_().over = true; app.log('The match is over after ' + st.n + ' rounds. Final standings are on the auction screen.', 'ok'); }
+      if (st.n >= M_().length) { M_().ending = true; if (!checkEnd()) app.log('Last round done: the match ends when your yard is empty and the plant has finished.', 'ok'); }
       st.last = { n: r.n, won: Object.assign({}, r.won), cards: r.cards.map((L) => ({ cat: L.catName, headline: L.headline, tons: L.tons })) };
       app.save(); app.markDirty(true); render();
     }
@@ -218,25 +228,28 @@
       ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
       ov.querySelector('#round-close').addEventListener('click', close);
     }
-    function open() { build(); ov.classList.remove('hidden'); render(); }
+    function open() {
+      build(); ov.classList.remove('hidden'); render();
+      const r = R(); if (r && !r.done && !busy && card() && !inFor('you')) setTimeout(() => { if (R() === r && !r.done) { settleWithoutYou(); render(); } }, 350);   // a restored round where you are out: the rivals finish the bin
+    }
     function close() { if (ov) ov.classList.add('hidden'); }
     function compBar(c) { return '<div class="rc-comp">' + Object.entries(c).sort((a, b) => b[1] - a[1]).map((e) => '<i style="flex:' + e[1].toFixed(4) + ';background:' + MATERIALS[e[0]].color + '"></i>').join('') + '</div>'; }
     function heavy(c) { const e = Object.entries(c).sort((a, b) => b[1] - a[1]); const tops = e.slice(0, 3).filter((x) => x[1] >= 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 100) + '%'); const prec = e.filter((x) => CS.Sim.PRECIOUS.indexOf(x[0]) >= 0 && x[1] > 0 && x[1] < 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 1e6) + ' g/t'); return tops.concat(prec).join(', '); }
-    const worthOf = (id) => id === 'you' ? app.netWorth() : rivalRec(id).worth;
+    const worthOf = (id) => { const m = M_(); if (m.final && m.final[id] != null) return m.final[id]; return id === 'you' ? app.netWorth() + stockValue() : recOf(id).worth; };
     function emblem(id) { return '<i class="emb" style="background:' + COLORS[id] + '">' + (id === 'you' ? 'Y' : nameOf(id)[0]) + '</i>'; }
     function players() {
       const r = R(), m = M_();
       return ['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => {
-        const R0 = rival(id), w = r && r.won[id], rec = id === 'you' ? m.you : rivalRec(id);
+        const R0 = rival(id), w = r && r.won[id], rec = id === 'you' ? m.you : recOf(id);
         const status = w ? 'won ' + r.cards[w.k].catName.toLowerCase() : r && !r.done && card() && r.leader === id ? 'leading' : r && !r.done && card() && !inFor(id) ? 'out' : '';
         const plant = id === 'you' ? app.S.line.length + ' machines' : machinesOf(rec.worth, m.start) + ' machines';
         return '<div class="pl' + (id === 'you' ? ' you' : '') + (r && r.leader === id && !r.done ? ' lead' : '') + (w ? ' won' : '') + '" style="--pc:' + COLORS[id] + '"><b>' + emblem(id) + esc(nameOf(id)) + '</b>' +
           '<span>' + (id === 'you' ? 'you' : esc(R0.label)) + ' · ' + plant + '</span>' +
-          '<span class="pl-w">' + money(worthOf(id)) + ' <small>net worth · ' + rec.bins + ' bin' + (rec.bins === 1 ? '' : 's') + '</small></span>' + (status ? '<em>' + esc(status) + '</em>' : '') + '</div>';
+          '<span class="pl-w">' + money(worthOf(id)) + ' <small>worth · ' + rec.bins + ' bin' + (rec.bins === 1 ? '' : 's') + '</small></span>' + (status ? '<em>' + esc(status) + '</em>' : '') + '</div>';
       }).join('');
     }
     function standingsHtml() {
-      const m = M_(), rows = standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, worth: worthOf(id), bins: id === 'you' ? m.you.bins : rivalRec(id).bins, t: id === 'you' ? m.you.t : rivalRec(id).t })));
+      const m = M_(), rows = standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, worth: worthOf(id), bins: id === 'you' ? m.you.bins : recOf(id).bins, t: id === 'you' ? m.you.t : recOf(id).t })));
       const win = rows[0];
       return '<div class="standings"><h3>FINAL STANDINGS · ' + m.length + ' ROUNDS</h3><p class="' + (win.id === 'you' ? 'ok' : 'warn') + '">' + (win.id === 'you' ? 'You win the match.' : esc(nameOf(win.id)) + ' wins the match.') + '</p>' +
         '<div class="st-t"><div class="r h"><span>#</span><span>YARD</span><span>NET WORTH</span><span>BINS</span><span>TONNES</span></div>' +
@@ -268,7 +281,7 @@
         '<div class="rc-d">Declared: ' + esc(heavy(L.declared)) + '</div>' + compBar(L.declared) +
         (L.sample ? '<div class="rc-d sampled">Sampled: ' + esc(heavy(L.sample)) + '</div>' + compBar(L.sample) : '') +
         '<div class="rc-d small">' + esc(L.seller) + ' <span class="rep">(' + esc(A().live.rep ? A().live.rep(L.seller) : '') + ')</span>: ' + esc(L.note) + '</div>' +
-        (!r.done && k >= r.k && !L.sample && !r.sampled ? '<button type="button" class="samp" data-k="' + k + '">SAMPLE ' + money(A().sampleFee(L, L.opening)) + '</button>' : '') + foot + '</div>';
+        (!r.done && k >= r.k && !L.sample && !r.sampled && r.leader !== 'you' && !r.won.you ? '<button type="button" class="samp" data-k="' + k + '">SAMPLE ' + money(A().sampleFee(L, L.opening)) + '</button>' : '') + foot + '</div>';
     }
     function marketHtml() {
       const M = CS.Market, r = R(); let h = '<h3>MARKET</h3>';
@@ -288,21 +301,21 @@
     function render() {
       if (!ov || ov.classList.contains('hidden')) return;
       const main = ov.querySelector('.round-main'), side = ov.querySelector('.round-side'), r = R();
-      ov.querySelector('#round-title').textContent = r ? 'AUCTION · ROUND ' + r.n + ' OF ' + M_().length : 'AUCTION · A MATCH OF ' + M_().length + ' ROUNDS';
+      ov.querySelector('#round-title').textContent = st.n > 0 ? 'AUCTION · ROUND ' + st.n + ' OF ' + M_().length : 'AUCTION · A MATCH OF ' + M_().length + ' ROUNDS';
       side.innerHTML = marketHtml();
       if (!r || r.done) {
         let h = '<div class="pls">' + players() + '</div>';
         if (M_().over) {
           h += standingsHtml(); main.innerHTML = h;
-          const rb = main.querySelector('#round-rematch'); if (rb) rb.addEventListener('click', () => { close(); app.softReset(); });
+          const rb = main.querySelector('#round-rematch'); if (rb) rb.addEventListener('click', () => { const len = M_().length; close(); app.softReset(); M_().length = len; app.save(); });
           return;
         }
         if (r && r.done) h += '<div class="rcards">' + r.cards.map(cardHtml).join('') + '</div>';
-        if (!r) h += '<div class="match-len"><span>Match length</span>' + MATCH_LENGTHS.map((n) => '<button type="button" class="ml' + (n === M_().length ? ' on' : '') + '" data-len="' + n + '">' + n + ' rounds</button>').join('') + '<span class="small">Most net worth after the last round wins.</span></div>';
+        if (st.n === 0) h += '<div class="match-len"><span>Match length</span>' + MATCH_LENGTHS.map((n) => '<button type="button" class="ml' + (n === M_().length ? ' on' : '') + '" data-len="' + n + '">' + n + ' rounds</button>').join('') + '<span class="small">Most net worth after the last round wins.</span></div>';
         const can = canStart();
-        h += '<div class="round-next">' + (r && r.done && !r.won.you ? '<p class="warn">No bin for you this round: run your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '') +
-          (can ? '' : '<p class="small">' + (app.S.run ? 'A batch is running.' : 'Your yard still holds a bin: run it through the plant first.') + ' The next round opens when the yard is empty.</p>') +
-          '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (r ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
+        h += '<div class="round-next">' + (r && r.done && !r.won.you ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '') +
+          (can ? '' : '<p class="small">' + (app.S.run ? 'A batch is running.' : M_().ending ? 'The last bin is in your yard: run it through the plant to end the match.' : 'Your yard still holds a bin: run it through the plant first.') + ' The next round opens when the yard is empty.</p>') +
+          '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (st.n > 0 ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
         main.innerHTML = h;
         const b = main.querySelector('#round-start'); if (b) b.addEventListener('click', () => { if (newRound()) render(); });
         main.querySelectorAll('.ml').forEach((x) => x.addEventListener('click', () => { M_().length = +x.dataset.len; render(); }));
@@ -318,15 +331,19 @@
     }
 
     /* ---- hooks ---- */
-    app.on('load', (ext) => { const d = ext && ext.round; st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() }; });
+    app.on('load', (ext) => { const d = ext && ext.round; st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() }; busy = false; });   // #107: an open round survives a reload or a mode switch
     if (app.S && app.S.ext && app.S.ext.round) { const d = app.S.ext.round; st.n = d.n || 0; st.misc = !!d.misc; }
-    app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match } }));
+    app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? st.open : null } }));
+    app.on('batchComplete', () => { setTimeout(checkEnd, 0); });
     app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; render(); });
     app.on('boot', build);
     app.on('render', render);
     CS.Round.live = {
       open, close, canStart, state: () => st,
       miscAllowed: () => st.misc,
+      /* the match table for other panels: every seat with its worth, bins and tonnes, ranked (#111) */
+      table: () => { const m = M_(); return standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, name: nameOf(id), label: id === 'you' ? 'you' : rival(id).label, worth: worthOf(id), bins: id === 'you' ? m.you.bins : recOf(id).bins, t: id === 'you' ? m.you.t : recOf(id).t }))); },
+      round: () => ({ n: st.n, length: M_().length, over: !!M_().over }),
       useMisc: () => { st.misc = false; app.save(); }
     };
   }

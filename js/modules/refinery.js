@@ -30,12 +30,13 @@
 
   function levelFor(mat) { return BASE.indexOf(mat) >= 0 ? 1 : PRECIOUS.indexOf(mat) >= 0 ? 2 : 0; }
   /* Quote refining a sorted bucket. e = { t, purity, grade, sf } as held in inventory; rawValue = what SELL pays now;
-   * factor = the material's market factor this round; power = $/kWh. */
-  function quoteBucket(mat, e, level, rawValue, power, factor) {
+   * factor = the material's market factor this round; power = $/kWh;
+   * market = Sim.prices.market (offtake x trading desk), which SELL applies too, so the raw comparison stays like for like. */
+  function quoteBucket(mat, e, level, rawValue, power, factor, market) {
     const D = MATERIALS[mat], need = levelFor(mat);
     if (!D || !need || !e || !(e.t > 0)) return { ok: false, why: 'This material is not refined: sell it as it is.' };
     const metalT = e.t * (e.purity || 0) * (1 - (D.drossK || 0));
-    const value = metalT * (D.ingot || D.sell) * (factor || 1);
+    const value = metalT * (D.ingot || D.sell) * (factor || 1) * (market || 1);
     const kwh = e.t * (D.meltKWh || 0) / ETA;
     const cost = kwh * (power || 0.12) + (need === 2 ? PREC_FEE * value + PREC_PER_T * e.t : CAST_PER_T * e.t);
     const net = value - cost;
@@ -67,12 +68,13 @@
     const Inv = () => CS.Inventory;
     const factor = (m) => (CS.Sim.prices.perMat && CS.Sim.prices.perMat[m]) || 1;
     const power = () => CS.Sim.prices.power;
-    const preciousPrices = () => ({ gold: MATERIALS.gold.ingot * factor('gold'), silver: MATERIALS.silver.ingot * factor('silver') });
+    const market = () => CS.Sim.prices.market || 1;   // offtake deals x trading desk (#212)
+    const preciousPrices = () => ({ gold: MATERIALS.gold.ingot * factor('gold') * market(), silver: MATERIALS.silver.ingot * factor('silver') * market() });
 
     function quote(mat) {
       const I = Inv(); if (!I) return null;
       const e = I.stock()[mat]; if (!e) return null;
-      return quoteBucket(mat, e, level, I.quote ? I.quote(mat) : 0, power(), factor(mat));
+      return quoteBucket(mat, e, level, I.quote ? I.quote(mat) : 0, power(), factor(mat), market());
     }
     function quoteMisc() { const I = Inv(); return I && I.misc ? quoteConcentrate(I.misc(), level, preciousPrices()) : null; }
     function credit(x) { API.S.money += x; API.S.lifetime += Math.max(0, x); }

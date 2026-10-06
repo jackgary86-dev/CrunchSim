@@ -21,6 +21,12 @@ const st = { t: 10, purity: 0.99, grade: 1.25, sf: 0.99 };
 const qs = R.quoteBucket('steel', st, 1, raw('steel', st), 0.12, 1);
 check(qs.ok && qs.gain > 0, 'even clean steel pays more as billet (+' + f(qs.gain) + ')');
 
+/* #212: offtake deals x trading desk lift SELL, so they must lift the refined value too (max 1.35 x 1.10 = 1.485) */
+const cu = { t: 10, purity: 0.97, grade: 1.05, sf: 1 };
+const q1 = R.quoteBucket('copper', cu, 1, raw('copper', cu), 0.12, 1, 1), q2 = R.quoteBucket('copper', cu, 1, raw('copper', cu) * 1.485, 0.12, 1, 1.485);
+check(Math.abs(q2.value - q1.value * 1.485) < 1e-6, 'refined value scales with the market multiplier (x1.485)');
+check(q2.gain > 0 && q2.gain > q1.gain, 'copper still gains from refining at market x1.485 against a raw sale at x1.485 (+' + f(q2.gain) + ')');
+
 /* gold: from a real line, four sensor passes on circuit boards */
 const nodes = [{ m: 'hammer', s: { grate: 30, rpm: 100 }, src: 'feed' }];
 for (let i = 0; i < 4; i++) nodes.push({ m: 'sensor', s: { target: 'gold' }, src: (i + 1) + ':' + (i ? 'extract' : 'product') });

@@ -118,18 +118,18 @@
     const rival = (id) => RV() && RV().rivalById(id);
     const nameOf = (id) => id === 'you' ? 'You' : (rival(id) ? rival(id).name : id);
     const yardEmpty = () => { const L = A() && A().live; return !L || (!L.pending() && !(L.yard() && L.yard().length)); };
-    const stockValue = () => { const I = CS.Inventory; if (!I) return 0; let v = 0; const s = I.stock(); for (const m in s) v += I.quote ? I.quote(m) : 0; return v; };
+    const stockValue = () =>   /* only sizes the auction round (roundSize): net worth now includes stock itself (#214) */  { const I = CS.Inventory; if (!I) return 0; let v = 0; const s = I.stock(); for (const m in s) v += I.quote ? I.quote(m) : 0; return v; };
     function canStart() { return !app.S.run && yardEmpty() && !(st.open && !st.open.done) && !st.match.over && !st.match.ending; }
     const M_ = () => st.match;
     function rivalRec(id) { const m = M_(); return m.rivals[id] || (m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }); }
-    const blank = () => ({ worth: app.netWorth() + stockValue(), bins: 0, t: 0, best: null });   // #112: before round 1 every yard starts where you do
+    const blank = () => ({ worth: app.netWorth(), bins: 0, t: 0, best: null });   // #112: before round 1 every yard starts where you do
     const recOf = (id) => (st.n === 0 ? blank() : rivalRec(id));
     /* #108: the match ends once the last round's bin is processed (yard empty, line idle); the standings are then frozen */
     function checkEnd() {
       const m = M_(); if (!m.ending || m.over || app.S.run || !yardEmpty()) return false;
       m.over = true; m.ending = false;
       setTimeout(() => { const top = standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, worth: m.final ? m.final[id] : 0 })))[0]; snd(top && top.id === 'you' ? 'matchwin' : 'matchlose'); }, 400);   // #118
-      m.final = {}; ['you'].concat(PLAYERS.filter((id) => rival(id))).forEach((id) => { m.final[id] = id === 'you' ? app.netWorth() + stockValue() : rivalRec(id).worth; });
+      m.final = {}; ['you'].concat(PLAYERS.filter((id) => rival(id))).forEach((id) => { m.final[id] = id === 'you' ? app.netWorth() : rivalRec(id).worth; });
       app.log('The match is over after ' + st.n + ' rounds. Final standings are on the auction screen.', 'ok');
       app.save(); render(); return true;
     }
@@ -137,7 +137,7 @@
     /* ---- a round ---- */
     function newRound() {
       if (!canStart()) return false;
-      if (st.n === 0) { const m = M_(); m.start = app.netWorth() + stockValue(); m.over = false; m.ending = false; m.final = null; PLAYERS.forEach((id) => { if (rival(id)) m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }; }); }
+      if (st.n === 0) { const m = M_(); m.start = app.netWorth(); m.over = false; m.ending = false; m.final = null; PLAYERS.forEach((id) => { if (rival(id)) m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }; }); }
       st.n++; st.misc = false;
       const rng = CS.Auction.mulberry32((st.seed ^ Math.imul(st.n, 2654435761) ^ Math.floor(app.S.clock)) >>> 0);
       const size = roundSize(app.S.money, stockValue());
@@ -250,7 +250,7 @@
     function close() { if (ov) ov.classList.add('hidden'); }
     function compBar(c) { return '<div class="rc-comp">' + Object.entries(c).sort((a, b) => b[1] - a[1]).map((e) => '<i style="flex:' + e[1].toFixed(4) + ';background:' + MATERIALS[e[0]].color + '"></i>').join('') + '</div>'; }
     function heavy(c) { const e = Object.entries(c).sort((a, b) => b[1] - a[1]); const tops = e.slice(0, 3).filter((x) => x[1] >= 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 100) + '%'); const prec = e.filter((x) => CS.Sim.PRECIOUS.indexOf(x[0]) >= 0 && x[1] > 0 && x[1] < 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 1e6) + ' g/t'); return tops.concat(prec).join(', '); }
-    const worthOf = (id) => { const m = M_(); if (m.final && m.final[id] != null) return m.final[id]; return id === 'you' ? app.netWorth() + stockValue() : recOf(id).worth; };
+    const worthOf = (id) => { const m = M_(); if (m.final && m.final[id] != null) return m.final[id]; return id === 'you' ? app.netWorth() : recOf(id).worth; };
     function emblem(id) { return '<i class="emb" style="background:' + COLORS[id] + '">' + (id === 'you' ? 'Y' : nameOf(id)[0]) + '</i>'; }
     function players() {
       const r = R(), m = M_();

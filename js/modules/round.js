@@ -186,7 +186,7 @@
     function sold() {
       const r = R(), L = card();
       if (r.leader) {
-        r.won[r.leader] = { k: r.k, perT: r.price };
+        r.won[r.leader] = { k: r.k, perT: r.price }; r.justWon = r.leader;   // #127: that yard flashes on the next draw
         if (r.leader === 'you') {
           const ok = A().live.deliver(Object.assign({}, L), r.price, 'Won at auction round ' + r.n + ':');
           if (!ok) { delete r.won.you; say('You could not pay: the bin goes to the next bidder'); r.out.push('you'); r.leader = null; r.price = 0; settleWithoutYou(); return; }
@@ -200,6 +200,7 @@
         }
       } else { say('No bids: the ' + L.catName.toLowerCase() + ' bin goes unsold'); app.log(L.catName + ' bin unsold: nobody met the opening price.'); }
       if (r.leader && CS.Audio && CS.Audio.fx) CS.Audio.fx('gavel');   // #81
+      if (!r.leader) r.justWon = null;
       r.k++; r.price = 0; r.leader = null; r.out = [];
       if (r.k >= r.cards.length) return finish();
       if (!inFor('you')) { setTimeout(() => { settleWithoutYou(); }, 350); }   // you hold a card: the rest go among the rivals
@@ -243,7 +244,8 @@
         const R0 = rival(id), w = r && r.won[id], rec = id === 'you' ? m.you : recOf(id);
         const status = w ? 'won ' + r.cards[w.k].catName.toLowerCase() : r && !r.done && card() && r.leader === id ? 'leading' : r && !r.done && card() && !inFor(id) ? 'out' : '';
         const plant = id === 'you' ? app.S.line.length + ' machines' : machinesOf(rec.worth, m.start) + ' machines';
-        return '<div class="pl' + (id === 'you' ? ' you' : '') + (r && r.leader === id && !r.done ? ' lead' : '') + (w ? ' won' : '') + '" style="--pc:' + COLORS[id] + '"><b>' + emblem(id) + esc(nameOf(id)) + '</b>' +
+        const bid = r && !r.done && r.leader === id && r.pop ? ' paddle' + (r.pop % 2) : '', got = r && r.justWon === id ? ' gotbin' : '';
+        return '<div class="pl' + (id === 'you' ? ' you' : '') + (r && r.leader === id && !r.done ? ' lead' : '') + (w ? ' won' : '') + bid + got + '" style="--pc:' + COLORS[id] + '"><b>' + emblem(id) + esc(nameOf(id)) + '</b>' +
           '<span>' + (id === 'you' ? 'you' : esc(R0.label)) + ' · ' + plant + '</span>' +
           '<span class="pl-w">' + money(worthOf(id)) + ' <small>worth · ' + rec.bins + ' bin' + (rec.bins === 1 ? '' : 's') + '</small></span>' + (status ? '<em>' + esc(status) + '</em>' : '') + '</div>';
       }).join('');
@@ -322,9 +324,11 @@
         return;
       }
       const L = card(), nb = nextBid(r.price, L.opening), mine = inFor('you'), lead = r.leader === 'you';
-      main.innerHTML = '<div class="pls">' + players() + '</div><div class="rcards">' + r.cards.map(cardHtml).join('') + '</div>' +
+      const deal = !r.dealt; r.dealt = true;   // #127: the three cards are dealt in once, when the round opens
+      main.innerHTML = '<div class="pls">' + players() + '</div><div class="rcards' + (deal ? ' deal' : '') + '">' + r.cards.map(cardHtml).join('') + '</div>' +
         '<div class="round-act">' + (mine ? '<button type="button" class="primary" id="round-bid"' + (lead || busy || nb * L.tons > app.S.money ? ' disabled' : '') + '>' + (lead ? 'YOU LEAD' : 'BID ' + money(nb) + '/t · ' + money(nb * L.tons)) + '</button><button type="button" id="round-pass"' + (busy ? ' disabled' : '') + '>' + (lead ? 'HOLD (no one answers)' : 'PASS') + '</button>' : '<span class="small">' + (r.won.you ? 'You hold a card this round: the rest go among the rivals.' : 'You passed on this bin.') + '</span>') + '</div>' +
         '<div class="round-log">' + r.log.slice(-6).reverse().map((t) => '<div>' + esc(t) + '</div>').join('') + '</div>';
+      if (r.justWon) setTimeout(() => { if (R() === r) r.justWon = null; }, 900);
       const bb = main.querySelector('#round-bid'); if (bb) bb.addEventListener('click', youBid);
       main.querySelectorAll('.samp').forEach((x) => x.addEventListener('click', () => { const L2 = r.cards[+x.dataset.k]; if (A().live.sample(L2, L2.opening)) { r.sampled = true; render(); } }));   // one sample a round (#75)
       const pb = main.querySelector('#round-pass'); if (pb) pb.addEventListener('click', () => { if (lead) { if (!rivalsAnswer()) sold(); render(); } else youPass(); });

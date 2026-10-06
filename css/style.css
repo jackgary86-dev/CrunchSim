@@ -725,3 +725,14 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 .plant-running .belt-load { animation: beltmove2 var(--bd, 1.2s) linear infinite; }
 @keyframes beltmove2 { from { background-position: 0 0; } to { background-position: var(--bp, 36px) 0; } }
 .belt::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: radial-gradient(circle at 6px 50%, #6c7a89 1.4px, transparent 1.6px) 0 0 / 12px 3px repeat-x; opacity: .7; }
+
+/* #127: the auction moves: cards dealt in, a paddle up for every bid, a flash for the yard that takes a bin */
+.rcards.deal .rcard { animation: rc-deal .45s cubic-bezier(.2,.8,.3,1.2) both; }
+.rcards.deal .rcard:nth-child(2) { animation-delay: .12s; } .rcards.deal .rcard:nth-child(3) { animation-delay: .24s; }
+@keyframes rc-deal { from { transform: translateY(-30px) rotate(-4deg) scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
+.pl.paddle0 .emb, .pl.paddle1 .emb { display: inline-block; }
+.pl.paddle0 .emb { animation: paddle0 .45s ease-out; } .pl.paddle1 .emb { animation: paddle1 .45s ease-out; }
+@keyframes paddle0 { 0% { transform: none; } 35% { transform: translateY(-9px) rotate(-12deg) scale(1.25); } 100% { transform: none; } }
+@keyframes paddle1 { 0% { transform: none; } 35% { transform: translateY(-9px) rotate(12deg) scale(1.25); } 100% { transform: none; } }
+.pl.gotbin { animation: gotbin .9s ease-out; }
+@keyframes gotbin { 0% { box-shadow: 0 0 0 0 var(--pc); } 30% { box-shadow: 0 0 0 3px var(--pc), 0 0 22px var(--pc); } 100% { box-shadow: none; } }

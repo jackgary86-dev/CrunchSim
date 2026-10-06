@@ -43,5 +43,17 @@ check(s.by === 'b' && s.perT === 90, 'a standing bid holds when nobody can top i
 s = R.settleRivals(L, 90, 'b', { a: 120 });
 check(s.by === 'a' && s.perT > 90 && s.perT <= 120, 'a richer rival tops the standing bid');
 
+/* the match (#72, #77) */
+check(R.MATCH_LENGTHS.includes(R.MATCH_DEFAULT) && R.MATCH_DEFAULT === 12, 'a match is 12 rounds by default (8, 12 or 20)');
+const st = R.standings([{ id: 'you', worth: 50 }, { id: 'a', worth: 80 }, { id: 'b', worth: 20 }]);
+check(st[0].id === 'a' && st[0].place === 1 && st[2].id === 'b' && st[2].place === 3, 'standings rank by net worth');
+check(R.machinesOf(1000, 1000) === 2 && R.machinesOf(4000, 1000) === 6 && R.machinesOf(1e9, 1000) === 10, 'a rival\'s plant grows with its net worth, two to ten machines');
+check(R.purseScale(1000, 1000) === 1 && R.purseScale(4000, 1000) === 2 && R.purseScale(100, 1000) === 0.5, 'its purse grows with the square root of its worth, within 0.5x to 3x');
+const zor = cards.find((c) => c.base === 'zorba') || cards[0];
+check(R.rivalProfit('redline', Object.assign({}, zor, { cat: 'nonferrous' }), 0) > R.rivalProfit('magpie', Object.assign({}, zor, { cat: 'nonferrous' }), 0), 'the copper specialist makes more of a non-ferrous bin than the bargain hunter');
+check(R.rivalProfit('ironside', zor, 1e6) < 0, 'and anyone who overpays loses money on a bin');
+const why = R.foldReason(RV.rivalById('magpie'), big, f, 20000, 1, 999999);
+check(/purse|worth|interested|no /.test(why), 'a rival that will not raise says why: "' + why + '"');
+
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' round checks pass');
 process.exit(fails ? 1 : 0);

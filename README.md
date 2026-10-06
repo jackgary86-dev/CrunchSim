@@ -9,7 +9,7 @@ Feed a mix of materials into a line of real industrial machines, run a batch, an
 Each mode keeps its own save; switch any time from the toolbar (the first launch asks).
 
 - **Progress**: build your plant on your own. Buy scrap from the six-tier auction board ($1k to $100k), grind, sort, refine and sell, and level up from Scrapyard to Mega-plant. No rivals.
-- **Rivals**: auction rounds against three rival yards (Ironside Shredding, a volume buyer; Magpie Salvage, a bargain hunter; Redline Non-Ferrous, a copper specialist). Each round three large bins come up as cards, each heavy in one category (ferrous, non-ferrous, electronics and precious metal, wood, rubber and plastic, aggregate, gels, a mixed skip). The four players bid in open ascending steps of 5%; a player who wins a bin sits out the rest of the round, so one player always goes home with nothing, and that player runs their MISC bin instead (in Rivals your MISC re-runs only in a round where you won no bin). A market panel beside the cards shows the round's HOT and COLD materials and the price of everything in the bins. The next round opens when your yard is empty. Bin sizes grow with your plant.
+- **Rivals**: auction rounds against three rival yards (Ironside Shredding, a volume buyer; Magpie Salvage, a bargain hunter; Redline Non-Ferrous, a copper specialist). Each round three large bins come up as cards, each heavy in one category (ferrous, non-ferrous, electronics and precious metal, wood, rubber and plastic, aggregate, gels, a mixed skip). The four players bid in open ascending steps of 5%; a player who wins a bin sits out the rest of the round, so one player always goes home with nothing, and that player runs their MISC bin instead (in Rivals your MISC re-runs only in a round where you won no bin). A market panel beside the cards shows the round's HOT and COLD materials and the price of everything in the bins. The next round opens when your yard is empty. Bin sizes grow with your plant. A match runs 8, 12 or 20 rounds (12 by default) and ends on a final standings screen ranked by net worth: each rival yard starts where you start and earns from the bins it wins at its own yield (an established shredder recovers about half the full sorted value, the copper specialist more on non-ferrous and electronics), so its net worth, plant and purse grow over the match; the league on the auction screen shows them, and a rival that drops out of a bin says why. tests/rivals-match.js plays 40 seeded matches per strategy to keep the rivals honest: a fair-value bidder averages second place, outbidding everyone earns far less, passing every round finishes last.
 
 ## The game loop
 
@@ -112,6 +112,7 @@ node tests/precious.js
 node tests/refinery.js
 node tests/slots.js
 node tests/round.js
+node tests/rivals-match.js
 ```
 
 ## Sources

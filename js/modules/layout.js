@@ -998,6 +998,8 @@
       if (d.loaded && !S.run && sameComp(S.comp, d.loaded.comp)) {
         loaded = d.loaded; S.feedPrepaid = true; S.feedOwner = 'rerun'; S.feedOpts = { sizes: loaded.sizes || {}, entry: loaded.entry == null ? null : loaded.entry };
       } else if (d.rerunActive && S.feedOpts) S.feedOpts = null;
+      // #148: the page closed mid-batch on a re-run: what the batch took goes back to its bucket
+      const ra = d.rerunActive; if (ra && ra.took && !S.run && CS.Inventory && CS.Inventory.putBack) setTimeout(() => { for (const m in ra.took) CS.Inventory.putBack(ra.src, m, ra.took[m]); app.log('The bucket batch was on the line when the page closed: it is back in the bucket.', 'warn'); }, 0);
     };
     app.on('load', restore);
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });

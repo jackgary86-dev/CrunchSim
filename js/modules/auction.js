@@ -252,10 +252,18 @@
       st.sellers = d.sellers && typeof d.sellers === 'object' ? d.sellers : {};
       if (!st.board.every((l) => l.tier != null)) st.board = [];   // a board from before the tiers: deal a fresh one
       st.board.forEach((l) => { if (l.bid && !validBid(l.bid)) delete l.bid; });
+      // #148: the page closed mid-batch: the batch never finished, so its tonnes go back to the lot they came from
+      st.settle = null;
+      const o = d.open; if (o && o.lot && validLot(o.lot) && +o.tons > 0) {
+        const L = [st.pending].concat(st.yard).find((x) => x && x.id === o.lot.id);
+        if (L) L.tons = Math.round((L.tons + +o.tons) * 1000) / 1000;
+        else { const back = Object.assign({}, o.lot, { tons: +o.tons }); if (st.pending) st.yard.unshift(st.pending); st.pending = back; }
+        setTimeout(() => app.log(app.fmtNum(+o.tons, 1) + ' t of lot #' + o.lot.id + ' were on the line when the page closed: back in the yard.', 'warn'), 0);
+      }
     }
     app.on('load', loadState);
     if (app.S && app.S.ext) loadState(app.S.ext);   // a module that registers after boot has missed the 'load' event
-    app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending, yard: st.yard, sellers: st.sellers } }));
+    app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending, yard: st.yard, sellers: st.sellers, open: st.settle ? { tons: st.settle.tons, lot: st.settle.lot } : null } }));   // open: a batch in flight (#148)
     app.on('feedCost', (q) => { if (st.market[q.id] > 0) q.cost *= st.market[q.id]; });   // scales the preset price the app charges (feed market)
     const feedCost = (id) => FEEDS[id].cost * (st.market[id] > 0 ? st.market[id] : 1);
 

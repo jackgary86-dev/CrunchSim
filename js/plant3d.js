@@ -164,12 +164,15 @@
   function revenuePerT() { let v = 0; V.binsInfo.forEach(function (b) { if (Sim.binMatters(b.st)) v += b.st.value; }); return v; }
   function nodeIndex(uid) { for (let k = 0; k < V.line.length; k++) if (V.line[k].uid === uid) return k; return -1; }
 
-  function readSave() {
+  /* The game's saved plant, the way app.js load() reads it: settings through Sim.cleanSettings (a tampered or imported save
+   * must not feed NaN or out-of-range values to the sim), plus the machine levels and wear. Pure, so tests/plant3d-save.js runs it. */
+  function parseSave(text) {
     try {
-      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      const d = JSON.parse(text || 'null');
       if (!d || !Array.isArray(d.line) || !d.line.length) return null;
-      const line = d.line.filter(function (n) { return MACHINES[n.m]; }).map(function (n) {
-        return { uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: 0, level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed' };
+      const lv = {}; for (const k in (d.levels || {})) if (MACHINES[k]) lv[k] = clamp(Math.floor(+d.levels[k] || 0), 0, CS.LEVEL_MAX);
+      const line = d.line.filter(function (n) { return n && MACHINES[n.m]; }).map(function (n) {
+        return { uid: +n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: lv[n.m] || 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed' };
       });
       const uids = new Set(line.map(function (n) { return n.uid; }));
       line.forEach(function (n, i) { if (n.src !== 'feed' && !(uids.has(n.src.uid) && line.findIndex(function (x) { return x.uid === n.src.uid; }) < i)) n.src = 'feed'; });
@@ -178,6 +181,14 @@
       return { line: line, comp: tot > 0 ? d.comp : null, feedPreset: d.feedPreset, tons: clamp(+d.tons || 15, 1, 500) };
     } catch (e) { return null; }
   }
+  /* the Progress save and the Rivals save live under two keys; take the one for the mode played last, else whichever exists */
+  function readSave() {
+    let mode = null; try { mode = localStorage.getItem('crunchsim.mode'); } catch (e) { /* storage unavailable */ }
+    const keys = mode === 'rivals' ? [SAVE_KEY + '.rivals', SAVE_KEY] : [SAVE_KEY, SAVE_KEY + '.rivals'];
+    for (let i = 0; i < keys.length; i++) { let t = null; try { t = localStorage.getItem(keys[i]); } catch (e) { /* storage unavailable */ } const r = parseSave(t); if (r) return r; }
+    return null;
+  }
+  CS.Plant3D.parseSave = parseSave; CS.Plant3D.readSave = readSave;
 
   /* ---------------- boot ---------------- */
   function boot() {

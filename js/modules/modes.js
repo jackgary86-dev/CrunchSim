@@ -42,7 +42,8 @@
       if (!yard || !yard.cv.isConnected || !title || title.classList.contains('hidden')) { if (yard) yard.raf = 0; return; }
       const cv = yard.cv, r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
       const W = Math.round(r.width), H = Math.round(r.height);
-      if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+      const bw = Math.round(W * dpr), bh = Math.round(H * dpr);   // integer bitmap vs a fractional dpr: compare the rounded size so it is not reallocated every frame
+      if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
       const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
       const still = document.body.classList.contains('reduce-motion');
       const t = still ? 2.2 : now / 1000, dt = still ? 0 : Math.min(0.05, (now - (yard.last || now)) / 1000); yard.last = now;

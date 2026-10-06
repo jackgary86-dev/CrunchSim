@@ -367,7 +367,8 @@
     if (!heap || !heap.cv.isConnected) return;
     const cv = heap.cv, r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = Math.max(20, Math.round(r.width)), H = Math.max(20, Math.round(r.height));
-    if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; heap.pieces = null; }
+    const bw = Math.round(W * dpr), bh = Math.round(H * dpr);   // the bitmap is an integer: compare the rounded size, or a fractional dpr (1.25, 1.5) reallocates and re-seeds every frame
+    if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; heap.pieces = null; }
     if (!heap.pieces) heap.pieces = heapPieces(heap.comp, heap.level, W, H, 1234 + Math.round(heap.level * 100), MATERIALS);
     const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     heap.pieces.forEach((p) => heapShape(ctx, p, MATERIALS[p.m] ? MATERIALS[p.m].color : '#888'));

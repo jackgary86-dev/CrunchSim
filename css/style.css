@@ -759,3 +759,7 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 .set-row.vol { display: grid; grid-template-columns: 1fr 160px 44px; }
 .set-row.vol input { width: 100%; }
 .set-row .vol-v { text-align: right; font-size: 12px; color: var(--muted); }
+
+/* the bid guide on lots and bins */
+.est { color: var(--green); font-family: var(--mono); font-size: 11px; }
+.est.bad { color: var(--amber); }

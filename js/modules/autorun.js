@@ -36,7 +36,8 @@
     function trouble() {
       const worn = app.S.line.find((n) => (n.wear || 0) >= WEAR_STOP);
       if (worn) return CS.MACHINES[worn.m].name + ' is ' + Math.round(worn.wear * 100) + '% worn: service it at its station';
-      if (app.S.money < 0) return 'the bank is in the red';
+      const credit = app.S.mode === 'rivals' && CS.Round ? CS.Round.CREDIT || 0 : 0;   // a Rivals yard runs on its trade credit
+      if (app.S.money < -credit) return credit ? 'the credit line is used up' : 'the bank is in the red';
       return '';
     }
     function finish(why) {

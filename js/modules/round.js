@@ -283,6 +283,11 @@
       gels: '<rect x="14" y="10" width="16" height="30" rx="3" fill="#5fa8d3"/><rect x="34" y="10" width="16" height="30" rx="3" fill="#4a90b8"/><rect x="14" y="18" width="16" height="3" fill="#2f6f93"/><rect x="34" y="18" width="16" height="3" fill="#2f6f93"/>'
     };
     function artOf(cat) { return '<svg viewBox="0 0 64 48" class="rc-art" aria-hidden="true">' + (ART[cat] || ART.mixed) + '</svg>'; }
+    /* the bid guide: what your line would make of this bin per tonne (on its declaration), against the price */
+    function estHtml(L) {
+      const e = app.lotEstimate ? app.lotEstimate(L.sample || L.declared) : null; if (e == null) return '';
+      return '<div class="rc-d est' + (e <= 0 ? ' bad' : '') + '" title="What your line as it stands would make of this mix, after power and wear, before the price you pay. Bid below it to profit.">YOUR LINE: ~' + money(Math.max(0, e)) + '/t' + (e <= 0 ? ' (it cannot sort this)' : '') + '</div>';
+    }
     function cardHtml(L, k) {
       const r = R(), now = !r.done && r.k === k, w = Object.keys(r.won).find((id) => r.won[id].k === k);
       const done = k < r.k || r.done;
@@ -293,7 +298,7 @@
       return '<div class="rcard' + (now ? ' now' : '') + (done ? ' done' : '') + (w === 'you' ? ' mine' : '') + (w ? ' sold' : '') + '"><div class="rc-cat" style="border-color:' + (CATEGORIES.find((c) => c.id === L.cat) || {}).color + '">' + esc(L.catName.toUpperCase()) + '</div>' +
         '<div class="rc-artwrap">' + artOf(L.cat) + '<div class="rc-bin"><div class="rc-fill">' + Object.entries(L.declared).sort((a, b) => a[1] - b[1]).map((e) => '<i style="flex:' + e[1].toFixed(4) + ';background:' + MATERIALS[e[0]].color + '"></i>').join('') + '</div></div></div>' +
         '<div class="rc-h"><b>' + fmtT(L.tons) + '</b> of ' + esc(L.headline) + '</div>' +
-        '<div class="rc-d">Declared: ' + esc(heavy(L.declared)) + '</div>' + compBar(L.declared) +
+        '<div class="rc-d">Declared: ' + esc(heavy(L.declared)) + '</div>' + compBar(L.declared) + estHtml(L) +
         (L.sample ? '<div class="rc-d sampled">Sampled: ' + esc(heavy(L.sample)) + '</div>' + compBar(L.sample) : '') +
         '<div class="rc-d small">' + esc(L.seller) + ' <span class="rep">(' + esc(A().live.rep ? A().live.rep(L.seller) : '') + ')</span>: ' + esc(L.note) + '</div>' +
         (!r.done && k >= r.k && !L.sample && !r.sampled && r.leader !== 'you' && !r.won.you ? '<button type="button" class="samp" data-k="' + k + '">SAMPLE ' + money(A().sampleFee(L, L.opening)) + '</button>' : '') + foot + '</div>';
@@ -330,7 +335,7 @@
         const can = canStart();
         h += '<div class="round-next">' + (r && r.done && !r.won.you ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '') +
           (can ? '' : '<p class="small">' + (app.S.run ? 'A batch is running.' : M_().ending ? 'The last bin is in your yard: run it through the plant to end the match.' : 'Your yard still holds a bin: run it through the plant first.') + ' The next round opens when the yard is empty.</p>') +
-          '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (st.n > 0 ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
+          '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (M_().ending ? 'RUN THE LAST BIN TO FINISH' : st.n > 0 ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
         main.innerHTML = h;
         const b = main.querySelector('#round-start'); if (b) b.addEventListener('click', () => { if (newRound()) render(); });
         main.querySelectorAll('.ml').forEach((x) => x.addEventListener('click', () => { M_().length = +x.dataset.len; render(); }));
@@ -352,7 +357,21 @@
     if (app.S && app.S.ext && app.S.ext.round) { const d = app.S.ext.round; st.n = d.n || 0; st.misc = !!d.misc; }
     app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? st.open : null } }));
     app.on('batchComplete', () => { setTimeout(checkEnd, 0); });
-    app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; busy = false; render(); });
+    app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; busy = false; render(); setTimeout(matchPlant, 0); });
+    /* A Rivals yard starts on a par with the yards it bids against (#171): established shredder yards run the classic car
+     * shredder line (hammermill, zig-zag air, magnet, eddy current, sink-float), so a new match starts with that line rather
+     * than the Progress starter kit. The balance (tests/rivals-match.js) assumes a plant with a few sorters. Only a fresh
+     * match: no batch run, no round played, the starter line still in place. */
+    function matchPlant() {
+      const S = app.S, L = CS.LINES && CS.LINES.car;
+      if (!S || S.mode !== 'rivals' || !L || S.batches > 0 || st.n > 0 || S.run) return;
+      if (S.line.length > 2 || L.nodes.every((n) => S.owned.has(n.m))) return;
+      L.nodes.forEach((n) => { S.owned.add(n.m); S.units[n.m] = Math.max(S.units[n.m] || 0, 1); });
+      S.line = CS.Sim.buildLine(L); S.sel = S.line[0].uid; S.linePreset = 'car';
+      app.log('Your Rivals yard runs a car shredder line, like the yards you bid against: hammermill, air classifier, magnet, eddy current and a sink-float tank.', 'ok');
+      app.markDirty(true); app.save();
+    }
+    app.on('load', () => setTimeout(matchPlant, 0));
     app.on('boot', build);
     app.on('render', render);
     CS.Round.live = {

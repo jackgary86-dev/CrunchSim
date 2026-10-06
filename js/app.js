@@ -465,6 +465,18 @@
     const T = (pair ? SETTING_TRIALS_PAIR : SETTING_TRIALS)[m]; if (!T) return [{}];
     const k = Object.keys(T)[0]; return T[k].map((v) => ({ [k]: v }));
   }
+  /* what your line would make of a mix, $ per tonne after power, consumables and wear, before the scrap's own price: the most
+   * a lot (or a bin) is worth paying for. Cached per line and mix. */
+  const estCache = new Map();
+  function lotEstimate(comp) {
+    if (!S.line.length || !comp) return null;
+    const key = S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + (n.wear > 0.98 ? 'w' : '')).join() + '|' + Object.keys(comp).sort().map((m) => m + (+comp[m]).toFixed(3)).join();
+    if (estCache.has(key)) return estCache.get(key);
+    let v = null; const keep = rankComp;
+    try { rankComp = comp; const m = lineMarginNoFeed(S.line); v = isFinite(m) ? m : null; } catch (e) { v = null; } finally { rankComp = keep; }
+    if (estCache.size > 200) estCache.clear();
+    estCache.set(key, v); return v;
+  }
   function nextPurchases() {
     if (!S.line.length) return [];
     // nothing loaded: rank against the richest lot on the board the bank can buy, the scrap that comes next
@@ -927,7 +939,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

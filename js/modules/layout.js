@@ -479,15 +479,15 @@
       return { title: 'RUNNING', label: lot ? 'STOP THE LOT' : 'STOP', sub: fmtW(S.run.total - S.run.done) + ' to go in this batch' + (lot ? ', then the rest of the lot' : '') + '.', go: () => $('#btn-run').click(), quiet: true };
     }
     const stock0 = I && I.stock ? I.stock() : {};
-    if (S.money < 0 && S.mode !== 'rivals') {   // #169: in the red: sell before running more
+    if (S.money < 0) {   // #169: in the red: sell before running more (Rivals too: power is billed as a batch runs, past the credit line)
       let b0 = null; for (const m in stock0) { const v = I.quote ? I.quote(m) : 0; if (stock0[m].t > 0.05 && v > 0 && (!b0 || v > b0.v)) b0 = { m, v }; }
       if (b0) return { title: 'SELL', label: 'SELL ' + MATERIALS[b0.m].name.toUpperCase() + ' ' + app.fmtMoney(b0.v), sub: 'The bank is in the red: sell before you run more.', go: () => { if (I.sellMat) I.sellMat(b0.m); } };
     }
     if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + S.tons + ' t a batch.', go: () => $('#btn-run').click() };
-    if (S.mode === 'rivals') { const a = nextAction(); return Object.assign({ title: 'NEXT' }, a); }
-    // money first: the best pure bucket
+    // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};
     let best = null; for (const m in stock) { const v = I.quote ? I.quote(m) : 0; if (stock[m].t > 0.05 && v > 0 && (!best || v > best.v)) best = { m, v }; }
+    if (S.mode === 'rivals' && !(best && best.v >= 50)) { const a = nextAction(); return Object.assign({ title: 'NEXT' }, a); }
     if (best && best.v >= 50) return { title: 'SELL', label: 'SELL ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(best.v), sub: 'A pure bucket is money waiting: ' + fmtW(stock[best.m].t) + ' of ' + MATERIALS[best.m].name.toLowerCase() + '.', go: () => { if (I.sellMat) I.sellMat(best.m); } };
     const p = topPurchase();
     if (p) {

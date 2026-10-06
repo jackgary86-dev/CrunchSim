@@ -312,7 +312,7 @@
         const total = priceOf(L) * L.tons;
         const tierTag = L.tier != null ? '<span class="tier" title="Tier ' + (L.tier + 1) + ': lots up to this price, and at most ' + TIER_MAX_T[L.tier] + ' t">UP TO ' + app.fmtMoney(TIERS[L.tier]).replace(',000', 'k') + '</span> ' : '';   // #172: a capped lot costs less than its tier
         const row = app.el('div', 'crow', '<div class="ch"><b>' + tierTag + app.esc(L.headline) + ' · ' + L.tons + ' t</b><span class="ask">' + app.fmtMoney(L.ask) + '/t</span></div>' +
-          '<div class="cd">Declared: ' + compText(L.declared) + compBar(L.declared) + '</div>' +
+          '<div class="cd">Declared: ' + compText(L.declared) + compBar(L.declared) + '</div>' + (() => { const e = app.lotEstimate ? app.lotEstimate(L.sample || L.declared) : null; return e == null ? '' : '<div class="cd est' + (e < L.ask ? ' bad' : '') + '" title="What your line as it stands would make of this mix per tonne, after power and wear, before the price">Your line: ~' + app.fmtMoney(Math.max(0, e)) + '/t against ' + app.fmtMoney(L.ask) + '/t asked' + (e < L.ask ? ' (a loss as it stands)' : '') + '</div>'; })() +
           (L.sample ? '<div class="cd sampled">Sampled: ' + compText(L.sample) + compBar(L.sample) + '</div>' : '') +
           '<div class="cd">' + app.esc(L.seller) + ' <span class="rep">(' + app.esc(repText(st.sellers[L.seller])) + ')</span>: ' + app.esc(L.note) + ' · closes in ' + fmtH(L.expiresH - now) + (L.tons > cap ? ' · over your ' + cap + ' t batch limit' : '') + '</div>');
         const b = document.createElement('button'); b.type = 'button'; b.textContent = 'BUY ' + app.fmtMoney(total); b.className = 'buy' + (S().money < total ? ' poor' : '');

@@ -381,7 +381,8 @@
   }
   let lastT = 0;
   function miniLoop(now) {
-    const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016; lastT = now;
+    let dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016; lastT = now;
+    if (document.body.classList.contains('reduce-motion') === true) dt = 0;   // #258: still frames, no falling shred or moving cams
     if (!stationOpen && !openDrawer && !document.hidden && app && app.S) {
       if (app.S.run) drawHeap(dt);
       minis.forEach((m, uid) => {

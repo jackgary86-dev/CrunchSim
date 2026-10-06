@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;   /* #258: native scrollbars and controls follow the dark theme */
   --bg: #070a0f;
   --panel: #0c121a;
   --panel-2: #111923;
@@ -673,6 +674,7 @@ body.lay #app { grid-template-columns: 270px minmax(0, 1fr); }
 .set-row button { min-width: 110px; }
 #settings { z-index: 210; }
 body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }   /* #258: the OS setting, before any choice is stored */
 /* #133: phones and small laptops */
 @media (max-width: 900px) {
   body.lay #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "tool" "left" "center"; }   /* the loaded lot and NEXT STEP come before the plant */

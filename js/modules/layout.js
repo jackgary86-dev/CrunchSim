@@ -120,7 +120,28 @@
     }
     return best && Math.abs(best.d) >= 0.005 ? best : null;
   }
-  CS.Layout = { SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
+  /* #123: THE BIN as a heap of shred. Pieces are dealt from the mix (a seeded draw, so the heap does not flicker between
+   * redraws) and piled under a mound whose height is the level. Each material keeps its look: steel curls, wood splinters,
+   * glass shards, plastic flakes, stone and cast iron chunks, rubber crumbs, gel and water drops.
+   * comp: { mat: share }, level 0..1, W x H in px. Returns [{ m, x, y, r, a, kind }]. */
+  function heapPieces(comp, level, W, H, seed, materials) {
+    const out = []; if (!(level > 0)) return out;
+    const mats = Object.keys(comp || {}).filter((m) => comp[m] > 0); if (!mats.length) return out;
+    let tot = 0; mats.forEach((m) => { tot += comp[m]; });
+    let a = (seed >>> 0) || 1; const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const pick = () => { let u = rnd() * tot; for (const m of mats) { u -= comp[m]; if (u <= 0) return m; } return mats[mats.length - 1]; };
+    const base = H - 2, top = H - 2 - level * (H - 6), cx = W / 2;
+    const surf = (x) => top + (base - top) * 0.28 * Math.pow((x - cx) / (W / 2), 2);   // a mound: higher in the middle
+    const n = Math.round(30 + 170 * level * Math.min(1, W / 160));
+    for (let i = 0; i < n; i++) {
+      const x = 3 + rnd() * (W - 6), sy = surf(x), y = sy + rnd() * (base - sy);
+      const m = pick(), D = materials && materials[m];
+      out.push({ m, x, y, r: 2.5 + rnd() * 3.5, a: rnd() * Math.PI * 2, kind: D ? D.kind : 'angular' });
+    }
+    out.sort((p, q) => p.y - q.y);   // back to front
+    return out;
+  }
+  CS.Layout = { heapPieces, SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
@@ -309,10 +330,40 @@
     }
     return m;
   }
+  /* #123: draw THE BIN's heap; while a batch runs new shred keeps dropping in from the grinder */
+  let heap = null;
+  function heapShape(ctx, p, col) {
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = col; ctx.strokeStyle = col;
+    const r = p.r;
+    if (p.kind === 'plate' && (p.m === 'steel')) { ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(0, 0, r, 0.2, 3.6); ctx.stroke(); }   // a curl of shredded steel
+    else if (p.kind === 'wood') { ctx.fillRect(-r * 1.6, -r * 0.35, r * 3.2, r * 0.7); }   // a splinter
+    else if (p.kind === 'plastic') { ctx.beginPath(); ctx.moveTo(-r, -r * 0.4); ctx.lineTo(r * 0.8, -r * 0.7); ctx.lineTo(r, r * 0.5); ctx.lineTo(-r * 0.6, r * 0.6); ctx.closePath(); ctx.fill(); }   // a flake
+    else if (p.m === 'glass') { ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, r * 0.8); ctx.lineTo(-r * 0.9, r * 0.5); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r, r * 0.8); ctx.stroke(); }   // a shard
+    else if (p.kind === 'rubber' || p.kind === 'blob' || p.kind === 'drop') { ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); ctx.fill(); }
+    else if (p.kind === 'plate') { ctx.fillRect(-r, -r * 0.45, r * 2, r * 0.9); ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(-r, -r * 0.45, r * 2, 1); }   // a bent sheet of non-ferrous
+    else { ctx.beginPath(); ctx.moveTo(-r, -r * 0.3); ctx.lineTo(-r * 0.2, -r); ctx.lineTo(r, -r * 0.4); ctx.lineTo(r * 0.7, r * 0.8); ctx.lineTo(-r * 0.6, r * 0.7); ctx.closePath(); ctx.fill(); }   // a chunk
+    ctx.restore();
+  }
+  function drawHeap(dt) {
+    if (!heap || !heap.cv.isConnected) return;
+    const cv = heap.cv, r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.max(20, Math.round(r.width)), H = Math.max(20, Math.round(r.height));
+    if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; heap.pieces = null; }
+    if (!heap.pieces) heap.pieces = heapPieces(heap.comp, heap.level, W, H, 1234 + Math.round(heap.level * 100), MATERIALS);
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    heap.pieces.forEach((p) => heapShape(ctx, p, MATERIALS[p.m] ? MATERIALS[p.m].color : '#888'));
+    if (app.S.run && heap.pieces.length && dt > 0) {   // shred dropping in from the grinder
+      if (Math.random() < dt * 14) { const src = heap.pieces[Math.floor(Math.random() * heap.pieces.length)]; heap.falls.push(Object.assign({}, src, { x: W * (0.3 + 0.4 * Math.random()), y: -4, vy: 40 + 40 * Math.random(), a: Math.random() * 6 })); }
+      const floor = heap.pieces[0] ? heap.pieces[0].y : H;
+      heap.falls = heap.falls.filter((f) => { f.vy += 400 * dt; f.y += f.vy * dt; f.a += dt * 4; return f.y < floor + 6; });
+      heap.falls.forEach((f) => heapShape(ctx, f, MATERIALS[f.m] ? MATERIALS[f.m].color : '#888'));
+    } else heap.falls = [];
+  }
   let lastT = 0;
   function miniLoop(now) {
     const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016; lastT = now;
     if (!stationOpen && !openDrawer && !document.hidden && app && app.S) {
+      if (app.S.run) drawHeap(dt);
       minis.forEach((m, uid) => {
         if (!m.cv.isConnected) return;
         const r = m.cv.getBoundingClientRect();
@@ -743,12 +794,15 @@
       });
     }
     col.innerHTML = '<div class="fn-k">THE BIN</div>' +
-      '<div class="bigbin"><div class="bigbin-fill">' + bands + '</div></div>' +
+      '<div class="bigbin"><canvas class="heap" aria-hidden="true"></canvas></div>' +
       '<div class="fn-n">' + (st && st.total > 0 ? fmtW(tons) + ' of mixed shred' : 'empty') + '</div>' +
       '<div class="fn-s">' + (st && st.total > 0 ? 'P80 ' + fmtSz(st.p80) + ' · everything the grinder breaks falls in here' : 'Load a lot: the grinder fills it') + '</div>' +
       '<div class="bin-list">' + list + '</div>' +
       '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>' +
       (st && st.total > 0 ? belt(tons, topMats(st, 3), fmtW(tons)) : '');
+    // #123: the heap itself
+    const cv = col.querySelector('canvas.heap');
+    if (cv) { const comp = {}; if (st && st.total > 0) topMats(st, 10).forEach((m) => { comp[m] = st.perMat[m].mass / st.total; }); heap = { cv, comp, level: !(st && st.total > 0) ? 0 : runProg >= 0 ? 0.55 + 0.25 * Math.sin(runProg * Math.PI) : 0.85, falls: [] }; setTimeout(() => drawHeap(0), 0); }
     // #144: THE BIN leads to where its material comes from: the auction when nothing is loaded, else the loaded lot's card
     col.classList.add('clicky'); col.title = idleNow ? 'Nothing loaded: open the auction' : 'Show the loaded lot';
     col.addEventListener('click', () => { if (idleNow) { showDrawer('auction'); return; } const lc = document.getElementById('lot-card'); if (lc) { lc.classList.remove('flash'); void lc.offsetWidth; lc.classList.add('flash'); } });

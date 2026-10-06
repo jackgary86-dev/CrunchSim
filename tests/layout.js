@@ -140,5 +140,18 @@ check(Math.abs(up / 10 - f40) < 0.01 && Math.abs(step(logS, up, -1) - 10) < 0.06
   check(L.biggestChange(before, before) === null, 'and says nothing when no bin moved');
 }
 
+// #123: THE BIN's heap
+{
+  const MATS = globalThis.CS.MATERIALS, comp = { wood: 0.55, glass: 0.3, steel: 0.12, plastic: 0.03 };
+  const a1 = L.heapPieces(comp, 0.85, 160, 120, 7, MATS), a2 = L.heapPieces(comp, 0.85, 160, 120, 7, MATS);
+  check(a1.length > 100 && JSON.stringify(a1) === JSON.stringify(a2), 'the heap is a seeded draw: the same mix and level give the same pieces (' + a1.length + ')');
+  check(L.heapPieces(comp, 0, 160, 120, 7, MATS).length === 0 && L.heapPieces({}, 0.8, 160, 120, 7, MATS).length === 0, 'an empty bin draws nothing');
+  const share = (m) => a1.filter((p) => p.m === m).length / a1.length;
+  check(Math.abs(share('wood') - 0.55) < 0.12 && share('glass') > 0.15 && a1.every((p) => p.x >= 0 && p.x <= 160 && p.y <= 120), 'pieces follow the mix and stay inside the bin');
+  const low = L.heapPieces(comp, 0.3, 160, 120, 7, MATS), topOf = (arr) => Math.min.apply(null, arr.map((p) => p.y));
+  check(topOf(low) > topOf(a1) + 20 && low.length < a1.length, 'a lower level is a lower, smaller heap');
+  check(a1.find((p) => p.m === 'wood').kind === 'wood' && a1.find((p) => p.m === 'glass').kind === 'angular', "each piece carries its material's look");
+}
+
 console.log('\n' + (n - fails) + '/' + n + ' checks passed');
 process.exit(fails ? 1 : 0);

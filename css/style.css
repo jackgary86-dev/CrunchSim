@@ -712,3 +712,7 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 
 /* #122: the station cam fills its column at 4:3 */
 .fn-camwrap { aspect-ratio: 16 / 10; }
+
+/* #123: THE BIN is a heap of shred on a canvas */
+.bigbin canvas.heap { display: block; width: 100%; height: 100%; }
+.bigbin { padding: 0 2px; }

@@ -819,8 +819,25 @@
       list.appendChild(row);
     }
     col.appendChild(list);
+    // #129: the refinery, once owned, stands at the end of the line: a furnace glowing, pouring ingots when something is refined
+    const RF = CS.Refinery && CS.Refinery.live, lvl = RF ? RF.level() : 0;
+    if (lvl >= 1) {
+      const pour = Date.now() - refinedAt < 2600;
+      const box = el('div', 'refbox' + (pour ? ' pour' : ''));
+      box.title = lvl >= 2 ? 'Smelting furnace and precious-metals refinery' : 'Smelting furnace';
+      box.innerHTML = '<svg viewBox="0 0 120 54" aria-hidden="true">' +
+        '<rect x="8" y="12" width="40" height="34" rx="4" fill="#3a2a22"/><rect x="14" y="18" width="28" height="18" rx="2" class="rf-glow"/>' +
+        '<path d="M48 26 L58 30 L58 33 L48 30 Z" fill="#5a4436"/><path d="M58 32 Q62 40 62 44" class="rf-stream" stroke-width="3" fill="none"/>' +
+        '<rect x="56" y="44" width="40" height="6" fill="#2a3138"/><path d="M58 44 L62 39 L70 39 L74 44 Z M76 44 L80 39 L88 39 L92 44 Z" class="rf-ingot"/>' +
+        (lvl >= 2 ? '<rect x="100" y="8" width="12" height="38" rx="2" fill="#2e3b48"/><circle cx="106" cy="16" r="3" fill="#f2c94c"/><circle cx="106" cy="26" r="3" fill="#e4e8ee"/>' : '') +
+        '<path d="M18 12 Q20 4 26 6 Q30 0 34 6" stroke="#5a6573" stroke-width="2" fill="none" class="rf-smoke"/></svg>' +
+        '<span class="small">' + (lvl >= 2 ? 'FURNACE + PRECIOUS REFINERY' : 'SMELTING FURNACE') + (pour ? ' · pouring' : '') + '</span>';
+      box.addEventListener('click', () => { showDrawer('plant'); const r = document.getElementById('refinery-panel'); if (r) r.scrollIntoView({ block: 'start' }); });
+      col.appendChild(box);
+    }
     return col;
   }
+  let refinedAt = 0;
 
   /* the plant in screen order: the grinding stage (the stations at the head of the line that break material), then THE BIN
    * everything falls into, then the sorters and the rest in placement order, then the add-a-machine column (#50) */
@@ -961,6 +978,7 @@
       document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#btn-run')) guardLoaded(); }, true);
     });
     app.on('batchStart', onBatchStart);
+    app.on('refined', () => { refinedAt = Date.now(); renderFlow(true); setTimeout(() => renderFlow(true), 2700); });   // #129: the furnace pours
     // #109: a MISC bucket loaded in a no-bin round cannot run once a later round has handed you a bin
     app.on('veto:startRun', () => {
       const S = app.S;

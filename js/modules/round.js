@@ -354,7 +354,7 @@
     }
 
     /* ---- hooks ---- */
-    app.on('load', (ext) => { const d = ext && ext.round; st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() }; busy = false; });   // #107: an open round survives a reload or a mode switch
+    app.on('load', (ext) => { const d = ext && ext.round; st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() }; busy = false; setTimeout(checkEnd, 0); });   // #264: a match left in 'ending' by a tab closed before the batchComplete timer ends on load. #107: an open round survives a reload or a mode switch
     if (app.S && app.S.ext && app.S.ext.round) { const d = app.S.ext.round; st.n = d.n || 0; st.misc = !!d.misc; }
     app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? st.open : null } }));
     app.on('batchComplete', () => { setTimeout(checkEnd, 0); });

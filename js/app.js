@@ -120,7 +120,7 @@
   function checkRank() {
     const r = rankOf(netWorth());
     if (lastRankIdx != null && r.idx > lastRankIdx) { log('RANK UP: ' + r.name + '.', 'ok'); Audio.ui('done'); }
-    lastRankIdx = r.idx;
+    lastRankIdx = Math.max(lastRankIdx == null ? r.idx : lastRankIdx, r.idx);   // high-water mark: a dip in net worth must not make the next climb a second RANK UP (#264)
   }
 
   /* Material comes only from auction lots or a re-run bucket (#57): the mix sliders and the preset list are a read-out of what
@@ -911,6 +911,7 @@
   let resetArmed = false;
   /* Only a Rivals match can be restarted: a Progress yard is permanent (the user's call, 2026-10-06) */
   const RESTART_LABEL = 'RESTART RIVALS';
+  function saveIfHidden() { if (typeof document.hidden === 'boolean' && document.hidden) save(); }   // mobile Safari skips beforeunload; pagehide and a hidden tab still fire (#264)
   function newGame() {
     const b = $('#btn-newgame');
     if (S.mode !== 'rivals') return;
@@ -920,7 +921,7 @@
     try { localStorage.removeItem(saveKey()); } catch (e) { /* ignore */ }
     // a page reload is the cleanest reset, but inside a hosted viewer's frame a reload can land on a blank page
     let topLevel = false; try { topLevel = window.top === window; } catch (e) { topLevel = false; }
-    if (topLevel) { window.removeEventListener('beforeunload', save); location.reload(); return; }
+    if (topLevel) { window.removeEventListener('beforeunload', save); window.removeEventListener('pagehide', save); document.removeEventListener('visibilitychange', saveIfHidden); location.reload(); return; }
     softReset();
   }
   /* rebuild the whole game state in place, without reloading the page */
@@ -980,7 +981,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};
@@ -1015,6 +1016,8 @@
     });
     window.addEventListener('resize', () => { cam.resize(); drawPSD(node(S.sel) ? info(S.sel) : null); });
     window.addEventListener('beforeunload', save);
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', saveIfHidden);
     document.addEventListener('pointerdown', () => Audio.init(), { once: true });
     API.cam = cam;
     CS.app = API;

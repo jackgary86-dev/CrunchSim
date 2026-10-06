@@ -190,7 +190,7 @@
       // wear, nitrogen
       const abr = D.abrasion + (M.knife ? 4 * D.hard : 0) + (hyd ? 0.04 : 0);
       wearPer += accMass / 1000 * abr / life * 0.12;   // liners last many thousand tonnes
-      if (M.ln2) ln2 += accMass * D.coolKJ / LN2_KJ_PER_KG;   // kg of LN2 per head-tonne
+      if (M.ln2 && stream.temp < 1) ln2 += accMass * D.coolKJ / LN2_KJ_PER_KG;   // kg of LN2 per head-tonne; input a freezer already cooled needs none (#264)
 
       // capacity weighting
       capNum += accMass * Math.pow(D.density / 2.7, 0.8);

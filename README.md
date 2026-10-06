@@ -134,6 +134,7 @@ node tests/save-clamp.js
 node tests/saveio.js
 node tests/sensor.js
 node tests/slots.js
+node tests/small-fixes.js
 node tests/stamp.js
 node tests/universal.js
 node tests/valuation.js

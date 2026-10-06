@@ -686,7 +686,7 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   #top { gap: 8px 12px; padding: 6px 8px; }
   .logo { font-size: 17px; }
   #top .tele .val { font-size: 15px; }
-  #top .tele:has(#rank) { display: none; }
+  body:not(.mode-rivals) #top .tele:has(#rank) { display: none; }   /* Rivals keeps its match place here (#264) */
   #top .speed .lbl { display: none; }
   #top .icon { width: 30px; height: 30px; padding: 0; }
   #toolbar { gap: 4px; padding: 4px 6px; overflow-x: auto; }

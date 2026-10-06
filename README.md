@@ -121,6 +121,7 @@ node tests/networth-stock.js
 node tests/onboarding.js
 node tests/overlays.js
 node tests/plant3d-layout.js
+node tests/plant3d-save.js
 node tests/playbooks.js
 node tests/playtest.js
 node tests/precious.js

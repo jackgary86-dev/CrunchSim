@@ -87,6 +87,18 @@
     return { toWorn: Math.max(0, 1 - wear) / w, toService: Math.max(0, AUTO_SERVICE_AT - wear) / w, perT: w };
   }
   function shouldAutoService(node, at) { return !!(node && node.autoService && (node.wear || 0) >= (at == null ? AUTO_SERVICE_AT : at)); }
+  /* #193: wear and the AUTO-service flag belong to the owned unit, not the node. A removed node leaves its state on a shelf
+   * (stash[machine] = [{ wear, autoService }]) and the next ADD of that type takes it back, so REMOVE + ADD is not a free service. */
+  function shelve(stash, node) { if (!node || !(node.wear > 0 || node.autoService)) return; (stash[node.m] = stash[node.m] || []).push({ wear: node.wear || 0, autoService: !!node.autoService }); }
+  function unshelve(stash, node) { const u = stash[node.m] && stash[node.m].pop(); if (!u) return; node.wear = u.wear; node.autoService = u.autoService; }
+  /* a rebuilt line (preset) keeps, per machine type, the worst wear on the old line or shelf and the AUTO flag that went with it */
+  function carryWear(oldLine, stash, nodes) {
+    const best = {}, pool = (oldLine || []).slice();
+    for (const m in (stash || {})) (stash[m] || []).forEach(function (u) { pool.push({ m: m, wear: u.wear, autoService: u.autoService }); });
+    pool.forEach(function (n) { const w = n.wear || 0; if (!best[n.m] || w > best[n.m].wear) best[n.m] = { wear: w, autoService: !!n.autoService }; });
+    nodes.forEach(function (n) { const b = best[n.m]; if (b) { n.wear = b.wear; n.autoService = b.autoService; } });
+    return nodes;
+  }
   /* wear cost per head tonne of the whole line: what the liners consumed, priced at the service bill */
   function wearCost(nodes) { let c = 0; (nodes || []).forEach(function (n) { c += (n.wearPerHeadT || 0) * n.M.service; }); return c; }
 
@@ -201,6 +213,7 @@
   }
 
   CS.Economics = {
+    shelve: shelve, unshelve: unshelve, carryWear: carryWear,
     AUTO_SERVICE_AT: AUTO_SERVICE_AT, SERVICE_MIN: SERVICE_MIN, RESIST: RESIST, MIXED_GRADE: MIXED_GRADE, MIN_LOSS: MIN_LOSS, NOISE: NOISE,
     projectBatch: projectBatch, wrongMachine: wrongMachine, resisting: resisting, binPricing: binPricing,
     serviceCost: serviceCost, wearForecast: wearForecast, shouldAutoService: shouldAutoService, wearCost: wearCost,

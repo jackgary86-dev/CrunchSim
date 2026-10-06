@@ -31,7 +31,7 @@
   const S = {
     comp: {}, tons: 15, line: [], sel: null,
     money: START_BANK, tonnes: 0, kwh: 0, batches: 0, lifetime: 0,
-    owned: new Set(STARTER_MACHINES), units: unitsFrom(STARTER_MACHINES), levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0 },
+    owned: new Set(STARTER_MACHINES), units: unitsFrom(STARTER_MACHINES), shelf: {}, levels: {}, plant: { logistics: 0, power: 0, market: 0, nitrogen: 0 },
     speed: 1, muted: false, clock: 0, run: null,
     feedPreset: 'elv', linePreset: 'starter', ev: null, mr: null
   };
@@ -253,14 +253,16 @@
     $('#btn-add').addEventListener('click', () => {
       const m = add.value, last = S.line[S.line.length - 1];
       const why = API.veto('addMachine', { m }); if (why) { Audio.ui('deny'); log(why, 'bad'); return; }
-      if (!freeUnit(m) && !buyMachine(m)) { renderBank(); return; }
+      const free = freeUnit(m);   // a unit bought just now is new: only a spare unit brings its old wear back
+      if (!free && !buyMachine(m)) { renderBank(); return; }
       const src = last ? { uid: last.uid, port: primaryPort(last) } : 'feed';
-      const n = Sim.makeNode(m, {}, src); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom'; sel.value = 'custom';
+      const n = Sim.makeNode(m, {}, src); if (free && Eco()) Eco().unshelve(S.shelf, n); S.line.push(n); S.sel = n.uid; S.linePreset = 'custom'; sel.value = 'custom';
       Audio.ui('click'); log('Added ' + MACHINES[m].name + ' as node ' + S.line.length + '.'); markDirty(true);
     });
     $('#btn-remove').addEventListener('click', () => {
       const n = node(S.sel); if (!n) return;
       const idx = S.line.indexOf(n);
+      if (Eco()) Eco().shelve(S.shelf, n);   // #193: the unit keeps its wear while it is off the line
       S.line = S.line.filter((x) => x !== n);
       S.line.forEach((x) => { if (x.src && x.src !== 'feed' && x.src.uid === n.uid) x.src = 'feed'; });
       S.sel = S.line.length ? S.line[Math.min(idx, S.line.length - 1)].uid : null;
@@ -317,7 +319,7 @@
   function applyLinePreset(id) {
     const L = LINES[id];
     const why = API.veto('applyLine', { id, nodes: L.nodes }); if (why) { Audio.ui('deny'); log(why, 'bad'); $('#line-preset').value = LINES[S.linePreset] ? S.linePreset : 'custom'; return; }
-    S.linePreset = id; S.line = Sim.buildLine(L); S.sel = S.line[0].uid;
+    S.linePreset = id; const fresh = Sim.buildLine(L); S.line = Eco() ? Eco().carryWear(S.line, S.shelf, fresh) : fresh; S.sel = S.line[0].uid;
     // material comes only from lots and buckets (#57): a line preset never changes what is loaded, or it would be free feed
     if (!AUCTION_ONLY && L.feed && FEEDS[L.feed]) applyFeedPreset(L.feed);
     if (!AUCTION_ONLY && L.tons) S.tons = Math.min(L.tons, plantValue('logistics'));
@@ -854,7 +856,7 @@
       const key = saveKey();
       if (CS.SaveIO.isNewer(localStorage.getItem(key), loadedRev)) { warnStale(); return; }
       loadedRev++;
-      localStorage.setItem(key, JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() }));
+      localStorage.setItem(key, JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, shelf: S.shelf, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() }));
     } catch (e) { /* storage unavailable */ }
   }
   function load() {
@@ -872,6 +874,7 @@
       // units: saved counts, or (older saves) as many as the saved line already uses, and at least one per type owned
       S.units = {}; S.owned.forEach((m) => { S.units[m] = 1; }); S.line.forEach((n) => { if (S.owned.has(n.m)) S.units[n.m] = Math.max(S.units[n.m], S.line.filter((x) => x.m === n.m).length); });
       if (d.units && typeof d.units === 'object') for (const m in d.units) if (S.owned.has(m)) S.units[m] = clamp(Math.floor(+d.units[m] || 1), 1, 99);
+      S.shelf = {}; for (const m in (d.shelf || {})) if (MACHINES[m] && Array.isArray(d.shelf[m])) S.shelf[m] = d.shelf[m].slice(0, 99).map((u) => ({ wear: clamp(+(u && u.wear) || 0, 0, 1), autoService: !!(u && u.autoService) }));
       S.levels = {}; for (const k in (d.levels || {})) if (MACHINES[k]) S.levels[k] = clamp(Math.floor(+d.levels[k] || 0), 0, LEVEL_MAX);
       S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 }; for (const k in PLANT_UPGRADES) if (d.plant && isFinite(+d.plant[k])) S.plant[k] = clamp(Math.floor(+d.plant[k]), 0, PLANT_UPGRADES[k].costs.length);
       S.speed = [1, 10, 60].includes(+d.speed) ? +d.speed : 1; S.muted = !!d.muted; S.clock = +d.clock || 0;
@@ -914,7 +917,7 @@
     S.comp = {}; S.tons = 15; S.line = []; S.sel = null;
     S.money = START_BANK; S.tonnes = 0; S.kwh = 0; S.batches = 0; S.lifetime = 0;
     S.feedOwner = null;
-    S.owned = new Set(STARTER_MACHINES); S.units = unitsFrom(STARTER_MACHINES); S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
+    S.owned = new Set(STARTER_MACHINES); S.units = unitsFrom(STARTER_MACHINES); S.shelf = {}; S.levels = {}; S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 };
     S.clock = 0; S.feedPrepaid = false; S.feedOpts = null; S.ext = {};
     Sim.prices.market = 1; if (Sim.prices.perMat) Sim.prices.perMat = {};
     API.emit('load', S.ext);

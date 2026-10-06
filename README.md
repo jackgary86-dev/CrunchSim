@@ -55,7 +55,7 @@ Preset lines act as blueprints: loading one you cannot afford shows what to buy.
 
 ## Play
 
-**Play it online:** <https://jackgary86-dev.github.io/CrunchSim/> (the `main` branch, served by GitHub Pages). The 3D plant floor is at `plant3d.html` and the machine gallery at `gallery.html` under the same address. A single-file bundle for hosts that only allow inline code is built with `python tools/build.py` into `dist/`.
+**Play it online:** <https://jackgary86-dev.github.io/CrunchSim/> (the `main` branch, served by GitHub Pages). The 3D plant floor is at `plant3d.html` and the machine gallery at `gallery.html` under the same address. A single-file bundle for hosts that only allow inline code is built with `python tools/build.py` into `dist/artifact.html`. It needs no other files, but it still loads its fonts from Google Fonts, so offline it shows system fonts instead.
 
 Open `index.html` in a browser. There is no build step and no dependency. To serve it:
 

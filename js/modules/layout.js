@@ -290,12 +290,21 @@
 
   /* ---------------- live machine cams (the station cam's own scenes, small and cropped onto the machine) ---------------- */
   const minis = new Map();   // uid -> { cv, cam }
-  const VIEW = null;   // the whole scene: every separator draws its own drop bins at the sides
+  /* #122: each station cam is cropped onto its machine at 16:10, so the machine fills the column; drop bins a crop leaves out are
+   * listed under the station as BINS FILLED HERE, and the station view (click) shows the whole scene. */
+  const VIEWS = {   // per scene, measured off each scene's drawing (scene units: 900 x 380)
+    jaw: { x: 150, y: 0, w: 560, h: 340 }, cone: { x: 130, y: 0, w: 520, h: 330 }, roll: { x: 120, y: 0, w: 500, h: 310 }, hpgr: { x: 110, y: 0, w: 520, h: 320 },
+    vsi: { x: 130, y: 0, w: 480, h: 300 }, hammer: { x: 170, y: 0, w: 530, h: 330 }, twin: { x: 140, y: 0, w: 560, h: 350 }, single: { x: 80, y: 0, w: 560, h: 350 },
+    granulator: { x: 100, y: 10, w: 500, h: 320 }, chipper: { x: 20, y: 20, w: 600, h: 340 }, tub: { x: 80, y: 20, w: 560, h: 340 }, ball: { x: 100, y: 0, w: 480, h: 300 },
+    cryo: { x: 150, y: 0, w: 480, h: 300 }, colloid: { x: 130, y: 0, w: 480, h: 300 }, homog: { x: 60, y: 60, w: 760, h: 280 }, atomizer: { x: 170, y: 0, w: 520, h: 330 },
+    magnet: { x: 370, y: 40, w: 460, h: 300 }, eddy: { x: 300, y: 60, w: 480, h: 290 }, air: { x: 200, y: 0, w: 640, h: 380 },
+    sinkfloat: { x: 130, y: 0, w: 720, h: 380 }, furnace: { x: 130, y: 0, w: 560, h: 350 }
+  };   // screen, sensor, freezer and omni run the width of the scene and keep it whole
   function miniFor(uid) {
     let m = minis.get(uid);
     if (!m && CS.Cam) {
       const cv = el('canvas', 'fn-cam'); cv.setAttribute('aria-hidden', 'true');
-      const cam = new CS.Cam(cv); cam.view = VIEW;
+      const cam = new CS.Cam(cv); cam.view = null;
       m = { cv, cam }; minis.set(uid, m);
     }
     return m;
@@ -309,6 +318,7 @@
         const r = m.cv.getBoundingClientRect();
         if (Math.abs(r.width - m.cam.W) > 1 || Math.abs(r.height - m.cam.H) > 1) m.cam.resize();
         const st = app.camState(uid); if (!st) return;
+        m.cam.view = VIEWS[st.M.scene] || null;
         m.cam.setState(st); m.cam.frame(dt);
       });
     }

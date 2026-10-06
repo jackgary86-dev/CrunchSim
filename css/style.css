@@ -709,3 +709,6 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 #tool-sell::before { content: "$"; }
 #tool-records::before { content: "≡"; }
 #toolbar .tool.on::before { color: var(--cyan); }
+
+/* #122: the station cam fills its column at 4:3 */
+.fn-camwrap { aspect-ratio: 16 / 10; }

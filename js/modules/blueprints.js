@@ -46,14 +46,7 @@
     const keep = [], map = {};   // old 1-based index -> new 1-based index
     def.nodes.forEach(function (d, i) {
       if (!d || !MACHINES[d.m]) return;
-      const M = MACHINES[d.m], s = {};
-      (M.settings || []).forEach(function (st) {
-        const given = d.s ? d.s[st.id] : null;
-        if (st.enum) { s[st.id] = st.enum.indexOf(given) >= 0 ? given : st.def; return; }   // e.g. the sensor's target material
-        const raw = given != null ? +given : NaN;
-        const v = isFinite(raw) ? raw : st.def;
-        s[st.id] = Math.min(st.max, Math.max(st.min, v));
-      });
+      const s = Sim.cleanSettings(d.m, d.s);   // #232: same clamp and enum check as load()
       map[i + 1] = keep.length + 1;
       keep.push({ m: d.m, s: s, src: typeof d.src === 'string' ? d.src : 'feed' });
     });

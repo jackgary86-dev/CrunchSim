@@ -865,7 +865,7 @@
       const d = JSON.parse(localStorage.getItem(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
       loadedRev = Math.max(0, Math.floor(+d.rev) || 0); staleWarned = false;
       S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
-      S.line = d.line.filter((n) => n && MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Object.assign({}, MACHINES[n.m].defaults, n.settings || {}), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed', autoService: !!n.autoService }));
+      S.line = d.line.filter((n) => n && MACHINES[n.m]).map((n) => ({ uid: +n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed', autoService: !!n.autoService }));
       const uids = new Set(S.line.map((n) => n.uid));
       S.line.forEach((n, i) => { if (n.src !== 'feed' && !(uids.has(n.src.uid) && S.line.findIndex((x) => x.uid === n.src.uid) < i)) n.src = 'feed'; });
       let maxUid = 0; S.line.forEach((n) => { maxUid = Math.max(maxUid, n.uid); }); while (Sim.nextUid() < maxUid) { /* advance */ }

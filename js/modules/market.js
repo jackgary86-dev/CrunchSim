@@ -92,11 +92,11 @@
     const c = sellable().filter(function (id) { return state.recent.indexOf(id) < 0; });
     return c.length >= 2 ? c : sellable();
   }
-  /* #213: a batch closes a round only when it did real work (finished, or at least a quarter of its tonnes and 1 t), so a start-then-STOP cannot re-roll the bulletin */
+  /* #213: a batch closes a round only when it did real work (at least 1 t, and a quarter of its tonnes unless it finished), so a start-then-STOP or a sliver run to completion cannot re-roll the bulletin */
   const MIN_SHARE = 0.25, MIN_TONNES = 1;
   function countsAsRound(r, why) {
     if (!r || !(r.done > 0)) return false;
-    return why === 'complete' || (r.done >= MIN_TONNES && r.done >= MIN_SHARE * (r.total || 0));
+    return r.done >= MIN_TONNES && (why === 'complete' || r.done >= MIN_SHARE * (r.total || 0));
   }
 
   /* one round: the walk steps, a hot and a cold material are named, history grows. hour: mission clock hour the batch closed at. */

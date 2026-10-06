@@ -104,6 +104,7 @@
 
   function install(app) {
     const state = { saved: [] };
+    const Eco = function () { return CS.Economics || null; };
     let loaded = false, els = null, armed = null;
 
     app.on('load', function (ext) { Object.assign(state, sanitiseState(ext && ext.blueprints)); loaded = true; });

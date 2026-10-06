@@ -137,6 +137,7 @@ node tests/slots.js
 node tests/stamp.js
 node tests/universal.js
 node tests/valuation.js
+node tests/wiring.js
 ```
 
 Or all at once: `for t in tests/*.js; do node $t; done`.

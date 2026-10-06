@@ -32,6 +32,21 @@ check(O.isModal({ modal: false }, mm(500)) === false && O.isModal({}, mm(1400)) 
 check(O.isModal({ modal: '(max-width: 900px)' }, mm(500)) && !O.isModal({ modal: '(max-width: 900px)' }, mm(1400)), 'a media-query layer is modal only while the query matches');
 check(/modal: '[(]max-width: 900px[)]'/.test(fs.readFileSync(__dirname + '/../js/modules/layout.js', 'utf8')) && /#drawer[.]overlay [{] top: 0; width: 100%/.test(fs.readFileSync(__dirname + '/../css/style.css', 'utf8')), 'the drawer attaches with the same 900px breakpoint the CSS uses to make it full screen');
 
+/* #248: the live sync. attach() listens for the breakpoint changing under an open layer and flips aria-modal with it */
+{
+  const attrs = {}, mqls = {}, el = { dataset: {}, isConnected: true, classList: { contains: () => true }, setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: (k) => { delete attrs[k]; }, querySelector: () => null };
+  const q = '(max-width: 900px)';
+  globalThis.window = { matchMedia: (s) => mqls[s] || (mqls[s] = { matches: true, listeners: [], addEventListener(ev, fn) { if (ev === 'change') this.listeners.push(fn); } }), addEventListener() {} };
+  globalThis.document = { getElementById: () => null, activeElement: null, body: {} };
+  globalThis.MutationObserver = class { observe() {} };
+  O.attach(el, { label: 'Drawer', modal: q });
+  check(attrs['aria-modal'] === 'true', 'a media-query layer attached while the query matches is aria-modal');
+  const m = mqls[q]; m.matches = false; m.listeners.forEach((f) => f());
+  check(!('aria-modal' in attrs) && m.listeners.length === 1, 'the matchMedia change listener drops aria-modal when the window widens past the breakpoint');
+  m.matches = true; m.listeners.forEach((f) => f());
+  check(attrs['aria-modal'] === 'true', 'and sets it again when the window narrows');
+}
+
 const html = fs.readFileSync(__dirname + '/../index.html', 'utf8'), build = fs.readFileSync(__dirname + '/../tools/build.py', 'utf8');
 check(html.indexOf('js/modules/overlays.js') > 0 && html.indexOf('js/modules/overlays.js') < html.indexOf('js/modules/layout.js'), 'overlays.js loads before the modules that attach layers to it');
 check(/'overlays', 'layout'/.test(build), 'the single-file bundle loads it in the same place');

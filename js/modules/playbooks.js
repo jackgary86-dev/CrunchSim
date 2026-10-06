@@ -403,6 +403,7 @@
     const state = { open: null };
     let els = null, lastEv = null, rankKey = '', lastWarn = '', loaded = false;
     const S = function () { return app.S; };
+    const Eco = function () { return CS.Economics || null; };
 
     const readExt = function (ext) { const d = ext && ext.playbooks; state.open = d && byId(d.open) ? d.open : null; loaded = true; };
     app.on('load', readExt);
@@ -458,7 +459,7 @@
       });
     }
 
-    /* build the card's line the way applyLinePreset does: veto first, fresh nodes, wear carried over per machine type,
+    /* build the card's line the way applyLinePreset does: veto first, fresh nodes, wear carried over per unit,
      * the purchase cost of anything unowned to the log, then S.line, S.sel, S.linePreset = 'custom' and a full render */
     function loadSetup(pb) {
       const st = S(); if (!st) return;
@@ -466,8 +467,7 @@
       const why = app.veto('applyLine', { id: 'playbook:' + pb.id, name: pb.name + ' playbook', nodes: pb.def.nodes });
       if (why) { app.log(why, 'bad'); return; }
       const nodes = Sim.buildLine(pb.def);
-      const wearBy = {}; st.line.forEach(function (n) { wearBy[n.m] = Math.max(wearBy[n.m] || 0, n.wear || 0); });
-      nodes.forEach(function (n) { n.wear = wearBy[n.m] || 0; });
+      if (Eco()) Eco().carryWear(st.line, st.shelf, nodes);
       const miss = {}; nodes.forEach(function (n) { if (!st.owned.has(n.m)) miss[n.m] = MACHINES[n.m].price; });
       let cost = 0; const names = []; for (const m in miss) { cost += miss[m]; names.push(MACHINES[m].name); }
       st.line = nodes; st.sel = nodes[0].uid; st.linePreset = 'custom';

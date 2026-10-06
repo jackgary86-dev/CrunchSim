@@ -151,7 +151,7 @@
     }
 
     /* Rebuild the line from a definition the way applyLinePreset does: veto first, then fresh nodes, then the purchase
-     * cost of anything unowned goes to the log. Wear is carried over per machine type so reloading is not a free service. */
+     * cost of anything unowned goes to the log. Wear and the AUTO flag are carried over per unit (line and shelf) so reloading is not a free service. */
     function loadDef(def, label, feedId) {
       const S = app.S; if (!S) return;
       if (S.run) { app.log('Finish or stop the running batch before loading a blueprint.', 'warn'); return; }
@@ -160,8 +160,7 @@
       const why = app.veto('applyLine', { id: 'blueprint', name: label, nodes: clean.nodes });
       if (why) { app.log(why, 'bad'); return; }
       const nodes = Sim.buildLine(clean);
-      const wearBy = {}; S.line.forEach(function (n) { wearBy[n.m] = Math.max(wearBy[n.m] || 0, n.wear || 0); });
-      nodes.forEach(function (n) { n.wear = wearBy[n.m] || 0; });
+      if (Eco()) Eco().carryWear(S.line, S.shelf, nodes);
       const miss = {}; nodes.forEach(function (n) { if (!S.owned.has(n.m)) miss[n.m] = MACHINES[n.m].price; });
       let cost = 0; const names = []; for (const m in miss) { cost += miss[m]; names.push(MACHINES[m].name); }
       S.line = nodes; S.sel = nodes[0].uid; S.linePreset = 'custom';

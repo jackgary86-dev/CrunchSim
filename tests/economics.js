@@ -197,9 +197,21 @@ console.log('=== #193 wear carries over');
   check(!shelf.hammer || shelf.hammer.length === 0, 'a spotless unit leaves nothing on the shelf');
   const nodes = E.carryWear([worn], {}, Sim.buildLine(LINES.car));
   const h = nodes.filter((n) => n.m === 'hammer');
-  check(h.length > 0 && h.every((n) => n.wear === 0.9 && n.autoService === true) && nodes.filter((n) => n.m !== 'hammer').every((n) => n.wear === 0), 'a preset keeps the old wear per machine type and leaves other machines fresh');
+  check(h.length > 0 && h[0].wear === 0.9 && h[0].autoService === true && nodes.filter((n) => n.m !== 'hammer').every((n) => n.wear === 0), 'a preset keeps the old wear on the unit and leaves other machines fresh');
   const n2 = E.carryWear([], { hammer: [{ wear: 0.6, autoService: false }] }, Sim.buildLine(LINES.car));
   check(n2.filter((n) => n.m === 'hammer').every((n) => n.wear === 0.6), 'a preset also sees wear on units that are off the line');
+  // #229: blueprint and playbook loads go through the same call: per unit, shelf consumed, unused units shelved
+  const two = Sim.buildLine({ nodes: [{ m: 'hammer', s: {}, src: 'feed' }, { m: 'hammer', s: {}, src: 'feed' }] });
+  const sh = { hammer: [{ wear: 0.9, autoService: true }] };
+  const l2 = E.carryWear([], sh, two);
+  check(l2[0].wear === 0.9 && l2[0].autoService === true && l2[1].wear === 0 && !l2[1].autoService, '#229: one worn spare unit wears one node, not every node of the type');
+  check(!sh.hammer, '#229: the shelf entry a load consumed is gone (no phantom wear for a later ADD)');
+  const w1 = Sim.makeNode('hammer', {}, 'feed'); w1.wear = 0.5;
+  const w2 = Sim.makeNode('hammer', {}, 'feed'); w2.wear = 0.8;
+  const sh2 = {}, one = E.carryWear([w1, w2], sh2, Sim.buildLine({ nodes: [{ m: 'hammer', s: {}, src: 'feed' }] }));
+  check(one[0].wear === 0.8 && sh2.hammer && sh2.hammer.length === 1 && sh2.hammer[0].wear === 0.5, '#229: the worst unit goes on the line, the other goes to the shelf');
+  const sh3 = {}; E.carryWear([w2], sh3, Sim.buildLine({ nodes: [{ m: 'jaw', s: {}, src: 'feed' }] }));
+  check(sh3.hammer && sh3.hammer[0].wear === 0.8, '#229: a load without that machine type does not lose its wear');
 }
 
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' economics checks pass'));

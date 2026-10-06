@@ -91,12 +91,19 @@
    * (stash[machine] = [{ wear, autoService }]) and the next ADD of that type takes it back, so REMOVE + ADD is not a free service. */
   function shelve(stash, node) { if (!node || !(node.wear > 0 || node.autoService)) return; (stash[node.m] = stash[node.m] || []).push({ wear: node.wear || 0, autoService: !!node.autoService }); }
   function unshelve(stash, node) { const u = stash[node.m] && stash[node.m].pop(); if (!u) return; node.wear = u.wear; node.autoService = u.autoService; }
-  /* a rebuilt line (preset) keeps, per machine type, the worst wear on the old line or shelf and the AUTO flag that went with it */
+  /* a rebuilt line (preset, blueprint, playbook) keeps wear per unit: the old line's nodes and the shelf's units of each type are
+   * dealt to the new nodes of that type worst first, so one worn unit does not wear every node. Units the new line has no node
+   * for go back on the shelf, and the units it took leave it (no phantom wear for a later ADD). */
   function carryWear(oldLine, stash, nodes) {
-    const best = {}, pool = (oldLine || []).slice();
-    for (const m in (stash || {})) (stash[m] || []).forEach(function (u) { pool.push({ m: m, wear: u.wear, autoService: u.autoService }); });
-    pool.forEach(function (n) { const w = n.wear || 0; if (!best[n.m] || w > best[n.m].wear) best[n.m] = { wear: w, autoService: !!n.autoService }; });
-    nodes.forEach(function (n) { const b = best[n.m]; if (b) { n.wear = b.wear; n.autoService = b.autoService; } });
+    const pool = {};
+    (oldLine || []).forEach(function (n) { (pool[n.m] = pool[n.m] || []).push({ wear: n.wear || 0, autoService: !!n.autoService }); });
+    for (const m in (stash || {})) (stash[m] || []).forEach(function (u) { (pool[m] = pool[m] || []).push({ wear: u.wear || 0, autoService: !!u.autoService }); });
+    for (const m in pool) pool[m].sort(function (a, b) { return b.wear - a.wear; });
+    nodes.forEach(function (n) { const u = pool[n.m] && pool[n.m].shift(); if (u) { n.wear = u.wear; n.autoService = u.autoService; } });
+    if (stash) {
+      for (const m in stash) delete stash[m];
+      for (const m in pool) { const rest = pool[m].filter(function (u) { return u.wear > 0 || u.autoService; }).reverse(); if (rest.length) stash[m] = rest; }   // unshelve pops the worst
+    }
     return nodes;
   }
   /* wear cost per head tonne of the whole line: what the liners consumed, priced at the service bill */

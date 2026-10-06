@@ -563,11 +563,12 @@
     const price = pairPrice(p);
     if (S.money < price) { Audio.ui('deny'); log('Not enough in the bank: ' + fmtMoney(price) + ' needed.', 'bad'); renderBank(); return; }
     const need = {}; p.ms.forEach((m) => { need[m] = (need[m] || 0) + 1; });
+    const spare = {}; for (const m in need) spare[m] = Math.max(0, unitsOf(m) - S.line.filter((x) => x.m === m).length);   // only a spare unit has old wear to bring back (#229)
     for (const m in need) { let buy = need[m] - Math.max(0, unitsOf(m) - S.line.filter((x) => x.m === m).length); while (buy-- > 0) if (!buyMachine(m)) { renderBank(); return; } }
     const sets = p.sets || [];
-    const na = Sim.makeNode(p.ms[0], sets[0] || {}, p.src); S.line.push(na);
+    const na = Sim.makeNode(p.ms[0], sets[0] || {}, p.src); if (Eco() && spare[p.ms[0]]-- > 0) Eco().unshelve(S.shelf, na); S.line.push(na);
     let last = na;
-    if (p.ms[1]) { last = Sim.makeNode(p.ms[1], sets[1] || {}, { uid: na.uid, port: p.port2 }); S.line.push(last); }
+    if (p.ms[1]) { last = Sim.makeNode(p.ms[1], sets[1] || {}, { uid: na.uid, port: p.port2 }); if (Eco() && spare[p.ms[1]]-- > 0) Eco().unshelve(S.shelf, last); S.line.push(last); }
     S.sel = last.uid; S.linePreset = 'custom';
     const setText = (m, st) => { const d = st && Object.keys(st)[0]; const D = d && (MACHINES[m].settings || []).find((x) => x.id === d); return D ? ' (' + D.label.toLowerCase() + ' ' + st[d] + (D.unit ? ' ' + D.unit : '') + ')' : ''; };
     Audio.ui('click'); log('Added ' + p.ms.map((m, i) => MACHINES[m].name + setText(m, sets[i])).join(' and ') + ' to the line.'); markDirty(true);

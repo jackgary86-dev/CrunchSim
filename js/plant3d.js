@@ -137,7 +137,7 @@
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function fmtNum(x, d) { if (x == null || !isFinite(x)) return '--'; const f = d == null ? (Math.abs(x) >= 100 ? 0 : Math.abs(x) >= 10 ? 1 : 2) : d; return x.toLocaleString('en-US', { minimumFractionDigits: f, maximumFractionDigits: f }); }
   function fmtSize(mm) { if (!(mm > 0)) return '--'; if (mm >= 1000) return fmtNum(mm / 1000, 2) + ' m'; if (mm >= 1) return fmtNum(mm, mm >= 100 ? 0 : 1) + ' mm'; return fmtNum(mm * 1000, 0) + ' µm'; }
-  function fmtMoney(x) { const a = Math.abs(x); return (x < 0 ? '-$' : '$') + (a >= 1e6 ? (a / 1e6).toFixed(2) + 'M' : Math.round(a).toLocaleString('en-US')); }
+  function fmtMoney(x) { return CS.Score.fmtMoney(x); }
   function fmtSetting(v, st) { const d = st.step < 0.1 ? 2 : st.step < 1 ? 1 : 0; return (st.log && v < 1 ? v.toPrecision(2) : v.toFixed(d)) + ' ' + st.unit; }
   function ro(lbl, v, u, cls) { return '<div class="ro ' + (cls || '') + '"><span class="lbl">' + lbl + '</span><span class="v">' + v + '</span><span class="u">' + (u || '') + '</span></div>'; }
 

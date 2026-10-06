@@ -20,7 +20,7 @@
   const MIN_LOSS = 2;            // $/t of head feed: smaller gaps are rounding, not a diagnosis
   const NOISE = 0.5;             // $/t: a cost line under fifty cents a tonne is not worth a row
 
-  function money(x) { const a = Math.abs(x); const s = a >= 1e6 ? (a / 1e6).toFixed(2) + 'M' : Math.round(a).toLocaleString('en-US'); return (x < 0 ? '-$' : '$') + s; }
+  function money(x) { return CS.Score.fmtMoney(x); }
   function fmtMm(mm) { if (!(mm > 0)) return '--'; return mm >= 1 ? (mm >= 100 ? mm.toFixed(0) : mm.toFixed(1)) + ' mm' : Math.round(mm * 1000) + ' µm'; }
   function pct(x) { return Math.round(x * 100) + '%'; }
   function nodeOf(ev, uid) { return ev.nodes.find(function (n) { return n.uid === uid; }) || null; }

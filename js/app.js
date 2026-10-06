@@ -23,7 +23,7 @@
     if (mm >= 1) return fmtNum(mm, mm >= 100 ? 0 : 1) + ' mm';
     return fmtNum(mm * 1000, 0) + ' µm';
   }
-  function fmtMoney(x) { const a = Math.abs(x); const s = a >= 1e6 ? (a / 1e6).toFixed(2) + 'M' : Math.round(a).toLocaleString('en-US'); return (x < 0 ? '-$' : '$') + s; }
+  function fmtMoney(x) { return Score.fmtMoney(x); }
   function fmtClock(sec) { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return 'T+' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0'); }
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }

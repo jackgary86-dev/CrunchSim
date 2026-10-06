@@ -177,6 +177,7 @@
     function renderHeader() {
       const lbl = document.querySelector('#rank') && document.querySelector('#rank').previousElementSibling;
       const sub = document.querySelector('#top .brand .sub');
+      document.body.classList.toggle('mode-rivals', app.S.mode === 'rivals');
       if (app.S.mode === 'rivals' && CS.Round && CS.Round.live && CS.Round.live.table) {
         const me = CS.Round.live.table().find((r) => r.id === 'you');
         if (me && lastPlace && me.place < lastPlace && CS.Round.live.round().n > 0 && CS.Audio && CS.Audio.sfx) CS.Audio.sfx('place');   // #118: you moved up

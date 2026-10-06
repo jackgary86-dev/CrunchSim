@@ -34,8 +34,9 @@ function load() {
   g.document.createElement = () => fakeEl();
   g.document.querySelectorAll = () => [];
   sel['#add-machine'] = fakeEl(); sel['#add-machine'].value = 'hammer';   // a real machine id: renderAddButton looks it up
-  g.document.addEventListener = noop;
-  g.window.addEventListener = noop;
+  const wl = {}, dl = {};   // listeners app.js registered, by event name, so a test can fire them
+  g.document.addEventListener = (t, f) => { (dl[t] = dl[t] || []).push(f); };
+  g.window.addEventListener = (t, f) => { (wl[t] = wl[t] || []).push(f); };
   g.Option = function () { return fakeEl(); };
   g.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
   let now = 1000;
@@ -45,13 +46,13 @@ function load() {
   g.setTimeout = () => 0;   // deferred UI work (drawer closing, end-of-round checks) is not part of the run loop
   g.matchMedia = () => ({ matches: false, addEventListener: noop });
   g.navigator = g.navigator || {};
-  g.addEventListener = noop;
+  g.addEventListener = g.window.addEventListener;
   ['data', 'sim', 'audio', 'cam', 'scenes-a', 'scenes-b', 'score', 'app'].forEach((f) => require(path.join('..', 'js', f + '.js')));
   ['market', 'inventory', 'auction', 'missions', 'floor', 'onboarding', 'blueprints', 'playbooks', 'economics', 'facility', 'rivals', 'endgame', 'refinery', 'slots', 'round', 'autorun', 'milestones', 'saveio', 'guide', 'overlays', 'layout']
     .forEach((f) => require(path.join('..', 'js', 'modules', f + '.js')));
   const CS = g.CS;
   return {
-    CS, app: CS.app, S: CS.app.S, sel,
+    CS, app: CS.app, S: CS.app.S, sel, winListeners: wl, docListeners: dl,
     tick(dt) { const f = frames.shift(); now += dt * 1000; if (f) f(now); }
   };
 }

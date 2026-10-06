@@ -21,7 +21,8 @@ ASSET = re.compile(r'(<link rel="stylesheet" href="|<script src=")((?:css|js)/[^
 def stamp(html):
     """Give every local css/js URL a ?v= query from a hash of the file's contents."""
     def sub(m):
-        digest = hashlib.sha1(io.open(os.path.join(ROOT, m.group(2)), 'rb').read()).hexdigest()[:10]
+        data = io.open(os.path.join(ROOT, m.group(2)), 'rb').read().replace(b'\r\n', b'\n')   # LF-normalised so CRLF checkouts hash the same (#233); tools/stamp.js does the same
+        digest = hashlib.sha1(data).hexdigest()[:10]
         return m.group(1) + m.group(2) + '?v=' + digest + m.group(3)
     return ASSET.sub(sub, html)
 

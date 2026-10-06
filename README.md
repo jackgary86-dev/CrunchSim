@@ -86,6 +86,7 @@ plant3d.html      standalone 3D plant floor demo (three.js r128 from cdnjs; shar
 js/plant3d.js     plant-floor layout (pure, tested in Node) and the three.js renderer and controls
 gallery.html      developer page: every machine cam scene running live
 tools/build.py    bundles the game into one file for hosts that only allow inline code
+tools/stamp.js    node version of the index.html cache-bust stamp (no Python needed)
 tests/            Node scripts that exercise the physics core and the game modules
 ```
 
@@ -130,6 +131,7 @@ node tests/save-clamp.js
 node tests/saveio.js
 node tests/sensor.js
 node tests/slots.js
+node tests/stamp.js
 node tests/universal.js
 node tests/valuation.js
 ```

@@ -285,8 +285,8 @@
       const css = document.createElement('style');
       css.textContent = '#missions-panel .ask{color:var(--amber);font-family:var(--mono);white-space:nowrap}#missions-panel .crow.active{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset}#missions-panel .crow.locked{opacity:.55}' +
         '#missions-panel .jbar{display:flex;height:5px;border-radius:3px;overflow:hidden;margin:4px 0 2px;background:var(--line)}#missions-panel .jbar i{display:block;height:100%;background:var(--green)}' +
-        '#missions-panel .mrow{font-family:var(--mono);font-size:11px;padding:2px 0;border-bottom:1px dotted var(--line);display:flex;justify-content:space-between;gap:8px}#missions-panel .mrow span:first-child{color:var(--muted);letter-spacing:1px;font-size:10px}' +
-        '.mission-cd{font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--cyan)}.mission-cd.late{color:var(--amber)}.mission-cd.bad{color:var(--red)}.mission-cd.ok{color:var(--green)}';
+        '#missions-panel .mrow{font-family:var(--mono);font-size:11px;padding:2px 0;border-bottom:1px dotted var(--line);display:flex;justify-content:space-between;gap:8px}#missions-panel .mrow span:first-child{color:var(--muted);letter-spacing:1px;font-size: 11px}' +
+        '.mission-cd{font-family:var(--mono);font-size: 11px;letter-spacing:1px;color:var(--cyan)}.mission-cd.late{color:var(--amber)}.mission-cd.bad{color:var(--red)}.mission-cd.ok{color:var(--green)}';
       panel.appendChild(css);
       els = { ro: ro, jb: jb, tag: panel.querySelector('h2 .tag') };
     }

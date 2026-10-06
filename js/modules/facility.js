@@ -162,7 +162,7 @@
     '#facility-panel .site .blk.built text{fill:var(--cyan)}' +
     '#facility-panel .site .blk .pip{fill:none;stroke:var(--line-2);stroke-dasharray:none}' +
     '#facility-panel .site .blk .pip.on{fill:var(--green);stroke:var(--green)}' +
-    '.bin .lab-psd{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;margin-top:5px;font-family:var(--mono);font-size:10px;color:var(--text)}' +
+    '.bin .lab-psd{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;margin-top:5px;font-family:var(--mono);font-size: 11px;color:var(--text)}' +
     '.bin .lab-psd span{text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:2px 0}' +
     '.bin .lab-psd span.top{color:var(--cyan)}' +
     '.bin .lab-psd em{display:block;font-style:normal;font-size:8px;color:var(--muted);letter-spacing:.5px}';

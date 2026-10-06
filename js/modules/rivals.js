@@ -447,11 +447,11 @@
       const tog = document.createElement('button'); tog.type = 'button'; tog.className = 'tog'; tog.addEventListener('click', () => setOn(!st.on)); panel.appendChild(tog);
       const css = document.createElement('style');
       css.textContent = '#rivals-panel .lg .r{display:grid;grid-template-columns:18px 1fr 64px 40px 34px;gap:6px;font-family:var(--mono);font-size:11px;padding:2px 0;border-bottom:1px dotted var(--line);align-items:center}' +
-        '#rivals-panel .lg .r.h{color:var(--muted);font-size:10px;letter-spacing:1px}#rivals-panel .lg .r span:nth-child(n+3){text-align:right}#rivals-panel .lg .r.you{color:var(--cyan)}' +
-        '#rivals-panel .rv{font-size:11px;color:var(--muted);padding:3px 0;border-bottom:1px dotted var(--line);line-height:1.35}#rivals-panel .rv b{color:var(--text);font-weight:400}#rivals-panel .rv .k{color:var(--amber);font-family:var(--mono);font-size:10px;letter-spacing:1px}' +
-        '#rivals-panel .wire div{font-family:var(--mono);font-size:10px;color:var(--muted);padding:1px 0}#rivals-panel .wire div.warn{color:var(--amber)}#rivals-panel .wire div.ok{color:var(--green)}#rivals-panel .tog{margin-top:8px;width:100%}' +
+        '#rivals-panel .lg .r.h{color:var(--muted);font-size: 11px;letter-spacing:1px}#rivals-panel .lg .r span:nth-child(n+3){text-align:right}#rivals-panel .lg .r.you{color:var(--cyan)}' +
+        '#rivals-panel .rv{font-size:11px;color:var(--muted);padding:3px 0;border-bottom:1px dotted var(--line);line-height:1.35}#rivals-panel .rv b{color:var(--text);font-weight:400}#rivals-panel .rv .k{color:var(--amber);font-family:var(--mono);font-size: 11px;letter-spacing:1px}' +
+        '#rivals-panel .wire div{font-family:var(--mono);font-size: 11px;color:var(--muted);padding:1px 0}#rivals-panel .wire div.warn{color:var(--amber)}#rivals-panel .wire div.ok{color:var(--green)}#rivals-panel .tog{margin-top:8px;width:100%}' +
         '#auction-panel .rbtns{grid-column:2;grid-row:1/span 4;display:flex;flex-direction:column;gap:4px;align-self:center}#auction-panel .rbtns button{grid-column:auto;grid-row:auto}' +
-        '#auction-panel .rbid{color:var(--cyan)}#auction-panel .rbid.you{color:var(--green)}#auction-panel .rres{font-family:var(--mono);font-size:10px;color:var(--muted);padding:1px 0}#auction-panel .rres b{color:var(--amber);font-weight:400}';
+        '#auction-panel .rbid{color:var(--cyan)}#auction-panel .rbid.you{color:var(--green)}#auction-panel .rres{font-family:var(--mono);font-size: 11px;color:var(--muted);padding:1px 0}#auction-panel .rres b{color:var(--amber);font-weight:400}';
       panel.appendChild(css);
       els = { ro, lg, roster, held, wire, tog, tag: panel.querySelector('h2 .tag') };
     }

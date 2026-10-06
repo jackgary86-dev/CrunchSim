@@ -535,7 +535,7 @@
       syncMarket();
       const sec = API.addPanel('right', 'inventory-panel', 'Inventory & market', 'plant-panel');
       const css = document.createElement('style');
-      css.textContent = '#inventory .spark{display:block;margin:4px 0 2px}#inventory .tgt{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted)}' +
+      css.textContent = '#inventory .spark{display:block;margin:4px 0 2px}#inventory .tgt{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size: 11px;letter-spacing:1px;color:var(--muted)}' +
         '#inventory .tgt label{display:flex;align-items:center;gap:2px}#inventory .tgt input[type=number]{width:64px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:3px;color:var(--cyan);font-family:var(--mono);font-size:11px;padding:1px 4px}' +
         '#inventory .tgt input[type=number]:focus{outline:none;border-color:var(--cyan)}#inventory .tgt input[type=checkbox]{margin:0 3px 0 0;accent-color:var(--green)}' +
         '#inventory .tag.hot{color:var(--amber);border-color:var(--amber);margin-left:6px}#inventory .tag.cold{color:var(--cyan);border-color:var(--cyan);margin-left:6px}';

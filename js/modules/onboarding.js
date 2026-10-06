@@ -182,13 +182,13 @@
     </g>
     <!-- buckets -->
     <g transform="translate(0,318)">
-      <g transform="translate(24,0)"><use href="#cp-bucket" fill="#8d98a6"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">STEEL</text></g>
-      <g transform="translate(80,0)"><use href="#cp-bucket" fill="#b98a54"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">WOOD</text></g>
-      <g transform="translate(136,0)"><use href="#cp-bucket" fill="#e8695a"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">PLASTIC</text></g>
-      <g transform="translate(192,0)"><use href="#cp-bucket" fill="#cfd9e2"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">ALUMINUM</text></g>
-      <g transform="translate(248,0)"><use href="#cp-bucket" fill="#d98a5b"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">COPPER</text></g>
-      <g transform="translate(304,0)"><use href="#cp-bucket" fill="#d9b94e"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">BRASS</text></g>
-      <g transform="translate(360,0)"><use href="#cp-bucket" fill="#9ad9c9"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size:9px">GLASS</text></g>
+      <g transform="translate(24,0)"><use href="#cp-bucket" fill="#8d98a6"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">STEEL</text></g>
+      <g transform="translate(80,0)"><use href="#cp-bucket" fill="#b98a54"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">WOOD</text></g>
+      <g transform="translate(136,0)"><use href="#cp-bucket" fill="#e8695a"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">PLASTIC</text></g>
+      <g transform="translate(192,0)"><use href="#cp-bucket" fill="#cfd9e2"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">ALUMINUM</text></g>
+      <g transform="translate(248,0)"><use href="#cp-bucket" fill="#d98a5b"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">COPPER</text></g>
+      <g transform="translate(304,0)"><use href="#cp-bucket" fill="#d9b94e"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">BRASS</text></g>
+      <g transform="translate(360,0)"><use href="#cp-bucket" fill="#9ad9c9"/><text x="0" y="62" text-anchor="middle" class="tinyl" style="font-size: 10px">GLASS</text></g>
     </g>
   </g>
 
@@ -293,7 +293,7 @@
     '.cs-tour { position: fixed; inset: 0; z-index: 30; pointer-events: none; }',
     '.cs-tour .ring { position: absolute; border: 2px solid var(--cyan); border-radius: 5px; box-shadow: 0 0 0 9999px rgba(3,6,10,.55), 0 0 18px rgba(127,227,255,.45); transition: left .25s, top .25s, width .25s, height .25s; }',
     '.cs-tour .box { position: absolute; pointer-events: auto; width: 290px; max-width: calc(100vw - 32px); background: var(--panel); border: 1px solid var(--cyan); border-radius: 5px; padding: 12px 14px; box-shadow: 0 16px 40px rgba(0,0,0,.6); font-size: 12px; line-height: 1.45; }',
-    '.cs-tour .step { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); }',
+    '.cs-tour .step { font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); }',
     '.cs-tour h4 { font-family: var(--mono); font-size: 13px; letter-spacing: 2px; color: var(--cyan); margin: 4px 0 6px; font-weight: 400; }',
     '.cs-tour p { margin: 0 0 10px; }',
     '.cs-tour .btns { display: flex; justify-content: flex-end; gap: 6px; }',

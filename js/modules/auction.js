@@ -275,7 +275,7 @@
       css.textContent = '#auction-panel .acomp{display:flex;height:5px;border-radius:3px;overflow:hidden;margin:4px 0 2px;background:var(--line)}#auction-panel .acomp i{display:block;height:100%}' +
         '#auction-panel .ask{color:var(--amber);font-family:var(--mono);white-space:nowrap}#auction-panel .crow.yard{border-color:var(--amber)}' +
         '#auction-panel .mkt .r{display:grid;grid-template-columns:1fr 54px 76px;gap:6px;font-family:var(--mono);font-size:11px;padding:2px 0;border-bottom:1px dotted var(--line);align-items:center}' +
-        '#auction-panel .mkt .r.h{color:var(--muted);font-size:10px;letter-spacing:1px}#auction-panel .mkt .r span:nth-child(n+2){text-align:right}';
+        '#auction-panel .mkt .r.h{color:var(--muted);font-size: 11px;letter-spacing:1px}#auction-panel .mkt .r span:nth-child(n+2){text-align:right}';
       panel.appendChild(css);
     }
     function render() {

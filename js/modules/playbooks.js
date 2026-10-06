@@ -429,11 +429,11 @@
         '<h3>Cards</h3><div class="small">One card per bucket type. Click a card to open it.</div><div id="pb-cards"></div>');
       const css = document.createElement('style');
       css.textContent = '#playbook-panel .fit .r{display:grid;grid-template-columns:1fr 38px 74px 42px 42px;gap:6px;font-family:var(--mono);font-size:11px;padding:2px 0;border-bottom:1px dotted var(--line);align-items:center}' +
-        '#playbook-panel .fit .r.h{color:var(--muted);font-size:10px;letter-spacing:1px}#playbook-panel .fit .r span:nth-child(n+2){text-align:right}#playbook-panel .fit .r .bn{text-align:left;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+        '#playbook-panel .fit .r.h{color:var(--muted);font-size: 11px;letter-spacing:1px}#playbook-panel .fit .r span:nth-child(n+2){text-align:right}#playbook-panel .fit .r .bn{text-align:left;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
         '#playbook-panel .fit .r.clean span:first-child{color:var(--green)}#playbook-panel .fit .r.mixed span:first-child{color:var(--amber)}#playbook-panel .fit .r.reject span:first-child{color:var(--red)}' +
         '#playbook-panel #pb-warn .w{margin-top:6px}#playbook-panel .urow.open{border-color:var(--cyan)}#playbook-panel .urow .ic{color:var(--muted);font-family:var(--mono)}' +
         '#playbook-panel .pb-card{margin:2px 0 8px;padding:8px 10px;border:1px dashed var(--line-2);border-radius:3px;font-size:12px;line-height:1.4}' +
-        '#playbook-panel .pb-card h4{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted);margin:8px 0 3px;font-weight:400}#playbook-panel .pb-card h4:first-child{margin-top:0}' +
+        '#playbook-panel .pb-card h4{font-family:var(--mono);font-size: 11px;letter-spacing:2px;color:var(--muted);margin:8px 0 3px;font-weight:400}#playbook-panel .pb-card h4:first-child{margin-top:0}' +
         '#playbook-panel .pb-card ol,#playbook-panel .pb-card ul{margin:0;padding-left:18px}#playbook-panel .pb-card li{margin:2px 0}#playbook-panel .pb-card .sig{font-family:var(--mono);color:var(--cyan)}' +
         '#playbook-panel .pb-card .exp{font-family:var(--mono);font-size:11px;color:var(--text)}#playbook-panel .pb-card .load{width:100%;margin-top:8px}';
       sec.appendChild(css);

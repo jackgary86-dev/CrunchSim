@@ -1032,7 +1032,7 @@
       API.emit('tick', { dt, dh: (S.clock - clockBefore) / 3600 });
       if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0) hideCard(); }
       const st = camState(); cam.setState(st);
-      if (cam.cv.getClientRects().length) cam.frame(dt);   // not drawn while its station view is closed (#45)
+      if (cam.cv.getClientRects().length) cam.frame(document.body.classList.contains('reduce-motion') === true ? 0 : dt);   // not drawn while its station view is closed (#45)
       const stationOpen = !!(document.getElementById('station') && !document.getElementById('station').classList.contains('hidden'));
       const hs = stationOpen ? st : (S.line[0] ? camState(S.line[0].uid) : null);   // #114: the main screen hears the head of the line
       if (hs) Audio.setHum(hs.M.scene, hs.running ? (stationOpen ? 0.5 : 0.35) + 0.5 * hs.load : 0); else Audio.setHum('jaw', 0);

@@ -116,6 +116,7 @@ node tests/missions.js
 node tests/modes.js
 node tests/networth-lots.js
 node tests/money.js
+node tests/reduce-motion.js
 node tests/networth-stock.js
 node tests/onboarding.js
 node tests/overlays.js

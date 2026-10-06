@@ -27,7 +27,9 @@
     return out;
   }
   const liveMatch = (R) => !!(R && R.has && R.round > 0 && !R.over);   // a Rivals match worth confirming before NEW MATCH wipes it (#195)
-  CS.Modes = { summary, ord, liveMatch };
+  /* #258: the stored choice wins; with none, follow the OS reduce-motion setting. */
+  const motionPref = (stored, osReduce) => stored === '1' ? true : stored === '0' ? false : !!osReduce;
+  CS.Modes = { summary, ord, liveMatch, motionPref };
 
   if (typeof document === 'undefined') return;
   function start() {
@@ -110,7 +112,9 @@
     /* ---- settings (#136): sound, motion, the guide, the save, restarting a match: one screen ---- */
     let sets = null, svPanel = null;
     const RM_KEY = 'crunchsim.reduceMotion';
-    const reduceMotion = () => { try { return localStorage.getItem(RM_KEY) === '1'; } catch (e) { return false; } };
+    let rmMem = null;   // #258: the choice kept in memory too, so the toggle still works when storage is blocked
+    const osReduce = () => { try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+    const reduceMotion = () => { let v = rmMem; try { const s = localStorage.getItem(RM_KEY); if (s === '0' || s === '1') v = s; } catch (e) { /* ignore */ } return motionPref(v, osReduce()); };
     function applyMotion() { document.body.classList.toggle('reduce-motion', reduceMotion()); if (title && !title.classList.contains('hidden')) startYard(); }
     function showSettings() {
       if (!sets) {
@@ -135,7 +139,7 @@
         '<div id="set-save"></div>';
       b.querySelectorAll('input[data-vol]').forEach((r) => r.addEventListener('input', () => { if (CS.Audio) { CS.Audio.init(); CS.Audio.setVolume(r.dataset.vol, r.value / 100); } r.parentElement.querySelector('.vol-v').textContent = r.value + '%'; }));
       b.querySelector('#set-sound').addEventListener('click', () => { const m = document.getElementById('btn-mute'); if (m) m.click(); showSettings(); });
-      b.querySelector('#set-motion').addEventListener('click', () => { try { localStorage.setItem(RM_KEY, reduceMotion() ? '0' : '1'); } catch (e) { /* ignore */ } applyMotion(); showSettings(); });
+      b.querySelector('#set-motion').addEventListener('click', () => { rmMem = reduceMotion() ? '0' : '1'; try { localStorage.setItem(RM_KEY, rmMem); } catch (e) { /* ignore */ } applyMotion(); showSettings(); });
       const g = b.querySelector('#set-guide'); if (g) g.addEventListener('click', () => { closeSettings(); if (CS.Guide && CS.Guide.live) CS.Guide.live.begin(); });
       const r = b.querySelector('#set-restart'); if (r) { let armed = false; r.addEventListener('click', () => { if (!armed) { armed = true; r.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; return; } closeSettings(); const ng = document.getElementById('btn-newgame'); if (ng) { ng.click(); ng.click(); } }); }
       b.querySelector('#set-menu').addEventListener('click', () => { closeSettings(); showTitle(); });

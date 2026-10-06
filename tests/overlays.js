@@ -26,6 +26,12 @@ check(t.pageInert(modal) && t.inert(modal).sort().join() === 'station,title', 'a
 t.close('round');
 check(t.inert(modal).sort().join() === 'round,station', 'the title is the live layer again once the round closes');
 
+/* #240: the drawer is modal exactly while it covers the screen (max-width:900px) */
+const mm = (w) => (q) => ({ matches: q === '(max-width: 900px)' && w <= 900 });
+check(O.isModal({ modal: false }, mm(500)) === false && O.isModal({}, mm(1400)) === true, 'modal: false is never modal, the default always is');
+check(O.isModal({ modal: '(max-width: 900px)' }, mm(500)) && !O.isModal({ modal: '(max-width: 900px)' }, mm(1400)), 'a media-query layer is modal only while the query matches');
+check(/modal: '[(]max-width: 900px[)]'/.test(fs.readFileSync(__dirname + '/../js/modules/layout.js', 'utf8')) && /#drawer[.]overlay [{] top: 0; width: 100%/.test(fs.readFileSync(__dirname + '/../css/style.css', 'utf8')), 'the drawer attaches with the same 900px breakpoint the CSS uses to make it full screen');
+
 const html = fs.readFileSync(__dirname + '/../index.html', 'utf8'), build = fs.readFileSync(__dirname + '/../tools/build.py', 'utf8');
 check(html.indexOf('js/modules/overlays.js') > 0 && html.indexOf('js/modules/overlays.js') < html.indexOf('js/modules/layout.js'), 'overlays.js loads before the modules that attach layers to it');
 check(/'overlays', 'layout'/.test(build), 'the single-file bundle loads it in the same place');

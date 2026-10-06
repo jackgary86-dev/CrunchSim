@@ -115,6 +115,7 @@ node tests/round.js
 node tests/rivals-match.js
 node tests/milestones.js
 node tests/saveio.js
+node tests/guide.js
 ```
 
 ## Sources

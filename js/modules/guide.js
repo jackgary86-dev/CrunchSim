@@ -1,0 +1,102 @@
+/* CrunchSim module: the guided first lot (#79). Instead of a tour of panels, a new Progress game walks you through your
+ * first lot on the real screen, one prompt at a time; each prompt waits for you to do the thing:
+ *   1 buy the car-hulk lot in the $1k tier (dealt for the lesson, never a padded trap)
+ *   2 look at THE BIN: everything the grinder breaks falls in there, mixed
+ *   3 press RUN BATCH
+ *   4 the buckets: the magnet's steel is pure, so it SELLS; the rest is mixed, so it waits in MISC
+ *   5 sell the steel
+ *   6 MISC needs more sorters: NEXT PURCHASE in Bank & upgrades says which pair pulls something pure out of it
+ *   7 the rest of the lot: RUN THE LOT, then bigger lots
+ * It can be skipped, and replayed from the help. Steps and their checks are pure (CS.Guide) for tests/guide.js.
+ */
+(function (G) {
+  'use strict';
+  const CS = G.CS; if (!CS) return;
+  const STEPS = [
+    { id: 'buy', title: 'BUY YOUR FIRST LOT', text: 'Material only comes from the scrap auction. Open the Auction and buy the car hulks in the $1k tier: a small lot your hammermill and magnet can handle.', target: '#tool-auction', wait: (s) => s.loaded },
+    { id: 'bin', title: 'THE BIN', text: 'The hammermill breaks the cars and everything falls into THE BIN: steel, plastic, rubber, aluminum, glass, all mixed. Mixed material sells for nothing. Sorting is how you make money.', target: '.fcol.bincol', next: true },
+    { id: 'run', title: 'RUN A BATCH', text: 'Press RUN BATCH. The magnet pulls the steel out of the BIN while the batch runs.', target: '#btn-run', wait: (s) => s.batches >= 1 },
+    { id: 'buckets', title: 'PURE SELLS, MIXED WAITS', text: 'The magnet\'s steel is 99% pure, so it sells. Everything else is still mixed: it waits in the MISC bucket until you have sorters that can separate it.', target: '.fcol.buckets', next: true },
+    { id: 'sell', title: 'SELL THE STEEL', text: 'Press SELL on the steel bucket. Pure material pays a premium: the cleaner the bucket, the higher the price.', target: '.bk.shelf', wait: (s) => s.sold >= 1 },
+    { id: 'pair', title: 'MISC NEEDS MORE SORTERS', text: 'One more sorter rarely gets anything pure out of MISC on its own. NEXT PURCHASE in Bank & upgrades ranks pairs: an eddy current separator pulls the mixed metals, a sink-float tank then floats the aluminum out clean. Save up for them, then RE-RUN your MISC through them.', target: '#tool-bank', next: true },
+    { id: 'lot', title: 'RUN THE REST', text: 'RUN THE LOT runs batch after batch until a lot is used up. Then buy bigger lots, sell what is pure, and grow the plant. That is the game.', target: '#btn-runlot', next: true, last: true }
+  ];
+  /* the step to show: the first one not done; a waiting step is done when its check passes on the snapshot */
+  function nextStep(done, snap) {
+    for (const st of STEPS) {
+      if (done[st.id]) continue;
+      if (st.wait && st.wait(snap)) { done[st.id] = true; continue; }
+      return st;
+    }
+    return null;
+  }
+  CS.Guide = { STEPS, nextStep };
+
+  if (typeof document === 'undefined') return;
+  function start() {
+    const app = CS.app; if (!app || app.guideStarted) return; app.guideStarted = true;
+    let g = { on: false, done: {}, finished: false }, layer = null, sold = 0;
+    const snap = () => { const A = CS.Auction && CS.Auction.live; return { loaded: !!(A && A.pending() && app.S.feedOwner === 'auction'), batches: app.S.batches, sold }; };
+    function begin() {
+      if (app.S.mode !== 'progress') return;
+      g = { on: true, done: {}, finished: false }; sold = 0;
+      const A = CS.Auction && CS.Auction.live; if (A && A.dealTier) A.dealTier(0, 'elv');
+      app.save(); show();
+    }
+    function stop(why) { g.on = false; if (why === 'finished' || why === 'skipped') g.finished = true; if (layer) { layer.remove(); layer = null; } app.save(); }
+    function show() {
+      if (!g.on) return;
+      const help = document.getElementById('help'); if (help && !help.classList.contains('hidden')) { if (layer) layer.classList.add('hidden'); return; }
+      const st = nextStep(g.done, snap());
+      if (!st) { stop('finished'); return; }
+      if (!layer) {
+        layer = document.createElement('div'); layer.className = 'guide';
+        layer.innerHTML = '<div class="g-ring"></div><div class="g-box"><div class="g-step"></div><b class="g-title"></b><p class="g-text"></p><div class="g-btns"><button type="button" class="g-skip">SKIP</button><button type="button" class="primary g-next">GOT IT</button></div></div>';
+        document.body.appendChild(layer);
+        layer.querySelector('.g-skip').addEventListener('click', () => { stop('skipped'); app.log('Guide skipped. You can replay it from the help (?).'); });
+        layer.querySelector('.g-next').addEventListener('click', () => { const s2 = nextStep(g.done, snap()); if (s2 && s2.next) { g.done[s2.id] = true; if (s2.last) { stop('finished'); app.log('Guide finished. Good luck with the plant.', 'ok'); return; } } show(); });
+      }
+      layer.classList.remove('hidden');
+      const k = STEPS.indexOf(st);
+      layer.querySelector('.g-step').textContent = 'FIRST LOT · STEP ' + (k + 1) + ' OF ' + STEPS.length;
+      layer.querySelector('.g-title').textContent = st.title;
+      layer.querySelector('.g-text').textContent = st.text;
+      const nb = layer.querySelector('.g-next'); nb.classList.toggle('hidden', !st.next); nb.textContent = st.last ? 'DONE' : 'GOT IT';
+      place(st);
+    }
+    function place(st) {
+      if (!layer) return;
+      st = st || nextStep(g.done, snap()); if (!st) return;
+      const t = document.querySelector(st.target), ring = layer.querySelector('.g-ring'), box = layer.querySelector('.g-box');
+      if (!t || !t.getClientRects().length) { ring.style.display = 'none'; box.style.left = '50%'; box.style.top = '120px'; box.style.transform = 'translateX(-50%)'; return; }
+      const r = t.getBoundingClientRect(); ring.style.display = 'block';
+      Object.assign(ring.style, { left: (r.left - 6) + 'px', top: (r.top - 6) + 'px', width: (r.width + 12) + 'px', height: (r.height + 12) + 'px' });
+      const bw = 320, left = Math.max(12, Math.min(window.innerWidth - bw - 12, r.left + r.width / 2 - bw / 2));
+      const below = r.bottom + 14, top = below + 170 < window.innerHeight ? below : Math.max(12, r.top - 184);
+      Object.assign(box.style, { left: left + 'px', top: top + 'px', transform: 'none', width: bw + 'px' });
+    }
+    app.on('sale', () => { sold++; if (g.on) show(); });
+    app.on('render', () => { if (g.on) show(); });
+    app.on('batchComplete', () => { if (g.on) setTimeout(show, 50); });
+    let acc = 0; app.on('tick', (p) => { if (!g.on) return; acc += (p && p.dt) || 0; if (acc > 0.4) { acc = 0; show(); } });
+    window.addEventListener('resize', () => { if (g.on) place(); });
+    app.on('save', () => ({ guide: { on: g.on, done: g.done, finished: g.finished } }));
+    app.on('load', (ext) => { const d = ext && ext.guide; g = { on: !!(d && d.on), done: (d && d.done) || {}, finished: !!(d && d.finished) }; if (!g.on && layer) { layer.remove(); layer = null; } });
+    app.on('newgame', () => { if (layer) { layer.remove(); layer = null; } g = { on: false, done: {}, finished: false }; setTimeout(() => { if (app.S.mode === 'progress' && app.S.batches === 0) begin(); }, 0); });
+    app.on('modechange', () => { if (layer) { layer.remove(); layer = null; } });
+    app.on('boot', () => {
+      // replay from the help
+      const box = document.querySelector('#help .modal-box');
+      if (box && !box.querySelector('.g-replay')) {
+        const p = app.el('p', 'small g-replay', '<a href="#">Play the guided first lot again</a>: a fresh lot in the $1k tier and the steps on the real screen.');
+        p.querySelector('a').addEventListener('click', (e) => { e.preventDefault(); const h = document.getElementById('help'); if (h) h.classList.add('hidden'); if (app.S.mode !== 'progress') app.switchMode('progress'); begin(); });
+        box.insertBefore(p, box.querySelector('h3'));
+      }
+      if (app.S.mode === 'progress' && app.S.batches === 0 && !g.finished && !g.on) begin();
+      else if (g.on) show();
+    });
+    CS.Guide.live = { begin, stop, state: () => g };
+  }
+  if (CS.app) start();
+  else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+})(typeof window !== 'undefined' ? window : globalThis);

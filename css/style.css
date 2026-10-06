@@ -582,3 +582,12 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .samp { font-size: 11px; padding: 4px 8px; }
 .cd.sampled, .rc-d.sampled { color: var(--cyan); }
 .rep { color: var(--muted); font-size: 11px; }
+
+/* the guided first lot (#79) */
+.guide { position: fixed; inset: 0; z-index: 85; pointer-events: none; }
+.g-ring { position: fixed; border: 2px solid var(--amber); border-radius: 8px; box-shadow: 0 0 0 4000px rgba(5, 9, 14, .45), 0 0 18px rgba(255, 178, 92, .6); transition: all .25s ease-out; pointer-events: none; }
+.g-box { position: fixed; pointer-events: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--amber); border-radius: 8px; box-shadow: 0 12px 34px rgba(0,0,0,.6); transition: left .25s, top .25s; }
+.g-step { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); }
+.g-title { font-family: var(--mono); letter-spacing: 2px; color: var(--amber); font-weight: 400; }
+.g-text { margin: 0; font-size: 14px; line-height: 1.45; }
+.g-btns { display: flex; justify-content: space-between; gap: 8px; }

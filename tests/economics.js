@@ -184,5 +184,23 @@ const b = E.betterLine({ m: 'sinkfloat', port: 'product', gain: 40 }, 25, 15);
 check(b && b.perT === 65 && b.net === 975 && b.base === 375 && b.m === 'sinkfloat', 'a $40/t gain on a $25/t margin: $975 on 15 t instead of $375');
 check(E.betterLine(null, 25, 15) === null && E.betterLine({ gain: 0.2 }, 25, 15) === null, 'no pick, or a gain under fifty cents, gives no hint');
 
+/* ---- #193 wear survives REMOVE + ADD and a line preset ---- */
+console.log('=== #193 wear carries over');
+{
+  const shelf = {}, worn = Sim.makeNode('hammer', {}, 'feed'); worn.wear = 0.9; worn.autoService = true;
+  E.shelve(shelf, worn);
+  const again = Sim.makeNode('hammer', {}, 'feed'); E.unshelve(shelf, again);
+  check(again.wear === 0.9 && again.autoService === true, 'REMOVE then ADD gives the same wear and AUTO flag back, not a fresh unit');
+  const other = Sim.makeNode('hammer', {}, 'feed'); E.unshelve(shelf, other);
+  check(other.wear === 0 && !other.autoService, 'the shelf is emptied once: a second ADD is a fresh unit');
+  const spotless = Sim.makeNode('hammer', {}, 'feed'); E.shelve(shelf, spotless);
+  check(!shelf.hammer || shelf.hammer.length === 0, 'a spotless unit leaves nothing on the shelf');
+  const nodes = E.carryWear([worn], {}, Sim.buildLine(LINES.car));
+  const h = nodes.filter((n) => n.m === 'hammer');
+  check(h.length > 0 && h.every((n) => n.wear === 0.9 && n.autoService === true) && nodes.filter((n) => n.m !== 'hammer').every((n) => n.wear === 0), 'a preset keeps the old wear per machine type and leaves other machines fresh');
+  const n2 = E.carryWear([], { hammer: [{ wear: 0.6, autoService: false }] }, Sim.buildLine(LINES.car));
+  check(n2.filter((n) => n.m === 'hammer').every((n) => n.wear === 0.6), 'a preset also sees wear on units that are off the line');
+}
+
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' economics checks pass'));
 process.exit(fails ? 1 : 0);

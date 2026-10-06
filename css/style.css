@@ -504,11 +504,10 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .flow-wrap { position: relative; min-width: 0; display: flex; }
 .flow-wrap #flow-nodes { flex: 1; }
 #flow-nodes.idle .fcol.mach, #flow-nodes.idle .fcol.bincol { opacity: .45; filter: grayscale(.8); }
-.flow-cta { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.cta-card { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 360px; text-align: center; padding: 18px 22px; background: rgba(12, 18, 26, .94); border: 1px solid var(--cyan); border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
-.cta-card b { font-family: var(--mono); letter-spacing: 3px; color: var(--cyan); font-weight: 400; }
-.cta-card span { font-size: 13px; color: var(--muted); }
-.cta-card button { padding: 12px 22px; font-size: 15px; letter-spacing: 2px; }
+.flow-cta { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 40; pointer-events: none; }
+.cta-card { pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; background: rgba(12, 18, 26, .94); border: 1px solid var(--line-2, #2a3a4c); border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+.cta-card b { font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--amber); font-weight: 400; white-space: nowrap; }
+.cta-card button { padding: 4px 10px; font-size: 11px; letter-spacing: 1px; white-space: nowrap; }
 
 /* ---------- conveyors (#66) ---------- */
 .fcol { position: relative; }

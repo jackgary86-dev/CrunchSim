@@ -721,9 +721,9 @@
     const box = $('#flow-nodes'); box.innerHTML = '';
     box.classList.toggle('idle', idleNow);
     const cta = $('#flow-cta');
-    if (idleNow) {   // #65: one clear call to action over the idle plant
+    if (idleNow) {   // #65: a small note at the bottom of the screen, out of the plant's way
       const a = nextAction();
-      cta.innerHTML = '<div class="cta-card"><b>THE PLANT IS IDLE</b><span>' + esc(a.sub) + '</span><button type="button" class="primary">' + esc(a.label) + '</button></div>';
+      cta.innerHTML = '<div class="cta-card" title="' + esc(a.sub) + '"><b>NOTHING LOADED</b><button type="button" class="primary">' + esc(a.label) + '</button></div>';
       cta.querySelector('button').addEventListener('click', () => nextAction().go());
       cta.classList.remove('hidden');
     } else cta.classList.add('hidden');

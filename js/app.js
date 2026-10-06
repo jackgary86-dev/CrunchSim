@@ -931,7 +931,7 @@
     lastRealT = performance.now();
     let acc = 0;
     function tick(now) {
-      const dt = Math.min(0.1, (now - lastRealT) / 1000); lastRealT = now;
+      const dt = Math.min(hidden() ? 1 : 0.1, (now - lastRealT) / 1000); lastRealT = now;
       const clockBefore = S.clock;
       if (S.run) { stepRun(dt); acc += dt; if (acc > 0.25) { acc = 0; renderTelemetry(); renderPlant(); renderLine(); } renderHeader(); }
       API.emit('tick', { dt, dh: (S.clock - clockBefore) / 3600 });
@@ -939,9 +939,13 @@
       const st = camState(); cam.setState(st);
       if (cam.cv.getClientRects().length) cam.frame(dt);   // not drawn while its station view is closed (#45)
       if (st) Audio.setHum(st.M.scene, st.running ? 0.5 + 0.5 * st.load : 0); else Audio.setHum('jaw', 0);
-      requestAnimationFrame(tick);
+      next();
     }
-    requestAnimationFrame(tick);
+    /* animation frames stop in a background tab; a timer keeps a running batch (or a whole lot) going there */
+    function hidden() { return typeof document.hidden === 'boolean' && document.hidden; }
+    function next() { if (hidden()) setTimeout(() => tick(performance.now()), 100); else requestAnimationFrame(tick); }
+    document.addEventListener('visibilitychange', () => { lastRealT = performance.now(); });
+    next();
     setInterval(save, 15000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

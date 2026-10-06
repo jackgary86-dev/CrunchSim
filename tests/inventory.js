@@ -106,7 +106,7 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   Inv.marketAdvance(back.mkt, 1000);
   check(MAT_ORDER.every((m) => back.mkt.drift[m] === Inv.marketAt(1000).drift[m]), 'a restored market continues on the same path as an uninterrupted one');
   const junk = Inv.deserialize({ stock: { steel: { t: 'x' }, unobtainium: { t: 5 }, copper: { t: 2, purity: 7, grade: -1, sf: 9, p80: -3 } }, market: { hour: 'soon', drift: 1 } });
-  check(!junk.hadMarket && !junk.stock.steel && !junk.stock.unobtainium && junk.stock.copper && junk.stock.copper.purity === 1 && junk.stock.copper.grade === 0 && junk.stock.copper.sf === 1 && junk.stock.copper.p80 > 0, 'garbage input is clamped or dropped');
+  check(!junk.hadMarket && !junk.stock.steel && !junk.stock.unobtainium && junk.stock.copper && junk.stock.copper.purity === 1 && junk.stock.copper.grade === 0 && junk.stock.copper.sf === 3 && junk.stock.copper.p80 > 0, 'garbage input is clamped or dropped (sf caps at 3 since #211)');
   check(Inv.deserialize(null).mkt.hour === 0 && Object.keys(Inv.deserialize(undefined).stock).length === 0, 'missing save gives fresh state');
 }
 
@@ -231,3 +231,21 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
 
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' inventory checks pass'));
 process.exit(fails ? 1 : 0);
+/* ---- #211: furnace output keeps its form when it enters stock (ingot premium, dross discount) ---- */
+{
+  Sim.prices.market = 1;
+  const ev = Sim.evalLine(Sim.buildLine(LINES.ingot), FEEDS.zorba.comp);
+  const bins = ev.terminals.map((t) => ({ st: Sim.binStats(t.stream.m, t.form) })).filter((b) => b.st.total > 0.5);
+  const kinds = bins.map((b) => b.st.form);
+  check(kinds.includes('ingot') && kinds.includes('dross'), 'the ingot line makes an ingot bin and a dross bin');
+  for (const form of ['ingot', 'dross']) {
+    const b = bins.filter((x) => x.st.form === form), s = Inv.newStock();
+    Inv.absorbBins(s, b, 1, 0, Inv.newMisc());
+    let held = 0; for (const mat in s) held += Inv.lotValue(s, mat, null, 1);
+    check(b.length > 0 && near(held, binsValuePerT(b), 1e-6), form + ' bins: stock value ' + f(held) + ' equals bin value ' + f(binsValuePerT(b)));
+  }
+  const all = Inv.newStock(); Inv.absorbBins(all, bins, 1, 0, Inv.newMisc());
+  let heldAll = 0; for (const mat in all) heldAll += Inv.lotValue(all, mat, null, 1);
+  check(near(heldAll, binsValuePerT(bins), 1e-6), 'ingot and dross merged into one lot keep the summed value (' + f(heldAll) + ')');
+}
+

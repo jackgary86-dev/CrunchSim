@@ -694,16 +694,22 @@
     if (!S.line.length) { Audio.ui('deny'); log('Add at least one machine first.', 'bad'); return; }
     const miss = unownedIn(S.line);
     if (Object.keys(miss).length) { Audio.ui('deny'); log('You do not own ' + Object.keys(miss).map((m) => MACHINES[m].name).join(', ') + ' (' + fmtMoney(unownedCost(S.line)) + '). Buy them or remove them from the line.', 'bad'); return; }
-    let svcC = 0; S.line.forEach((nd, i) => { if (nd.autoService && nd.wear >= AUTO_SERVICE_AT) svcC += autoService(nd, i); });   // #20: nodes already past the auto-service point are serviced before the run
+    /* #20, #201: nodes already past the auto-service point are serviced before the run, but only once the start cannot abort.
+     * The checks below see the line as if serviced (a worn-out node must not block a start the service would fix); undo() puts the wear back. */
+    const due = S.line.filter((nd) => nd.autoService && nd.wear >= AUTO_SERVICE_AT), wear0 = due.map((nd) => nd.wear);
+    due.forEach((nd) => { nd.wear = 0; });
     recompute();
-    if (!(effRate() > 0)) { Audio.ui('deny'); log('The line cannot run: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no feed is accepted') + '.', 'bad'); return; }
+    const undo = () => { due.forEach((nd, k) => { nd.wear = wear0[k]; }); recompute(); };
+    if (!(effRate() > 0)) { undo(); Audio.ui('deny'); log('The line cannot run: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no feed is accepted') + '.', 'bad'); return; }
     let tot = 0; for (const m in S.comp) tot += S.comp[m] > 0 ? S.comp[m] : 0;
-    if (tot <= 0) { Audio.ui('deny'); log('The feed is empty.', 'bad'); return; }
-    { const why = API.veto('startRun', {}); if (why) { Audio.ui('deny'); log(why, 'warn'); return; } }   // modules may refuse a batch (Rivals: MISC only in a round with no bin)
-    if (AUCTION_ONLY && !S.feedPrepaid) { Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
+    if (tot <= 0) { undo(); Audio.ui('deny'); log('The feed is empty.', 'bad'); return; }
+    { const why = API.veto('startRun', {}); if (why) { undo(); Audio.ui('deny'); log(why, 'warn'); return; } }   // modules may refuse a batch (Rivals: MISC only in a round with no bin)
+    if (AUCTION_ONLY && !S.feedPrepaid) { undo(); Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
     const feedC = feedCostPerT() * S.tons;
-    if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) return;
+    if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) { undo(); return; }
     if (feedC <= 0) S.money -= feedC;   // paid to take it
+    let svcC = 0; S.line.forEach((nd, i) => { const k = due.indexOf(nd); if (k >= 0) { nd.wear = wear0[k]; svcC += autoService(nd, i); } });   // the start is going ahead: pay for the service now
+    recompute();
     const proj = marginPerT();   // #18: the projection the score card compares the actual net with
     S.run = { total: S.tons, done: 0, rate: effRate(), kwh: 0, rev: 0, extra: 0, feedC, t0: S.clock, rankIdx: rankOf(netWorth()).idx, projPerT: proj.margin, serviceC: svcC, wearC: 0, perNode: {} };
     Audio.init(); Audio.ui('ok'); hideCard();

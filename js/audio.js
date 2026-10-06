@@ -25,7 +25,7 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
 
   function init() {
-    if (ctx) { if (ctx.state === 'suspended' && ctx.resume) ctx.resume(); return true; }
+    if (ctx) { if (ctx.state === 'suspended' && ctx.resume && !duckHidden) ctx.resume(); return true; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     try {
       ctx = new AC(); master = ctx.createGain(); master.gain.value = masterLevel();
@@ -37,7 +37,7 @@
     } catch (e) { ctx = null; return false; }
     return true;
   }
-  function ready() { if (!init() || muted) return false; if (ctx.state === 'suspended') ctx.resume(); return true; }
+  function ready() { if (!init() || muted || duckHidden) return false; if (ctx.state === 'suspended') ctx.resume(); return true; }
   function noise() {
     if (noiseBuf) return noiseBuf;
     const n = ctx.sampleRate; noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -97,9 +97,20 @@
     sensor: { f: 0, type: 'sine', lp: 2500, n: 0.18 },  // belt whine and compressed-air hiss
     omni: { f: 66, type: 'triangle', lp: 900, n: 0.16 }   // #15: a deep rotor drone under the air-jet hiss
   };
+  /* #200: hum and belt never create the context (that waits for a gesture: init() from the pointer and key handlers). Once a
+   * source has sat at level 0 for IDLE_STOP seconds it is stopped and dropped, and rebuilt when the level comes back. */
+  const IDLE_STOP = 3;
+  function idle(src, level, t, kill) {
+    if (level > 0.001) { src.quietSince = null; return false; }
+    if (src.quietSince == null) src.quietSince = t;
+    if (t - src.quietSince < IDLE_STOP) return false;
+    kill(); return true;
+  }
+  function killHum() { try { hum.osc.stop(); hum.nz.stop(); hum.out.disconnect(); } catch (e) { /* already stopped */ } hum = null; }
   function setHum(scene, level) {
-    if (!init()) return;
-    if (muted) level = 0;
+    if (!ctx) return;
+    if (muted || duckHidden) level = 0;
+    if (!hum && !(level > 0.001)) return;   // nothing playing and nothing to play: do not build the graph
     const cfg = HUM[scene] || HUM.jaw;
     if (!hum) {
       hum = { osc: ctx.createOscillator(), og: ctx.createGain(), nz: ctx.createBufferSource(), ng: ctx.createGain(), lp: ctx.createBiquadFilter(), out: ctx.createGain(), scene: null };
@@ -115,6 +126,7 @@
       hum.og.gain.setTargetAtTime(cfg.f ? 0.18 : 0, t, 0.1); hum.ng.gain.setTargetAtTime(cfg.n, t, 0.1);
     }
     hum.out.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * 0.55, t, 0.25);
+    idle(hum, level, t, killHum);
   }
   function ui(kind) {
     if (!ready()) return; const t = ctx.currentTime;
@@ -134,10 +146,19 @@
     else if (kind === 'roar') { burst(t, { dur: 1.2, freq: 180, freqEnd: 90, q: 0.5, gain: 0.35, type: 'lowpass' }); burst(t + 0.1, { dur: 0.9, freq: 900, freqEnd: 300, q: 0.4, gain: 0.08 }); tone(t, { freq: 55, freqEnd: 45, dur: 1.1, gain: 0.2, type: 'sawtooth' }); }
     else if (kind === 'fanfare') [523, 659, 784, 1046, 1319].forEach((f, i) => { tone(t + i * 0.11, { freq: f, dur: 0.22 + (i === 4 ? 0.4 : 0), gain: 0.11, type: 'triangle' }); tone(t + i * 0.11, { freq: f / 2, dur: 0.2, gain: 0.05, type: 'square' }); });
   }
-  function setMuted(m) { muted = !!m; applyLevels(0.05); }
+  function setMuted(m) { muted = !!m; applyLevels(0.05); if (CS.Music) CS.Music.level(vol.music); }
   function setVolume(ch, v) { if (!(ch in VOL_DEF)) return; vol[ch] = Math.max(0, Math.min(1, +v || 0)); try { localStorage.setItem(VOL_KEY, JSON.stringify(vol)); } catch (e) { /* ignore */ } applyLevels(0.05); if (ch === 'music' && CS.Music) CS.Music.level(vol.music); }
-  function duck(what, on) { if (what === 'hidden') duckHidden = !!on; else if (what === 'plant') duckPlant = !!on; applyLevels(0.2); }
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => duck('hidden', document.hidden));   // #121
+  /* #121 #200: hiding the tab fades the master out, then suspends the context so nothing renders while hidden; returning resumes it */
+  let suspendTimer = null;
+  function duck(what, on) {
+    if (what === 'hidden') {
+      duckHidden = !!on; if (suspendTimer) { clearTimeout(suspendTimer); suspendTimer = null; }
+      if (duckHidden) suspendTimer = setTimeout(() => { suspendTimer = null; if (duckHidden && ctx && ctx.state === 'running' && ctx.suspend) ctx.suspend(); }, 400);
+      else if (ctx && ctx.state === 'suspended' && ctx.resume) ctx.resume();
+    } else if (what === 'plant') duckPlant = !!on;
+    applyLevels(0.2); if (CS.Music) CS.Music.level(vol.music);
+  }
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => duck('hidden', document.hidden));
 
   /* #115 #116 #117 #118: the sorters, the belt and bin, the auction and the stingers. Rate-limited per kind so a busy sorter
    * is busy to the ear without a wall of noise. */
@@ -169,12 +190,16 @@
   }
   /* #116: a belt rumble under the plant while a batch runs (level 0..1 from the head rate) */
   let belt = null;
+  function killBelt() { try { belt.src.stop(); belt.g.disconnect(); } catch (e) { /* already stopped */ } belt = null; }
   function setBelt(level) {
-    if (!init()) return;
+    if (!ctx) return;
+    if (muted || duckHidden) level = 0;
+    if (!belt && !(level > 0.001)) return;
     if (!belt) { belt = { src: ctx.createBufferSource(), f: ctx.createBiquadFilter(), g: ctx.createGain() }; belt.src.buffer = noise(); belt.src.loop = true; belt.f.type = 'lowpass'; belt.f.frequency.value = 180; belt.g.gain.value = 0; belt.src.connect(belt.f); belt.f.connect(belt.g); belt.g.connect(buses.plant); belt.src.start(); }
     belt.g.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * 0.18, ctx.currentTime, 0.3);
+    idle(belt, level, ctx.currentTime, killBelt);
   }
-  CS.Audio = { init, crunch, setHum, setBelt, ui, fx, sfx, cash: () => fx('cash'), setMuted, isMuted: () => muted, setVolume, volumes: () => Object.assign({}, vol), duck, ctx: () => ctx, bus: (k) => (buses ? buses[k] : null) };
+  CS.Audio = { init, crunch, setHum, setBelt, ui, fx, sfx, cash: () => fx('cash'), setMuted, isMuted: () => muted, isHidden: () => duckHidden, setVolume, volumes: () => Object.assign({}, vol), duck, ctx: () => ctx, bus: (k) => (buses ? buses[k] : null) };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 /* #119: optional music, synthesized (no files) on the music bus: a calm open loop for Progress, a tenser faster one for a
@@ -211,7 +236,8 @@
     }
   }
   function setTheme(t) { if (THEMES[t] && t !== theme) { theme = t; step = 0; } }
-  function level(v) { if (v > 0 && !timer) timer = setInterval(tick, 80); else if (!(v > 0) && timer) { clearInterval(timer); timer = null; } }
+  /* #200: the 80 ms scheduler only runs while music is audible: not at volume 0, not muted, not with the tab hidden */
+  function level(v) { if (A.isMuted() || A.isHidden()) v = 0; if (v > 0 && !timer) timer = setInterval(tick, 80); else if (!(v > 0) && timer) { clearInterval(timer); timer = null; } }
   level(A.volumes().music);
   CS.Music = { THEMES, setTheme, level, theme: () => theme };
 })(typeof window !== 'undefined' ? window : globalThis);

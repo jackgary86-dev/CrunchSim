@@ -18,5 +18,18 @@ check(!hotkeyOk(key(target('BODY')), modal), 'an open modal, drawer, Settings or
 // the end-game card is a modal layer too (#236): the real selector must name it, and a closed one must not block
 const real = { querySelector: (sel) => (sel.includes('#endgame:not(.hidden)') ? {} : null) };
 check(!hotkeyOk(key(target('BODY')), real), 'the open end-game card swallows the hotkeys');
+// the Plant drawer is non-modal at desktop width (no aria-modal): it must not swallow the hotkeys, but a modal one (narrow) does (#257)
+// tiny matcher for the compound selectors in HOTKEY_MODAL: tag-less parts of .class / #id / [attr] / :not(...) over { id, classes, attrs } nodes
+function matches(n, part) {
+  const rest = part.replace(/:not\(([^)]*)\)/g, (m, inner) => { if (matches(n, inner)) throw 0; return ''; });
+  return (rest.match(/[.#]?[\w-]+|\[[\w-]+\]/g) || []).every((tok) => tok[0] === '.' ? n.classes.includes(tok.slice(1)) : tok[0] === '#' ? n.id === tok.slice(1) : tok[0] === '[' ? tok.slice(1, -1) in n.attrs : false);
+}
+const hit = (n, part) => { try { return matches(n, part.trim()); } catch (e) { return false; } };
+const withNodes = (nodes) => ({ querySelector: (sel) => nodes.find((n) => sel.split(',').some((p) => hit(n, p))) || null });
+const drawer = (attrs, classes) => ({ id: 'drawer', classes: ['overlay'].concat(classes || []), attrs: attrs });
+check(hotkeyOk(key(target('BODY')), withNodes([drawer({})])), 'an open non-modal drawer (desktop width) leaves the hotkeys alone');
+check(!hotkeyOk(key(target('BODY')), withNodes([drawer({ 'aria-modal': 'true' })])), 'an open modal drawer (narrow width) swallows the hotkeys');
+check(hotkeyOk(key(target('BODY')), withNodes([drawer({ 'aria-modal': 'true' }, ['hidden'])])), 'a closed drawer does not');
+check(!hotkeyOk(key(target('BODY')), withNodes([drawer({}), { id: 'settings', classes: ['overlay'], attrs: {} }])), 'another open overlay still swallows them beside the drawer');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' hotkey checks pass');
 process.exit(fails ? 1 : 0);

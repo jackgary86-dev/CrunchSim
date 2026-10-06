@@ -730,7 +730,7 @@
 
   // May a global hotkey act on this keydown? Not while typing, on a modified key (Ctrl+1 is the browser's), with a focused
   // button or link (Space must activate it; #btn-run is the exception, Space runs the batch), or behind an open modal (#197).
-  const HOTKEY_MODAL = '.modal:not(.hidden), .overlay:not(.hidden):not(#station), #endgame:not(.hidden)';   // #endgame: the end-game card (#236)
+  const HOTKEY_MODAL = '.modal:not(.hidden), .overlay:not(.hidden):not(#station):not(#drawer), #drawer:not(.hidden)[aria-modal], #endgame:not(.hidden)';   // #endgame: the end-game card (#236); #drawer only while modal, a side panel at desktop width (#257)
   function hotkeyOk(e, doc) {
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
     const t = e.target;

@@ -583,3 +583,38 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 /* a Progress yard is permanent: only a Rivals match can be restarted */
 #btn-newgame { display: none; }
 body[data-mode="rivals"] #btn-newgame { display: inline-block; }
+
+/* ---------- two games, two screens (#87) ---------- */
+.title-screen { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; background: radial-gradient(ellipse at 50% 30%, #0f1a26 0%, #070a0f 70%); overflow: auto; }
+.title-screen.hidden { display: none; }
+.tt-box { width: min(860px, 100%); text-align: center; }
+.tt-logo { font-family: var(--mono); font-size: 46px; letter-spacing: 8px; color: var(--text); }
+.tt-logo b { color: var(--cyan); font-weight: 400; }
+.tt-sub { font-family: var(--mono); font-size: 12px; letter-spacing: 3px; color: var(--muted); margin: 6px 0 26px; }
+.tt-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: left; }
+.tt-card { display: flex; flex-direction: column; gap: 10px; padding: 20px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); }
+.tt-card b { font-family: var(--mono); font-size: 22px; letter-spacing: 4px; font-weight: 400; }
+.tt-card.tt-progress { border-top: 3px solid #7fe3ff; } .tt-card.tt-progress b { color: #7fe3ff; }
+.tt-card.tt-rivals { border-top: 3px solid #ff8a5c; } .tt-card.tt-rivals b { color: #ff8a5c; }
+.tt-card p { margin: 0; color: var(--muted); line-height: 1.45; flex: 1; }
+.tt-save { font-family: var(--mono); font-size: 12px; color: var(--text); padding: 8px 10px; background: var(--panel-2); border-radius: 3px; }
+.tt-card button { padding: 10px; letter-spacing: 2px; }
+.tt-foot { margin-top: 16px; }
+@media (max-width: 700px) { .tt-cards { grid-template-columns: 1fr; } .tt-logo { font-size: 34px; } }
+.modesw .tool.mode-menu { border: 0; border-radius: 0; letter-spacing: 2px; }
+/* the Rivals screen has its own colour */
+body[data-mode="rivals"] { --cyan: #ff9a6b; }
+body[data-mode="rivals"] #top { border-bottom-color: #5a2a1c; }
+.match-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 10px; border: 1px solid #5a2a1c; border-radius: 4px; background: linear-gradient(90deg, rgba(255,138,92,.10), rgba(255,138,92,.02)); }
+.match-bar.hidden { display: none; }
+.mb-round { display: flex; flex-direction: column; min-width: 120px; }
+.mb-round b { font-family: var(--mono); letter-spacing: 2px; color: #ff8a5c; font-weight: 400; }
+.mb-round span { font-size: 11px; color: var(--muted); }
+.mb-table { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+.mb-p { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; border-left: 3px solid var(--pc); background: var(--panel-2); border-radius: 2px; font-size: 12px; }
+.mb-p i { font-style: normal; font-family: var(--mono); color: var(--muted); }
+.mb-p span { font-family: var(--mono); color: var(--text); }
+.mb-p.you b { color: var(--cyan); }
+.mb-go { padding: 8px 14px; letter-spacing: 2px; }
+.title-screen { --cyan: #7fe3ff; }
+body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-title .toast { display: none; }

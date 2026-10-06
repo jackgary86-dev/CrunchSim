@@ -747,7 +747,7 @@
   function init() {
     app = CS.app; if (!app || app.layoutStarted) return; app.layoutStarted = true;
     app.on('boot', () => {
-      build(); renderFlow(true); requestAnimationFrame(miniLoop); chooseMode();
+      build(); renderFlow(true); requestAnimationFrame(miniLoop); if (!CS.Modes) chooseMode();   // #87: the title screen (modes.js) picks the game
       // hand edits on the feed panel only do a light refresh (no render event): check the loaded bucket right after them,
       // and again just before RUN BATCH prices the feed
       const fp = $('#feed-panel'), chk = () => setTimeout(() => { guardLoaded(); renderFlow(false); }, 0);

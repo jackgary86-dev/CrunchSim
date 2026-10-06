@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=8f02c47b0d">
+  <link rel="stylesheet" href="css/style.css?v=aa5c8e7a7d">
 </head>
 <body>
 <div id="app">
@@ -133,7 +133,7 @@
     <h2>CrunchSim</h2>
     <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
     <ol>
-      <li><b>Two modes.</b> PROGRESS: build your plant on your own from the six-tier auction board. RIVALS: auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC bin. Each mode keeps its own save; switch from the toolbar.</li>
+      <li><b>Two games.</b> PROGRESS is the long game: earn money and keep building out your plant from the six-tier auction board, with no end. RIVALS is a match of auction rounds (12 by default) against three rival yards: three bins a round, four bidders, whoever goes home without a bin runs one batch of their MISC bin, and the highest worth after the last round wins. Each keeps its own save. MENU in the toolbar goes back to the title screen; RESTART RIVALS starts a new match (a Progress yard is never wiped).</li>
       <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board always shows six lots, one per tier from $1k to $100k, and each tier deals scrap the next machine can sort: pallets, office clear-outs and old windows (a magnet and a water tank) at $1k, tires and white goods, car hulks, zorba, and circuit boards and gold-plated pins at $100k. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Feed panel shows what is loaded; only the batch size is yours to set.</li>
       <li><b>The plant.</b> The main screen shows your stations left to right in the order you placed them, three at a time (the arrows page through longer lines). Each station shows its machine at work, the bins it fills and what is left over moving on to the next station. Click a station to sit down at it: the machine cam, its settings, upgrades and telemetry, with CLOSE to get back.</li>
       <li><b>Flowsheet.</b> Open Flowsheet in the toolbar to add machines. Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
@@ -182,6 +182,7 @@
 <script src="js/modules/milestones.js?v=befbf5c799"></script>
 <script src="js/modules/saveio.js?v=67088c7958"></script>
 <script src="js/modules/guide.js?v=2d1a39db2f"></script>
-<script src="js/modules/layout.js?v=a227098de7"></script>
+<script src="js/modules/layout.js?v=0244ab5dee"></script>
+<script src="js/modules/modes.js?v=8950861e8c"></script>
 </body>
 </html>

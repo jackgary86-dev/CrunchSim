@@ -566,6 +566,15 @@
 
     /* hooks */
     API.on('veto:autoSell', function () { return 'inventory'; });
+    /* #214: unsold stock counts toward net worth at what the yard could get for it now: each lot at its SELL quote and the MISC
+     * pile at its dump quote (the metal the downstream processor pays for, less the gate fees), never below zero: a pile that
+     * would cost money to ship is not an asset. Selling stock at the quote leaves net worth unchanged. */
+    API.on('assetValue', function (q) {
+      if (!q) return;
+      let v = 0; for (const m in stock) v += Inv.quote(m);
+      const d = miscDumpQuote(misc); if (d.net > 0) v += d.net;
+      q.value += v;
+    });
     if (API.booted) { restore(API.S.ext); initStorage(); API.renderBank(); } else { API.on('load', restore); API.on('load', initStorage); }
     API.on('boot', function () {
       syncMarket();

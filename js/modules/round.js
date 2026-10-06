@@ -239,6 +239,7 @@
       ov = document.createElement('div'); ov.className = 'overlay hidden'; ov.id = 'round';
       ov.innerHTML = '<div class="sheet wide"><div class="sheet-h"><b id="round-title">AUCTION</b><button type="button" class="danger" id="round-close">CLOSE</button></div><div class="sheet-b round-b"><div class="round-main"></div><div class="round-side"></div></div></div>';
       document.body.appendChild(ov);
+      if (CS.Overlays) CS.Overlays.attach(ov, { labelledby: 'round-title', close: '#round-close' });
       ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
       ov.querySelector('#round-close').addEventListener('click', close);
     }

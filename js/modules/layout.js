@@ -234,9 +234,11 @@
     const drawer = el('div', 'overlay hidden'); drawer.id = 'drawer';
     drawer.innerHTML = '<div class="sheet"><div class="sheet-h"><b id="drawer-title"></b><button type="button" class="danger" id="drawer-close">CLOSE</button></div><div class="sheet-b" id="drawer-body"></div></div>';
     document.body.appendChild(drawer);
+    if (CS.Overlays) CS.Overlays.attach(drawer, { labelledby: 'drawer-title', close: '#drawer-close', modal: false });   // #198: the toolbar stays usable beside it
     const station = el('div', 'overlay hidden'); station.id = 'station';
     station.innerHTML = '<div class="sheet wide"><div class="sheet-h"><b id="station-title">Station</b><button type="button" class="danger" id="station-close">CLOSE</button></div><div class="sheet-b station-b"><div class="st-main"></div><div class="st-side"></div></div></div>';
     document.body.appendChild(station);
+    if (CS.Overlays) CS.Overlays.attach(station, { labelledby: 'station-title', close: '#station-close' });
     station.querySelector('.st-main').appendChild($('#cam-wrap'));
     station.querySelector('.st-main').appendChild($('#machine-panel'));
     station.querySelector('.st-side').appendChild($('#tele-panel'));
@@ -263,7 +265,6 @@
     station.addEventListener('click', (e) => { if (e.target === station) closeStation(); });
     $('#drawer-close').addEventListener('click', closeDrawer);
     $('#station-close').addEventListener('click', closeStation);
-    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeStation(); } });
   }
   /* the game loop across the top (#58): Auction / Shred / Sort / Refine / Sell; each step takes you to that part of the game */
   const LOOP = [['auction', 'AUCTION', 'buy a lot'], ['shred', 'SHRED', 'grind into the BIN'], ['sort', 'SORT', 'up to 10 sorters'], ['refine', 'REFINE', 'ingots and bars'], ['sell', 'SELL', 'pure buckets only']];

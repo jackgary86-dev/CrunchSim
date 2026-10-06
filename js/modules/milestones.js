@@ -36,7 +36,7 @@
         misc: I && I.misc ? I.miscTotal(I.misc()) : 0, miscMax: st.miscMax, rank: app.rankOf ? app.rankOf(app.netWorth()).idx : 0 };
     }
     function toast(text, sub) {
-      const t = document.createElement('div'); t.className = 'toast';
+      const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
       t.innerHTML = '<b>' + app.esc(text) + '</b>' + (sub ? '<span>' + app.esc(sub) + '</span>' : '');
       document.body.appendChild(t);
       requestAnimationFrame(() => t.classList.add('in'));

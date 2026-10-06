@@ -960,7 +960,7 @@
 
   /* ---------------- boot ---------------- */
   function setSpeed(v) { S.speed = v; document.querySelectorAll('.spd').forEach((b) => b.classList.toggle('on', +b.dataset.speed === v)); }
-  function setMuted(m) { S.muted = m; Audio.setMuted(m); $('#btn-mute').innerHTML = m ? '&#128263;' : '&#128266;'; }
+  function setMuted(m) { S.muted = m; Audio.setMuted(m); $('#btn-mute').innerHTML = m ? '&#128263;' : '&#128266;'; $('#btn-mute').setAttribute('aria-label', m ? 'Sound is off: turn it on' : 'Sound is on: turn it off'); }
 
   function boot() {
     API.S = S;
@@ -996,7 +996,7 @@
       else if (e.key === '1') setSpeed(1); else if (e.key === '2') setSpeed(10); else if (e.key === '3') setSpeed(60);
       else if (e.key === 'm' || e.key === 'M') { Audio.init(); setMuted(!S.muted); }
       else if (e.key === '?') $('#help').classList.toggle('hidden');
-      else if (e.key === 'Escape') { $('#help').classList.add('hidden'); hideCard(); }
+      else if (e.key === 'Escape') hideCard();   // a layer open on top took the key first (CS.Overlays)
     });
     window.addEventListener('resize', () => { cam.resize(); drawPSD(node(S.sel) ? info(S.sel) : null); });
     window.addEventListener('beforeunload', save);

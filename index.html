@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=9d9682cb66">
+  <link rel="stylesheet" href="css/style.css?v=9d2102e5e1">
 </head>
 <body>
 <!-- shown only when css/style.css did not load (the page opened on its own, without its css/ and js/ folders) -->
@@ -40,9 +40,9 @@
       <span id="run-net" class="num small"></span>
     </div>
     <div class="spacer"></div>
-    <button id="btn-mute" class="icon" type="button" title="Sound on/off (M)">&#128266;</button>
-    <button id="btn-settings" class="icon" type="button" title="Settings">&#9881;</button>
-    <button id="btn-help" class="icon" type="button" title="How to play">?</button>
+    <button id="btn-mute" class="icon" type="button" aria-label="Sound is on: turn it off" title="Sound on/off (M)">&#128266;</button>
+    <button id="btn-settings" class="icon" type="button" aria-label="Settings" title="Settings">&#9881;</button>
+    <button id="btn-help" class="icon" type="button" aria-label="How to play" title="How to play">?</button>
   </header>
 
   <aside id="left">
@@ -86,7 +86,7 @@
       <div id="cam-title"><span id="cam-name">NO MACHINE</span><span id="cam-cat"></span></div>
       <div id="cam-status" class="hidden"></div>
       <div id="cam-hint" class="small">MACHINE CAM &middot; click a flowsheet node to view it</div>
-      <div id="scorecard" class="hidden"></div>
+      <div id="scorecard" class="hidden" role="status" aria-live="polite"></div>
     </div>
     <section class="panel" id="machine-panel">
       <div class="mhead">
@@ -130,14 +130,14 @@
     </section>
     <section class="panel" id="log-panel">
       <h2>Event log</h2>
-      <div id="log"></div>
+      <div id="log" role="log" aria-live="polite" aria-label="Event log"></div>
     </section>
   </aside>
 </div>
 
 <div id="help" class="modal hidden">
   <div class="modal-box">
-    <button class="close" id="btn-help-close" type="button">&times;</button>
+    <button class="close" id="btn-help-close" type="button" aria-label="Close">&times;</button>
     <h2>CrunchSim</h2>
     <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
     <ol>
@@ -170,7 +170,7 @@
 <script src="js/scenes-a.js?v=c6fcdb1f5d"></script>
 <script src="js/scenes-b.js?v=103592bf12"></script>
 <script src="js/score.js?v=3f348572e6"></script>
-<script src="js/app.js?v=909f09603c"></script>
+<script src="js/app.js?v=908727a4de"></script>
 <script src="js/modules/market.js?v=9f24c2cc7f"></script>
 <script src="js/modules/inventory.js?v=991c16899d"></script>
 <script src="js/modules/auction.js?v=7f77104a2d"></script>
@@ -185,12 +185,13 @@
 <script src="js/modules/endgame.js?v=af4b401a85"></script>
 <script src="js/modules/refinery.js?v=35f23b05ee"></script>
 <script src="js/modules/slots.js?v=c9664e676b"></script>
-<script src="js/modules/round.js?v=e8b67fce00"></script>
+<script src="js/modules/round.js?v=a92be89de0"></script>
 <script src="js/modules/autorun.js?v=954dc9d4c1"></script>
-<script src="js/modules/milestones.js?v=79f1f1804d"></script>
+<script src="js/modules/milestones.js?v=b86e0de18f"></script>
 <script src="js/modules/saveio.js?v=67088c7958"></script>
 <script src="js/modules/guide.js?v=79fc76f79a"></script>
-<script src="js/modules/layout.js?v=7d3e4cb276"></script>
-<script src="js/modules/modes.js?v=7815ea8d59"></script>
+<script src="js/modules/overlays.js?v=4b123cafa9"></script>
+<script src="js/modules/layout.js?v=4e8ab37e43"></script>
+<script src="js/modules/modes.js?v=517c634ca8"></script>
 </body>
 </html>

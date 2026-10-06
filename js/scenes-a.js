@@ -165,6 +165,7 @@
         q.inside = true; q.hits = p.hits; q.tint = p.tint; q.liquid = false; q.cool = 0.05; cam.push(q);
       }
       cam.crunch(p, clamp(p.r / 14, 0.3, 1.4)); if (p.D.hard > 0.5) cam.spark(p.x, p.y, 3);
+      if (p.D.ductility < 0.3 && Math.random() < 0.5) cam.mist(p.x, p.y, 2, 'rgba(190,178,158,.55)', 35);   // #126: dust off brittle material
       p.state = 'gone';
     } else {
       p.vx = tx * v + rnd(-80, 80); p.vy = ty * v + rnd(-80, 80) - 50;

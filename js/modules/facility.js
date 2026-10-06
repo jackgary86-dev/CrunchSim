@@ -284,9 +284,10 @@
     });
     API.on('render', function () { if (apply()) API.markDirty(); render(); decorateBins(); });
     API.on('tick', function (p) { if (p && p.dh > 0 && S().run) decorateBins(); });   // the app redraws the bins every quarter second of a run
+    API.on('batchStart', function (p) { if (p && p.run) p.run.rerun = S().feedOwner === 'rerun'; });   // a RE-RUN of stock or MISC is tonnes you already own
     API.on('batchComplete', function (p) {
       const fx = effects(state), r = p && p.r;
-      if (!(fx.savePerT > 0) || !r || !(r.done > 0)) return;
+      if (!(fx.savePerT > 0) || !r || !(r.done > 0) || r.rerun) return;   // only new feed is credited: re-running a bucket would farm it
       const credit = fx.savePerT * r.done;
       S().money += credit; S().lifetime += credit;
       API.log('Dust & water treatment: ' + API.fmtMoney(credit) + ' of disposal and water cost avoided on ' + API.fmtNum(r.done, 1) + ' t.', 'ok');

@@ -115,5 +115,23 @@ const junk = F.deserialize({ levels: { desk: 99, lab: -1, control: 'two', bogus:
 check(F.levelOf(junk, 'desk') === all.desk.costs.length && F.levelOf(junk, 'lab') === 0 && F.levelOf(junk, 'control') === 0 && F.levelOf(junk, 'maint') === 1 && !('bogus' in junk.levels), 'junk is clamped, floored or dropped');
 check(F.KEYS.every((k) => F.levelOf(F.deserialize(null), k) === 0 && F.levelOf(F.deserialize('x'), k) === 0 && F.levelOf(F.deserialize({}), k) === 0), 'missing state is a fresh yard');
 
+console.log('\n=== treatment credit (#217)');
+{
+  // load a second copy of the module against a stub app so its batchStart / batchComplete handlers can be driven directly
+  const handlers = {}, S = { money: 0, lifetime: 0, feedOwner: null, ext: { facility: { levels: { treatment: 1 } } } };
+  globalThis.window = globalThis; globalThis.document = { addEventListener() {} }; globalThis.addEventListener = () => {};   // the module needs a document, picks window as its global and binds a keydown listener
+  const prevApp = globalThis.CS.app;
+  globalThis.CS.app = { S, on(ev, fn) { handlers[ev] = fn; }, log() {}, fmtMoney: (x) => '$' + x, fmtNum: (x) => String(x) };
+  delete require.cache[require.resolve('../js/modules/facility.js')];
+  require('../js/modules/facility.js');
+  globalThis.CS.app = prevApp; delete globalThis.window; delete globalThis.document; delete globalThis.addEventListener;
+  const per = F.effects(F.deserialize(S.ext.facility)).savePerT;
+  const run = (owner) => { S.feedOwner = owner; const r = { done: 100 }; handlers.batchStart({ run: r }); S.feedOwner = null; const m0 = S.money; handlers.batchComplete({ r }); return S.money - m0; };
+  check(per > 0, 'treatment level 1 saves $' + f(per) + ' per tonne');
+  check(near(run(null), per * 100) && near(S.lifetime, per * 100), 'a batch of new feed is credited savePerT x tonnes');
+  check(run('rerun') === 0 && near(S.lifetime, per * 100), 'a RE-RUN of stock or MISC earns no credit');
+  check(near(run('auction'), per * 100), 'an auction lot is new feed and is credited');
+}
+
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nfacility checks pass');
 process.exit(fails ? 1 : 0);

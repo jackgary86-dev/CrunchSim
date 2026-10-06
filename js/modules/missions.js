@@ -124,7 +124,7 @@
   function qualifying(bins, mat, purity) {
     const out = [];
     (bins || []).forEach(function (b) {
-      const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross') return;
+      const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross' || !st.sellable) return;
       const pm = st.perMat && st.perMat[mat]; if (!pm || !(pm.mass > 0)) return;
       if (pm.mass / st.total + 1e-9 >= purity) out.push({ kg: pm.mass, share: pm.mass / st.total });
     });
@@ -143,7 +143,7 @@
       let need = j.tons - j.t, got = 0;
       (bins || []).forEach(function (b, i) {
         if (need <= 1e-9) return;
-        const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross') return;
+        const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross' || !st.sellable) return;
         const pm = st.perMat && st.perMat[j.mat]; if (!pm || !(pm.mass > 0)) return;
         if (pm.mass / st.total + 1e-9 < j.purity) return;
         const avail = (pools[i][j.mat] == null ? pm.mass / 1000 * tonnes : pools[i][j.mat]);
@@ -353,7 +353,7 @@
     }
     API.on('batchComplete', function (p) {
       if (!p || !p.r) return;
-      const dl = p.r.src === 'stock' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());   // #98: re-running a held bucket does not deliver it a second time
+      const dl = p.r.src === 'stock' || p.r.src === 'misc' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());   // #98: re-running a held bucket does not deliver it a second time
       dl.forEach(function (d) {
         const j = d.job;
         credit(d.pay);

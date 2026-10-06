@@ -148,6 +148,20 @@ console.log('=== hooks');
     const after = ext().missions, aj = after.jobs.active[0] || after.jobs.done[0];
     check(aj && aj.t > 0 && app.S.money > money1 && near(app.S.money - money1, aj.paid) && near(app.S.lifetime - lt, aj.paid), 'a zorba batch credits ' + f(aj ? aj.t : 0, 2) + ' t to the aluminum job and pays the premium (' + f(app.S.money - money1, 0) + ')');
   } else check(true, '(no small aluminum job on this board; skipped the delivery check)');
+  /* #216: a MISC re-run does not count again, and bins the inventory will not sell earn no premium (synthetic job, so it always runs) */
+  const st3 = JSON.parse(JSON.stringify(saved)), synth = Object.assign({}, saved.jobs.board[0], { mat: 'aluminum', purity: 0.85, tier: 0, state: 'active', acceptedH: 0, deadlineH: 1e6 });
+  const reload = () => { st3.jobs.active = [Object.assign({}, synth)]; app.emit('load', { missions: JSON.parse(JSON.stringify(st3)) }); };
+  const jobT = () => { const j = ext().missions.jobs; return (j.active[0] || j.done[0] || { t: NaN }).t; };
+  reload();
+  app.emit('batchComplete', { r: { done: 15 }, why: 'complete', net: 0, bins: zorba.bins, powerC: 0 });
+  check(jobT() > 0, 'control: a normal batch credits the synthetic aluminum job');
+  reload();
+  app.emit('batchComplete', { r: { done: 15, src: 'misc' }, why: 'complete', net: 0, bins: zorba.bins, powerC: 0 });
+  check(jobT() === 0, 'a MISC re-run credits nothing to a job');
+  reload();
+  const unsold = zorba.bins.map((b) => Object.assign({}, b, { st: Object.assign({}, b.st, { sellable: false }) }));
+  app.emit('batchComplete', { r: { done: 15 }, why: 'complete', net: 0, bins: unsold, powerC: 0 });
+  check(jobT() === 0, 'bins the inventory will not sell credit nothing to a job');
 }
 
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' mission checks pass'));

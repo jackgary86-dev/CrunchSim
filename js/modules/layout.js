@@ -56,7 +56,7 @@
       if (!users.length) continue;
       const kg = Sim.streamMass(ev.ports[key]);
       const st = Sim.binStats(ev.ports[key].m); if (!Sim.binMatters(st)) continue;
-      next.push({ port, kg, tons: kg / 1000 * tons, to: users.map((x) => line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()) });
+      next.push({ port, kg, tons: kg / 1000 * tons, to: users.map((x) => line.indexOf(x) + 1), mats: topMats(st, 2).map((m) => MATERIALS[m].name.toLowerCase()), ids: topMats(st, 3) });
     }
     bins.sort((a, b) => b.tons - a.tons);
     return { bins, next };
@@ -123,7 +123,7 @@
     appEl.insertBefore(bar, $('#left'));
     const plant = el('section', 'panel'); plant.id = 'flow-panel';
     plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div><div id="flow-margin" class="flow-margin"></div>' +
-      '<div class="flow"><button type="button" class="flow-nav" id="flow-prev" aria-label="Earlier machines">&lsaquo;</button><div id="flow-nodes"></div><button type="button" class="flow-nav" id="flow-next" aria-label="Later machines">&rsaquo;</button></div>' +
+      '<div class="flow"><button type="button" class="flow-nav" id="flow-prev" aria-label="Earlier machines">&lsaquo;</button><div class="flow-wrap"><div id="flow-nodes"></div><div id="flow-cta" class="flow-cta hidden"></div></div><button type="button" class="flow-nav" id="flow-next" aria-label="Later machines">&rsaquo;</button></div>' +
       '<div class="small flow-hint">Machines run left to right in the order you placed them. Click one to sit at its station and tune it.</div>';
     const center = $('#center');
     center.insertBefore(plant, center.firstChild);
@@ -145,6 +145,12 @@
     station.querySelector('.st-side').appendChild($('#tele-panel'));
     document.body.appendChild($('#scorecard'));   // the score card must show without the station open
     const stash = el('div', 'hidden'); stash.id = 'stash'; document.body.appendChild(stash);
+    // #64: the Feed panel (sliders nobody can move any more) gives way to a card for the loaded lot; the batch-size row moves into it
+    const lc = el('section', 'panel lotcard-panel'); lc.id = 'lot-card';
+    lc.innerHTML = '<h2>Loaded</h2><div id="lot-body"></div>';
+    const left = $('#left'); left.insertBefore(lc, left.firstChild);
+    const tonsRow = $('#feed-tons') && $('#feed-tons').closest('.row'); if (tonsRow) { tonsRow.classList.add('lot-tons'); lc.appendChild(tonsRow); }
+    const fp = $('#feed-panel'); if (fp) stash.appendChild(fp);
     DRAWERS.forEach(([, , ids]) => ids.forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); }));
     ['contract-panel'].forEach((id) => { const s = document.getElementById(id); if (s) stash.appendChild(s); });   // #57: clients no longer send feed, so no contracts
     drawer.addEventListener('click', (e) => { if (e.target === drawer) closeDrawer(); });
@@ -164,6 +170,19 @@
     offset = k; renderFlow(true);
     const col = key === 'shred' ? document.querySelector('.fcol.bincol') : document.querySelector('.fcol.mach.sorter');
     if (col) { col.classList.remove('flash'); void col.offsetWidth; col.classList.add('flash'); }
+  }
+  function loopHints() {
+    const S = app.S, I = CS.Inventory, A = CS.Auction && CS.Auction.live, RL = CS.Round && CS.Round.live, SL = CS.Slots && CS.Slots.live, RF = CS.Refinery && CS.Refinery.live;
+    const stock = I ? I.stock() : {}, mats = Object.keys(stock).filter((m) => stock[m].t > 0.05);
+    let value = 0; mats.forEach((m) => { value += I.quote ? I.quote(m) : 0; });
+    const st = RL && RL.state ? RL.state() : null;
+    const auction = S.mode === 'rivals' && st ? (st.match && st.match.over ? 'match over' : st.n ? 'round ' + st.n + ' of ' + st.match.length : 'start the match') : (A ? A.board().length + ' lots on the board' : 'buy a lot');
+    const P = A && A.pending ? A.pending() : null;
+    const shred = S.run ? fmtW(S.run.total - S.run.done) + ' to go' : S.feedPrepaid ? (P && S.feedOwner === 'auction' ? fmtW(P.tons) + ' in the yard' : S.tons + ' t loaded') : 'nothing loaded';
+    const sort = SL ? SL.used() + ' / ' + SL.owned() + ' sorter slots' : 'sorters';
+    const lvl = RF ? RF.level() : 0, refine = lvl >= 2 ? 'furnace + precious' : lvl === 1 ? 'smelting furnace' : 'no refinery yet';
+    const sell = mats.length ? mats.length + ' bucket' + (mats.length === 1 ? '' : 's') + ' · ' + app.fmtMoney(value) : 'pure buckets only';
+    return { auction, shred, sort, refine, sell };
   }
   function loopState() {
     const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 0.05);
@@ -240,7 +259,7 @@
     if (acc < 0.999) bands += '<i style="flex:' + (1 - acc).toFixed(3) + ';background:#5a6573"></i>';
     const pure = st.sellable != null ? st.sellable : st.share >= CLEAN;
     return '<div class="fbin' + (pure ? ' pure' : '') + '" title="' + esc((PORT_NAME[port] || port) + ': ' + tops.map((m) => MATERIALS[m].name + ' ' + Math.round(100 * st.perMat[m].mass / st.total) + '%').join(', ')) + '">' +
-      '<div class="fbin-box"><div class="fbin-fill">' + bands + '</div></div>' +
+      '<div class="fbin-box"><div class="fbin-fill"' + (runProg >= 0 ? ' style="height:' + Math.round(10 + 75 * runProg) + '%"' : '') + '>' + bands + '</div></div>' +
       '<div class="fbin-t"><b>' + esc(D ? (st.form === 'ingot' ? D.name + ' ingots' : D.name) : 'mixed') + '</b><span>' + Math.round(st.share * 100) + '% · ' + fmtW(tons) + '</span>' + (verdict || (pure ? '<em class="ship ok">SELLS</em>' : '<em class="ship bad" title="Mixed: under 90% of one material. It cannot be sold; it goes to the MISC bucket to re-run.">TO MISC</em>')) + '</div></div>';
   }
   /* ---------------- contract on the plant screen (#47) ---------------- */
@@ -283,6 +302,62 @@
     return null;
   }
 
+  /* ---------------- the lot card (#64) and the idle plant (#65) ---------------- */
+  let idleNow = false, runProg = -1;
+  function isIdle() { const S = app.S; return !S.feedPrepaid && !(app.contract && app.contract()); }
+  function compBars(c, n) {
+    const e = Object.entries(c || {}).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]);
+    const bar = '<div class="lc-comp">' + e.map((x) => '<i style="flex:' + x[1].toFixed(4) + ';background:' + MATERIALS[x[0]].color + '"></i>').join('') + '</div>';
+    const list = e.slice(0, n || 4).map((x) => '<div class="lc-m"><span class="sw" style="background:' + MATERIALS[x[0]].color + '"></span>' + esc(MATERIALS[x[0]].name) + '<b>' + (x[1] >= 0.001 ? (x[1] * 100).toFixed(x[1] < 0.1 ? 1 : 0) + '%' : Math.round(x[1] * 1e6) + ' g/t') + '</b></div>').join('');
+    return bar + list;
+  }
+  function binPic(c) { const e = Object.entries(c || {}).filter((x) => x[1] > 0).sort((a, b) => a[1] - b[1]); return '<div class="lc-bin"><div class="lc-fill">' + e.map((x) => '<i style="flex:' + x[1].toFixed(4) + ';background:' + MATERIALS[x[0]].color + '"></i>').join('') + '</div></div>'; }
+  /* what to do when nothing is loaded: one clear action, by mode */
+  function nextAction() {
+    const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0, RL = CS.Round && CS.Round.live;
+    if (S.mode === 'rivals' && RL) {
+      if (RL.miscAllowed() && mt >= 1) return { label: 'RUN YOUR MISC', sub: 'No bin for you this round: ' + fmtW(mt) + ' of mixed material is waiting.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
+      const st = RL.state(); if (st.match && st.match.over) return { label: 'SEE THE STANDINGS', sub: 'The match is over.', go: () => showDrawer('auction') };
+      return { label: RL.canStart() ? (st.n ? 'NEXT AUCTION ROUND' : 'START THE MATCH') : 'OPEN THE AUCTION', sub: 'Material comes only from bins you win at auction, or your MISC bin in a round you win nothing.', go: () => showDrawer('auction') };
+    }
+    return { label: 'BUY A LOT', sub: 'Material comes only from the auction or your MISC bucket. Six lots wait on the board, from $1k to $100k.' + (mt >= 1 ? ' Or RE-RUN your MISC bucket: ' + fmtW(mt) + ' of mixed material is waiting.' : ''), go: () => showDrawer('auction') };
+  }
+  function renderLotCard() {
+    const box = $('#lot-body'), S = app.S; if (!box) return;
+    const A = CS.Auction && CS.Auction.live, P = A && A.pending ? A.pending() : null, yard = A && A.yard ? A.yard() : [];
+    const tonsRow = document.querySelector('#lot-card .lot-tons');
+    let h = '';
+    if (P && S.feedPrepaid && S.feedOwner === 'auction') {
+      const seen = P.boughtTons && P.tons < P.boughtTons ? P.truth : P.declared;   // the weighbridge tells the truth once the first batch ran
+      h = '<div class="lc-h"><b>LOT #' + P.id + '</b><span>' + esc(P.headline) + '</span></div>' + binPic(seen) +
+        '<div class="lc-t"><b>' + fmtW(P.tons) + '</b> left of ' + fmtW(P.boughtTons || P.tons) + '<span>paid ' + app.fmtMoney(P.ask) + '/t</span></div>' +
+        '<div class="small">' + esc(P.seller || '') + (seen === P.truth ? ' · weighbridge mix' : ' · declared mix') + '</div>' + compBars(seen, 4);
+    } else if (loaded && S.feedPrepaid) {
+      h = '<div class="lc-h"><b>RE-RUN</b><span>' + esc(loaded.label) + ' bucket</span></div>' + binPic(loaded.comp) + '<div class="lc-t"><b>' + S.tons + ' t</b> per batch<span>already yours</span></div>' + compBars(loaded.comp, 4);
+    } else if (S.feedPrepaid) {
+      const src = feedSource();
+      h = '<div class="lc-h"><b>LOADED</b><span>' + esc(src ? src.name : 'material') + '</span></div>' + binPic(S.comp) + compBars(S.comp, 4);
+    } else {
+      const a = nextAction();
+      h = '<div class="lc-empty"><div class="small">Nothing is loaded.</div><button type="button" class="primary lc-go">' + esc(a.label) + '</button><div class="small">' + esc(a.sub) + '</div></div>';
+    }
+    if (yard && yard.length && S.mode !== 'rivals') h += '<div class="lc-yard"><div class="fn-sub">WAITING IN THE YARD</div>' + yard.map((L) => '<div class="lc-y"><span><b>#' + L.id + '</b> ' + esc(L.headline) + ' · ' + fmtW(L.tons) + '</span><button type="button" data-lot="' + L.id + '"' + (S.run ? ' disabled' : '') + '>LOAD</button></div>').join('') + '</div>';
+    box.innerHTML = h;
+    const go = box.querySelector('.lc-go'); if (go) go.addEventListener('click', () => nextAction().go());
+    box.querySelectorAll('.lc-y button').forEach((b) => b.addEventListener('click', () => { if (A.load(+b.dataset.lot)) renderFlow(true); }));
+    if (tonsRow) tonsRow.classList.toggle('hidden', !S.feedPrepaid);
+  }
+
+  /* ---------------- conveyors between the columns (#66) ---------------- */
+  function belt(tons, ids, label) {
+    if (!(tons > 0)) return '';
+    const S = app.S, frac = Math.min(1, tons / Math.max(S.tons, 1e-9)), h = Math.round(5 + 11 * Math.sqrt(frac));
+    const cols = (ids || []).map((m) => MATERIALS[m] ? MATERIALS[m].color : '#5a6573');
+    while (cols.length < 3) cols.push(cols[0] || '#5a6573');
+    const stripes = 'repeating-linear-gradient(90deg,' + cols[0] + ' 0 10px,#0b1018 10px 14px,' + cols[1] + ' 14px 22px,#0b1018 22px 26px,' + cols[2] + ' 26px 32px,#0b1018 32px 36px)';
+    return '<div class="belt" style="height:' + h + 'px"><div class="belt-load" style="background:' + stripes + '"></div><span class="belt-l">' + esc(label) + '</span></div>';
+  }
+
   /* ---------------- sections ---------------- */
   function machineCol(n, i) {
     const M = MACHINES[n.m], inf = app.info(n.uid), S = app.S, owned = app.nodeOwned ? app.nodeOwned(n) : true;
@@ -309,15 +384,23 @@
     const mini = miniFor(n.uid);
     if (mini) col.querySelector('.fn-camwrap').appendChild(mini.cv);
     if (M.settings && M.settings.length) col.appendChild(settingsBox(n, M));
-    const f = stationFlow(S.ev, S.line, S.tons, n.uid);
     const binsBox = el('div', 'fbins');
-    binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port, binVerdict(n.uid + ':' + b.port))).join('') : '<div class="small">None: everything moves on.</div>');
-    col.appendChild(binsBox);
-    f.next.forEach((x) => {
-      const nx = el('div', 'fnext');
-      nx.innerHTML = '<span class="fnext-a">&#10140;</span><span><b>' + fmtW(x.tons) + '</b> ' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
-      col.appendChild(nx);
-    });
+    if (idleNow) {   // #65: no material, no projections
+      binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div><div class="small">Waiting for material.</div>';
+      col.appendChild(binsBox);
+    } else {
+      const f = stationFlow(S.ev, S.line, S.tons, n.uid);
+      binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port, binVerdict(n.uid + ':' + b.port))).join('') : '<div class="small">None: everything moves on.</div>');
+      col.appendChild(binsBox);
+      f.next.forEach((x) => {
+        const nx = el('div', 'fnext');
+        nx.innerHTML = '<span class="fnext-a">&#10140;</span><span>' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
+        col.appendChild(nx);
+      });
+      const out = f.next.reduce((a, x) => a + x.tons, 0);
+      if (out > 0) col.insertAdjacentHTML('beforeend', belt(out, f.next[0].ids, fmtW(out)));
+    }
+    if (idleNow) col.classList.add('idle');
     const open = () => showStation(n.uid);
     col.addEventListener('click', open);
     col.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -454,7 +537,7 @@
     const b = el('button', 'refine' + (q.ok && q.gain > 0 ? ' buy' : ''), q.ok ? 'REFINE ' + app.fmtMoney(q.net) : 'REFINE · needs ' + esc(q.needName.toLowerCase())); b.type = 'button';
     b.title = q.ok ? 'Refine into ' + q.form + ': ' + app.fmtMoney(q.value) + ' less ' + app.fmtMoney(q.cost) + ' = ' + app.fmtMoney(q.net) + ' (' + (q.gain >= 0 ? '+' : '-') + app.fmtMoney(Math.abs(q.gain)) + ' against selling raw)' : q.why;
     if (!q.ok) b.disabled = true;
-    b.addEventListener('click', () => { R.refine(m); renderFlow(true); });
+    b.addEventListener('click', () => withMoney(b, () => { R.refine(m); renderFlow(true); }));
     return b;
   }
   function refineMiscButton() {
@@ -463,19 +546,38 @@
     const b = el('button', 'refine' + (q.ok ? ' buy' : ''), q.ok ? 'REFINE ' + app.fmtMoney(q.net) : 'REFINE · ' + (CS.Refinery.live.level() < 2 ? 'needs precious refinery' : 'too lean')); b.type = 'button';
     b.title = q.ok ? 'Sell the MISC pile to the precious refinery by assay: ' + app.fmtMoney(q.value) + ' for the gold and silver in it, less ' + app.fmtMoney(q.cost) + ' treatment' : q.why;
     if (!q.ok) b.disabled = true;
-    b.addEventListener('click', () => { R.refineMisc(); renderFlow(true); });
+    b.addEventListener('click', () => withMoney(b, () => { R.refineMisc(); renderFlow(true); }));
     return b;
   }
+  /* a held lot drawn as what it is stored in: bale, big bag, bin, drum or bar, sized by tonnes (#68) */
+  function unitPic(m, t, p80) {
+    const I = CS.Inventory, U = I && I.unitFor ? I.unitFor(m, p80) : { name: 'bale' }, D = MATERIALS[m];
+    const kind = /bag/.test(U.name) ? 'bag' : /bin/.test(U.name) ? 'bin' : /drum/.test(U.name) ? 'drum' : /bar/.test(U.name) ? 'bar' : 'bale';
+    const sz = Math.round(18 + 20 * Math.min(1, Math.sqrt(t / 40)));
+    return '<span class="unit ' + kind + '" style="--uc:' + D.color + ';--us:' + sz + 'px" title="' + esc(U.name) + 's of ' + esc(D.name.toLowerCase()) + '"></span>';
+  }
+  /* money that flies from a button to the bank (#68) */
+  function flyMoney(a, amount) {   // a: the button's rectangle, taken before the click redrew it
+    const bank = document.getElementById('money'); if (!a || !bank || !(Math.abs(amount) >= 1)) return;
+    const b = bank.getBoundingClientRect();
+    const f = el('div', 'flymoney' + (amount < 0 ? ' neg' : ''), (amount > 0 ? '+' : '') + app.fmtMoney(amount));
+    f.style.left = (a.left + a.width / 2) + 'px'; f.style.top = a.top + 'px';
+    document.body.appendChild(f);
+    requestAnimationFrame(() => { f.style.transform = 'translate(' + (b.left + b.width / 2 - a.left - a.width / 2) + 'px,' + (b.top - a.top) + 'px) scale(.8)'; f.style.opacity = '0.2'; });
+    setTimeout(() => { f.remove(); bank.classList.remove('bump'); void bank.offsetWidth; bank.classList.add('bump'); }, 750);
+    if (CS.Audio && CS.Audio.cash) CS.Audio.cash();
+  }
+  function withMoney(btn, act) { const m0 = app.S.money, rect = btn.getBoundingClientRect(); act(); flyMoney(rect, app.S.money - m0); }
   function bucketsCol() {
     const col = el('div', 'fcol buckets'), b = buckets(), Inv = CS.Inventory;
     col.appendChild(el('div', 'fn-k', 'END RESULT IN BUCKETS'));
     const list = el('div', 'bk-list');
     if (!b.clean.length && !(b.misc.t > 0)) list.appendChild(el('div', 'small', 'Run a batch: what comes out lands here, ready to sell or run again.'));
     b.clean.forEach((x) => {
-      const D = MATERIALS[x.m], row = el('div', 'bk');
+      const D = MATERIALS[x.m], row = el('div', 'bk shelf'), e = (CS.Inventory.stock() || {})[x.m] || {};
       const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
-      row.innerHTML = '<span class="bk-sw" style="background:' + D.color + '"></span><span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span></span>';
-      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); });
+      row.innerHTML = unitPic(x.m, x.t, e.p80) + '<span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span></span>';
+      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => withMoney(sell, () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); }));
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re);
       const rf = refineButton(x.m); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
@@ -484,7 +586,7 @@
     if (b.misc.t > 0) {
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
-      row.innerHTML = '<span class="bk-sw misc"></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
+      row.innerHTML = '<span class="unit heap" style="--us:' + Math.round(18 + 20 * Math.min(1, Math.sqrt(b.misc.t / 40))) + 'px"></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
       const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re);
       const rf = refineMiscButton(); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
@@ -504,8 +606,9 @@
   }
   function binCol(from) {
     const S = app.S, col = el('div', 'fcol bincol');
-    const port = S.ev && S.ev.ports[from.uid + ':product'];
+    const port = !idleNow && S.ev && S.ev.ports[from.uid + ':product'];
     const st = port ? Sim.binStats(port.m) : null, tons = st ? st.total / 1000 * S.tons : 0;
+    if (idleNow) col.classList.add('idle');
     let bands = '', list = '';
     if (st && st.total > 0) {
       topMats(st, 8).forEach((m) => {
@@ -519,7 +622,8 @@
       '<div class="fn-n">' + (st && st.total > 0 ? fmtW(tons) + ' of mixed shred' : 'empty') + '</div>' +
       '<div class="fn-s">' + (st && st.total > 0 ? 'P80 ' + fmtSz(st.p80) + ' · everything the grinder breaks falls in here' : 'Load a lot: the grinder fills it') + '</div>' +
       '<div class="bin-list">' + list + '</div>' +
-      '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>';
+      '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>' +
+      (st && st.total > 0 ? belt(tons, topMats(st, 3), fmtW(tons)) : '');
     return col;
   }
   function renderMode() {
@@ -544,6 +648,7 @@
   let lastMargin = null, lastDelta = 0, deltaAt = 0;
   function renderMargin() {
     const box = $('#flow-margin'), S = app.S; if (!box || !S.ev || !app.marginPerT) return;
+    if (isIdle()) { box.innerHTML = 'PROJECTED &#9654; <span class="small">nothing loaded: margins appear once a lot or bucket is loaded</span>'; lastMargin = null; return; }
     const m = app.marginPerT(), per = m.margin, batch = per * S.tons;
     if (lastMargin != null && Math.abs(per - lastMargin) > 0.005) { lastDelta = per - lastMargin; deltaAt = Date.now(); }
     lastMargin = per;
@@ -555,11 +660,13 @@
   }
   function renderFlow(force) {
     const S = app.S; if (!S || !$('#flow-nodes')) return;
-    renderMode(); renderMargin();
+    idleNow = isIdle(); runProg = S.run && S.run.total > 0 ? Math.min(1, S.run.done / S.run.total) : -1;
+    document.body.classList.toggle('plant-running', !!S.run);
+    renderMode(); renderMargin(); renderLotCard();
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(S.run.done) : -1, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, S.contract, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';
@@ -585,8 +692,16 @@
     const old = $('#flow-contract'); if (old) old.remove();
     const strip = contractStrip(); if (strip) { strip.id = 'flow-contract'; ff.after(strip); }
     const box = $('#flow-nodes'); box.innerHTML = '';
+    box.classList.toggle('idle', idleNow);
+    const cta = $('#flow-cta');
+    if (idleNow) {   // #65: one clear call to action over the idle plant
+      const a = nextAction();
+      cta.innerHTML = '<div class="cta-card"><b>THE PLANT IS IDLE</b><span>' + esc(a.sub) + '</span><button type="button" class="primary">' + esc(a.label) + '</button></div>';
+      cta.querySelector('button').addEventListener('click', () => nextAction().go());
+      cta.classList.remove('hidden');
+    } else cta.classList.add('hidden');
     seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : x.bin ? binCol(x.from) : machineCol(x.n, x.i)));
-    const lit = loopState(); document.querySelectorAll('#loop .loop-step').forEach((b) => b.classList.toggle('on', lit.indexOf(b.dataset.key) >= 0));
+    const lit = loopState(), hints = loopHints(); document.querySelectorAll('#loop .loop-step').forEach((b) => { b.classList.toggle('on', lit.indexOf(b.dataset.key) >= 0); const sp = b.querySelector('span'); if (sp && hints[b.dataset.key]) sp.textContent = hints[b.dataset.key]; });
     for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
     box.appendChild(bucketsCol());
     $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + MACHINE_COLS >= seq.length;

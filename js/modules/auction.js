@@ -191,7 +191,9 @@
     const tiers = () => { if (roundMode()) { st.board = []; return false; } return tickTiers(st, rng, clockH(), genOpts()); };
     CS.Auction.live = { board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render(),
       /* a lot won somewhere else (an auction round): pay for it and put it in the yard */
-      deliver: (L, perT, how) => take(L, perT, how) };
+      deliver: (L, perT, how) => take(L, perT, how),
+      /* LOAD a waiting lot by id (the plant screen's lot card, #64) */
+      load: (id) => { const L = st.yard.find((x) => x.id === id); if (L && swapIn(L)) { render(); return true; } return false; } };
     function priceOf(L) { const q = { lot: L, perT: L.ask }; app.emit('lotPrice', q); return q.perT > 0 ? Math.ceil(q.perT) : L.ask; }
     function closeLot(L) { const q = { lot: L, award: 0 }; app.emit('lotClose', q); if (q.award > 0) take(L, q.award, 'Won at auction:'); }
 

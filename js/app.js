@@ -694,7 +694,8 @@
   function renderRunProjection(m) {
     if (S.run) return;
     const b = $('#btn-run'), rn = $('#run-net'), E = Eco();
-    const pr = E && m && S.line.length && m.R > 0 ? E.projectBatch(m, S.tons, S.ev.nodes) : null;
+    const nothing = AUCTION_ONLY && !S.feedPrepaid && !contract();   // #65: no projection for material you do not have
+    const pr = !nothing && E && m && S.line.length && m.R > 0 ? E.projectBatch(m, S.tons, S.ev.nodes) : null;
     b.innerHTML = '&#9654; RUN BATCH' + (pr ? '<small class="proj">' + (pr.net >= 0 ? '+' : '') + fmtMoney(pr.net) + '</small>' : '');
     b.classList.toggle('neg', !!(pr && pr.negative)); b.title = pr && pr.reason ? pr.reason : 'Run a batch (Space)';
     rn.textContent = pr && pr.reason ? pr.reason : ''; rn.className = 'num small' + (pr && pr.reason ? ' reason' : ''); rn.title = rn.textContent;

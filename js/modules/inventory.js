@@ -545,7 +545,7 @@
       let q = miscDumpQuote(misc); if (!(q.t > 0)) return q;
       let f = 1;   // a bank that cannot cover the whole fee ships the share it can pay for
       if (q.net < 0 && API.S.money < -q.net) { f = Math.max(0, API.S.money) / -q.net; if (f < 0.02) { API.log('Shipping the MISC out costs ' + API.fmtMoney(-q.net) + ': sell something first.', 'warn'); return null; } }
-      if (f < 1) q = { t: q.t * f, metal: q.metal * f, fee: q.fee * f, net: q.net * f };
+      if (f < 1) { q = { t: q.t * f, metal: q.metal * f, fee: q.fee * f, net: q.net * f }; q.net = -Math.min(-q.net, API.S.money); }   // rounding must not ask a cent more than the bank holds
       if (q.net < 0 && !API.spend(-q.net, 'shipping ' + q.t.toFixed(1) + ' t of MISC out')) return null;
       if (q.net > 0) { API.S.money += q.net; API.S.lifetime = (API.S.lifetime || 0) + q.net; }
       for (const m in misc) { if (f >= 1) delete misc[m]; else { misc[m].t *= 1 - f; if (misc[m].t <= 1e-6) delete misc[m]; } }

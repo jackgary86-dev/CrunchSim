@@ -84,7 +84,7 @@
     const q = { value: v }; API.emit('assetValue', q);   // modules add what they sold the player (facility and office upgrades)
     return q.value;
   }
-  function netWorth() { return S.money + assetValue(); }
+  function netWorth() { const q = { value: 0 }; API.emit('liabilities', q); return S.money + assetValue() - q.value; }   // modules add what the yard owes (an advance)
   function rankOf(nw) { let i = 0; for (let k = 0; k < RANKS.length; k++) if (nw >= RANKS[k][0]) i = k; return { idx: i, name: RANKS[i][1], floor: RANKS[i][0], next: RANKS[i + 1] ? RANKS[i + 1][0] : null, nextName: RANKS[i + 1] ? RANKS[i + 1][1] : null }; }
   function unownedIn(line) { const cnt = {}, miss = {}; line.forEach((n) => { cnt[n.m] = (cnt[n.m] || 0) + 1; }); for (const m in cnt) { const short = cnt[m] - unitsOf(m); if (short > 0) miss[m] = short * MACHINES[m].price; } return miss; }
   function unownedCost(line) { let c = 0; const m = unownedIn(line); for (const k in m) c += m[k]; return c; }
@@ -228,7 +228,7 @@
       row.querySelector('.pct').textContent = tot > 0 ? Math.round(100 * f / tot) + '%' : '0%';
       row.classList.toggle('on', f > 0);
     });
-    $('#feed-tons').value = S.tons; $('#feed-tons-v').textContent = S.tons + ' t';
+    $('#feed-tons').value = S.tons; $('#feed-tons-v').textContent = fmtNum(S.tons, S.tons < 10 ? 1 : 0) + ' t';
   }
   function updateFeedInfo() {
     const head = S.ev ? S.ev.head : null;
@@ -468,9 +468,15 @@
   /* what your line would make of a mix, $ per tonne after power, consumables and wear, before the scrap's own price: the most
    * a lot (or a bin) is worth paying for. Cached per line and mix. */
   const estCache = new Map();
+  /* everything about the line and the prices that changes what it makes */
+  function lineKey() {
+    const P = Sim.prices, pm = P.perMat || {};
+    return S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src) + 'L' + levelOf(n.m) + (n.wear >= 0.999 ? 'w' : '')).join() +
+      '|' + P.power + '|' + P.market + '|' + Object.keys(pm).map((m) => m + (+pm[m]).toFixed(3)).join();
+  }
   function lotEstimate(comp) {
     if (!S.line.length || !comp) return null;
-    const key = S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + (n.wear > 0.98 ? 'w' : '')).join() + '|' + Object.keys(comp).sort().map((m) => m + (+comp[m]).toFixed(3)).join();
+    const key = lineKey() + '|' + Object.keys(comp).sort().map((m) => m + (+comp[m]).toFixed(3)).join();
     if (estCache.has(key)) return estCache.get(key);
     let v = null; const keep = rankComp;
     try { rankComp = comp; const m = lineMarginNoFeed(S.line); v = isFinite(m) ? m : null; } catch (e) { v = null; } finally { rankComp = keep; }
@@ -486,8 +492,11 @@
       const can = A.board().filter((L) => L.ask * L.tons <= S.money).sort((a, b) => b.ask * b.tons - a.ask * a.tons)[0];
       if (can) rankComp = can.declared;
     }
-    try { return rankPurchases(); } finally { rankComp = null; }
+    const key = lineKey() + '|' + JSON.stringify(rankComp || S.comp) + '|' + (S.feedPrepaid ? JSON.stringify(S.feedOpts) : '') + '|' + Math.floor(S.money / 500) + '|' + Object.keys(S.units).map((m) => m + S.units[m]).join() + '|' + JSON.stringify(S.plant) + '|' + (CS.Slots && CS.Slots.live && CS.Slots.live.owned ? CS.Slots.live.owned() : '');   // slots and the hall decide what may be added
+    if (npMemo.key === key) { rankComp = null; return npMemo.v; }
+    try { const v = rankPurchases(); npMemo = { key, v }; return v; } finally { rankComp = null; }
   }
+  let npMemo = { key: '', v: null };
   function rankPurchases() {
     const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
     const ports = freePorts(S.line), singles = [];
@@ -698,7 +707,7 @@
     const proj = marginPerT();   // #18: the projection the score card compares the actual net with
     S.run = { total: S.tons, done: 0, rate: effRate(), kwh: 0, rev: 0, extra: 0, feedC, t0: S.clock, rankIdx: rankOf(netWorth()).idx, projPerT: proj.margin, serviceC: svcC, wearC: 0, perNode: {} };
     Audio.init(); Audio.ui('ok'); hideCard();
-    log('Batch start: ' + S.tons + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.', 'ok');
+    log('Batch start: ' + fmtNum(S.tons, S.tons < 10 ? 1 : 0) + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.', 'ok');
     S.ev.nodes.forEach((n, i) => n.warnings.forEach((w) => { if (w.level !== 'info') log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + w.text, w.level); }));
     renderRunState(); renderBank(); API.emit('batchStart', { run: S.run });
   }

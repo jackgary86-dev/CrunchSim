@@ -229,7 +229,7 @@
      * and 'auctionRender' {box} lets a module add to the board after each redraw (lot rows carry data-lot) */
     const roundMode = () => app.S && app.S.mode === 'rivals';   // RIVALS mode: lots come from auction rounds (js/modules/round.js), not the tier board
     const tiers = () => { if (roundMode()) { st.board = []; return false; } return tickTiers(st, rng, clockH(), genOpts()); };
-    CS.Auction.live = { board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render(),
+    CS.Auction.live = { priceOf: (L) => priceOf(L), board: () => st.board, pending: () => st.pending, yard: () => st.yard, render: () => render(),
       /* a lot won somewhere else (an auction round): pay for it and put it in the yard */
       deliver: (L, perT, how, credit) => take(L, perT, how, credit),
       /* LOAD a waiting lot by id (the plant screen's lot card, #64) */

@@ -656,7 +656,7 @@ body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-t
 .nextcard button { width: 100%; padding: 10px; letter-spacing: 2px; }
 .lastcard .lb-n { font-family: var(--mono); font-size: 22px; }
 .lastcard .lb-n.ok { color: var(--green); } .lastcard .lb-n.bad { color: var(--red); }
-#app { grid-template-columns: 270px minmax(420px, 1fr) 340px; }
+body.lay #app { grid-template-columns: 270px minmax(0, 1fr); }
 /* #137: drawers slide in at the side, under the header and toolbar: RUN, the bank and the batch stay in view */
 #drawer.overlay { top: 94px; left: auto; right: 0; width: min(640px, 100%); padding: 0; background: transparent; align-items: stretch; justify-content: flex-end; z-index: 38; }
 #drawer .sheet { width: 100%; max-height: none; height: 100%; border-radius: 0; border-width: 0 0 0 1px; box-shadow: -18px 0 40px rgba(0,0,0,.55); animation: drawer-in .18s ease-out; }
@@ -669,3 +669,25 @@ body.at-title .guide, body.at-title .cs-tour, body.at-title #flow-cta, body.at-t
 .set-row button { min-width: 110px; }
 #settings { z-index: 210; }
 body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { animation: none !important; transition: none !important; }
+/* #133: phones and small laptops */
+@media (max-width: 900px) {
+  body.lay #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "tool" "left" "center"; }   /* the loaded lot and NEXT STEP come before the plant */
+  #left { padding-bottom: 0; }
+  #last-card { display: none; }
+  #drawer.overlay { top: 0; width: 100%; z-index: 60; }   /* a drawer is the whole screen; CLOSE brings the plant back */
+  #drawer .sheet { border-left: 0; }
+  .runbox:not(:has(#btn-run.running)) .progress { display: none; }
+}
+@media (max-width: 640px) {
+  #top { gap: 8px 12px; padding: 6px 8px; }
+  .logo { font-size: 17px; }
+  #top .tele .val { font-size: 15px; }
+  #top .tele:has(#rank) { display: none; }
+  #top .speed .lbl { display: none; }
+  #top .icon { width: 30px; height: 30px; padding: 0; }
+  #toolbar { gap: 4px; padding: 4px 6px; overflow-x: auto; }
+  #toolbar .tool { padding: 6px 9px; font-size: 12px; }
+  .lotcard-panel .lc-pic, .lotcard-panel .bigbin { max-height: 70px; }
+  .title-screen .tt-logo { font-size: 30px; letter-spacing: 5px; }
+}
+@media (max-width: 1100px) { .runbox:not(:has(#btn-run.running)) .progress { display: none; } #top { gap: 10px; } #top .speed .lbl { display: none; } }

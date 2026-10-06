@@ -364,7 +364,7 @@
 
     /* ---- first-run tour ---- */
     function armTour() {
-      if (CS.Guide) return;   // #79: the guided first lot replaces the panel tour
+      if (CS.Guide) return;   // #79: the guided first lot replaces the panel tour (this stays as the fallback when guide.js is not loaded)
       // boot() opens the help only after it has emitted 'boot', so look at the dialog on the next task
       setTimeout(() => {
         const help = document.getElementById('help');

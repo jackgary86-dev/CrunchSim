@@ -30,12 +30,15 @@
     }
     return null;
   }
-  CS.Guide = { STEPS, nextStep };
+  /* #256: Escape skips the guide, but only when it is not meant for something else: not already handled (a drawer or
+   * dialog closing), and focus is inside the guide or on nothing in particular */
+  function escapeSkips(key, handled, inLayer, onBody) { return key === 'Escape' && !handled && (inLayer || onBody); }
+  CS.Guide = { STEPS, nextStep, escapeSkips };
 
   if (typeof document === 'undefined') return;
   function start() {
     const app = CS.app; if (!app || app.guideStarted) return; app.guideStarted = true;
-    let g = { on: false, done: {}, finished: false }, layer = null, sold = 0;
+    let g = { on: false, done: {}, finished: false }, layer = null, sold = 0, shownId = null;
     const snap = () => { const A = CS.Auction && CS.Auction.live; return { loaded: !!(A && A.pending() && app.S.feedOwner === 'auction'), batches: app.S.batches, sold }; };
     function begin() {
       if (app.S.mode !== 'progress') return;
@@ -50,19 +53,23 @@
       const st = nextStep(g.done, snap());
       if (!st) { stop('finished'); return; }
       if (!layer) {
-        layer = document.createElement('div'); layer.className = 'guide';
-        layer.innerHTML = '<div class="g-ring"></div><div class="g-box"><div class="g-step"></div><b class="g-title"></b><p class="g-text"></p><div class="g-btns"><button type="button" class="g-skip">SKIP</button><button type="button" class="primary g-next">GOT IT</button></div></div>';
+        layer = document.createElement('div'); layer.className = 'guide'; shownId = null;
+        layer.setAttribute('role', 'region'); layer.setAttribute('aria-label', 'Guided first lot');   // #256: a landmark, and the step text is announced when it changes
+        layer.innerHTML = '<div class="g-ring" aria-hidden="true"></div><div class="g-box" tabindex="-1" aria-live="polite" aria-atomic="true"><div class="g-step"></div><b class="g-title"></b><p class="g-text"></p><div class="g-btns"><button type="button" class="g-skip">SKIP</button><button type="button" class="primary g-next">GOT IT</button></div></div>';
         document.body.appendChild(layer);
         layer.querySelector('.g-skip').addEventListener('click', () => { stop('skipped'); app.log('Guide skipped. You can replay it from the help (?).'); });
         layer.querySelector('.g-next').addEventListener('click', () => { const s2 = nextStep(g.done, snap()); if (s2 && s2.next) { g.done[s2.id] = true; if (s2.last) { stop('finished'); app.log('Guide finished. Good luck with the plant.', 'ok'); return; } } show(); });
       }
       layer.classList.remove('hidden');
-      const k = STEPS.indexOf(st);
-      layer.querySelector('.g-step').textContent = 'FIRST LOT · STEP ' + (k + 1) + ' OF ' + STEPS.length;
-      layer.querySelector('.g-title').textContent = st.title;
-      layer.querySelector('.g-text').textContent = st.text;
+      const k = STEPS.indexOf(st), fresh = shownId !== st.id; shownId = st.id;
+      if (fresh) {   // show() runs every tick: rewriting identical text would re-announce it
+        layer.querySelector('.g-step').textContent = 'FIRST LOT · STEP ' + (k + 1) + ' OF ' + STEPS.length;
+        layer.querySelector('.g-title').textContent = st.title;
+        layer.querySelector('.g-text').textContent = st.text;
+      }
       const nb = layer.querySelector('.g-next'); nb.classList.toggle('hidden', !st.next); nb.textContent = st.last ? 'DONE' : 'GOT IT';
       place(st);
+      if (fresh && k === 0) layer.querySelector('.g-box').focus({ preventScroll: true });   // #256: the first prompt takes focus once, so keyboard and screen-reader users land on it; later steps are announced, not forced
     }
     function place(st) {
       if (!layer) return;
@@ -80,6 +87,11 @@
     app.on('batchComplete', () => { if (g.on) setTimeout(show, 50); });
     let acc = 0; app.on('tick', (p) => { if (!g.on) return; acc += (p && p.dt) || 0; if (acc > 0.4) { acc = 0; show(); } });
     window.addEventListener('resize', () => { if (g.on) place(); });
+    document.addEventListener('keydown', (e) => {
+      if (!g.on || !layer || layer.classList.contains('hidden')) return;
+      const a = document.activeElement;
+      if (CS.Guide.escapeSkips(e.key, e.defaultPrevented, !!(a && layer.contains(a)), !a || a === document.body)) { stop('skipped'); app.log('Guide skipped. You can replay it from the help (?).'); }
+    });
     app.on('save', () => ({ guide: { on: g.on, done: g.done, finished: g.finished } }));
     app.on('load', (ext) => { const d = ext && ext.guide; g = { on: !!(d && d.on), done: (d && d.done) || {}, finished: !!(d && d.finished) }; if (!g.on && layer) { layer.remove(); layer = null; } });
     app.on('newgame', () => { if (layer) { layer.remove(); layer = null; } g = { on: false, done: {}, finished: false }; setTimeout(() => { if (app.S.mode === 'progress' && app.S.batches === 0 && !g.finished && !g.on) begin(); }, 0); });   // #99: a skipped or finished guide stays put after a mode switch

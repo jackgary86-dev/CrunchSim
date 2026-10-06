@@ -176,7 +176,12 @@
   function boot() {
     const wrap = $('#view-wrap'), canvas = $('#view');
     if (typeof THREE === 'undefined') { wrap.appendChild(el('div', 'view-msg', 'three.js did not load. The 3D floor needs https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js; the panels still work.')); }
-    const R3 = typeof THREE !== 'undefined' ? makeRenderer(canvas, wrap) : null;
+    let R3 = null;
+    if (typeof THREE !== 'undefined') {
+      // WebGLRenderer throws when WebGL is blocklisted or context-limited; keep the panels wired without it
+      try { R3 = makeRenderer(canvas, wrap); }
+      catch (e) { wrap.appendChild(el('div', 'view-msg', 'WebGL is unavailable in this browser, so the 3D floor cannot draw; the panels still work.')); }
+    }
 
     /* ---- feed and line selects ---- */
     const feedSel = $('#feed'), lineSel = $('#line');

@@ -81,6 +81,7 @@
         '<button type="button" class="buy" id="endgame-keep">KEEP PLAYING</button></div>';
       overlay.querySelector('#endgame-keep').addEventListener('click', hide);
       overlay.classList.remove('hidden');
+      if (CS.Overlays) CS.Overlays.attach(overlay, { label: 'End game', close: '#endgame-keep' });   // #236: a dialog: focus moves in, Escape keeps playing, the page behind is inert
     }
 
     function renderStatus() {

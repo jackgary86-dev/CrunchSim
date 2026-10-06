@@ -960,7 +960,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, softReset, switchMode, storedMode, unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
+    Object.assign(API, { S, Score, softReset, switchMode, storedMode, hideCard, unitsOf, nodeOwned, nextPurchases, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, contract, acceptContract, cancelContract, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, starsText, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

@@ -579,3 +579,6 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .sv-row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
 .sv-code { width: 100%; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; color: var(--cyan); font-family: var(--mono); font-size: 11px; padding: 6px; resize: vertical; }
 .sv-msg.bad { color: var(--red); } .sv-msg.warn { color: var(--amber); }
+.samp { font-size: 11px; padding: 4px 8px; }
+.cd.sampled, .rc-d.sampled { color: var(--cyan); }
+.rep { color: var(--muted); font-size: 11px; }

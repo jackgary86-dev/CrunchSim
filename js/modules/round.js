@@ -266,7 +266,9 @@
         '<div class="rc-artwrap">' + artOf(L.cat) + '<div class="rc-bin"><div class="rc-fill">' + Object.entries(L.declared).sort((a, b) => a[1] - b[1]).map((e) => '<i style="flex:' + e[1].toFixed(4) + ';background:' + MATERIALS[e[0]].color + '"></i>').join('') + '</div></div></div>' +
         '<div class="rc-h"><b>' + fmtT(L.tons) + '</b> of ' + esc(L.headline) + '</div>' +
         '<div class="rc-d">Declared: ' + esc(heavy(L.declared)) + '</div>' + compBar(L.declared) +
-        '<div class="rc-d small">' + esc(L.seller) + ': ' + esc(L.note) + '</div>' + foot + '</div>';
+        (L.sample ? '<div class="rc-d sampled">Sampled: ' + esc(heavy(L.sample)) + '</div>' + compBar(L.sample) : '') +
+        '<div class="rc-d small">' + esc(L.seller) + ' <span class="rep">(' + esc(A().live.rep ? A().live.rep(L.seller) : '') + ')</span>: ' + esc(L.note) + '</div>' +
+        (!r.done && k >= r.k && !L.sample && !r.sampled ? '<button type="button" class="samp" data-k="' + k + '">SAMPLE ' + money(A().sampleFee(L, L.opening)) + '</button>' : '') + foot + '</div>';
     }
     function marketHtml() {
       const M = CS.Market, r = R(); let h = '<h3>MARKET</h3>';
@@ -311,6 +313,7 @@
         '<div class="round-act">' + (mine ? '<button type="button" class="primary" id="round-bid"' + (lead || busy || nb * L.tons > app.S.money ? ' disabled' : '') + '>' + (lead ? 'YOU LEAD' : 'BID ' + money(nb) + '/t · ' + money(nb * L.tons)) + '</button><button type="button" id="round-pass"' + (busy ? ' disabled' : '') + '>' + (lead ? 'HOLD (no one answers)' : 'PASS') + '</button>' : '<span class="small">' + (r.won.you ? 'You hold a card this round: the rest go among the rivals.' : 'You passed on this bin.') + '</span>') + '</div>' +
         '<div class="round-log">' + r.log.slice(-6).reverse().map((t) => '<div>' + esc(t) + '</div>').join('') + '</div>';
       const bb = main.querySelector('#round-bid'); if (bb) bb.addEventListener('click', youBid);
+      main.querySelectorAll('.samp').forEach((x) => x.addEventListener('click', () => { const L2 = r.cards[+x.dataset.k]; if (A().live.sample(L2, L2.opening)) { r.sampled = true; render(); } }));   // one sample a round (#75)
       const pb = main.querySelector('#round-pass'); if (pb) pb.addEventListener('click', () => { if (lead) { if (!rivalsAnswer()) sold(); render(); } else youPass(); });
     }
 

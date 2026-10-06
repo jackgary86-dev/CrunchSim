@@ -174,12 +174,34 @@
   }
   function validBid(b) { return !!(b && typeof b === 'object' && isFinite(+b.perT) && +b.perT > 0 && typeof b.by === 'string' && b.by); }
 
-  CS.Auction = { TIERS, TIER_TONS, tickTiers, mulberry32, genLot, tickBoard, marketStep, worthOf, fairRatio, feedsFor, validLot, sameComp, minBid, placeBid, validBid, ALWAYS, DEAL, MULT, MARKET, BOARD, BID, WORTH_FACTOR };
+  /* A paid sample (#75): a grab sample and an XRF reading put each fraction within about 3% (relative) of the truth, against
+   * the declaration's 10% scatter and the seller's bias. Seeded from the lot id, so a lot always samples the same. */
+  const SAMPLE_SIGMA = 0.03, SAMPLE_FEE = 0.01, SAMPLE_MIN = 10;   // fee: 1% of the lot's price, at least $10
+  function sampleOf(L) {
+    const rng = mulberry32((L.id * 2654435761 + 97) >>> 0), out = {};
+    for (const m in L.truth) out[m] = L.truth[m] * Math.exp(SAMPLE_SIGMA * clamp(normal(rng), -2.5, 2.5));
+    return normalise(out);
+  }
+  function sampleFee(L, perT) { return Math.max(SAMPLE_MIN, Math.ceil(SAMPLE_FEE * (perT || L.ask) * L.tons)); }
+  /* A seller's record (#76), built at the weighbridge of every lot you buy from them: lots weighed, the average optimism of
+   * their declarations (declared worth over weighbridge worth, minus one) and how many were padded. */
+  function recordLot(rec, L) {
+    rec = rec || { lots: 0, opt: 0, padded: 0 };
+    const w = worthOf(L.truth), d = worthOf(L.declared), o = w > 0 ? d / w - 1 : 0;
+    rec.opt = (rec.opt * rec.lots + o) / (rec.lots + 1); rec.lots++; if (L.padded) rec.padded++;
+    return rec;
+  }
+  function repText(rec) {
+    if (!rec || !rec.lots) return 'new to you';
+    const pct = Math.round(rec.opt * 100);
+    return rec.lots + ' lot' + (rec.lots === 1 ? '' : 's') + ' weighed · declarations ' + (Math.abs(pct) < 3 ? 'honest' : (pct > 0 ? '+' : '') + pct + '% ' + (pct > 0 ? 'optimistic' : 'pessimistic')) + (rec.padded ? ' · ' + rec.padded + ' padded' : '');
+  }
+  CS.Auction = { SAMPLE_SIGMA, SAMPLE_FEE, SAMPLE_MIN, sampleOf, sampleFee, recordLot, repText, TIERS, TIER_TONS, tickTiers, mulberry32, genLot, tickBoard, marketStep, worthOf, fairRatio, feedsFor, validLot, sameComp, minBid, placeBid, validBid, ALWAYS, DEAL, MULT, MARKET, BOARD, BID, WORTH_FACTOR };
 
   /* ---------------- game wiring (browser only) ---------------- */
   function init() {
     const app = CS.app; if (!app || init.done) return; init.done = true;
-    const st = { board: [], market: {}, nextId: 1001, pending: null, settle: null, yard: [] };   // pending: the lot loaded as the feed; yard: lots waiting their turn (#49)
+    const st = { board: [], market: {}, nextId: 1001, pending: null, settle: null, yard: [], sellers: {} };   // sellers: their record at your weighbridge (#76)   // pending: the lot loaded as the feed; yard: lots waiting their turn (#49)
     const rng = mulberry32(0); let seeded = false, lastKey = '', panel = null;
     const S = () => app.S, clockH = () => app.S.clock / 3600;
     const feeds = () => Object.keys(FEEDS).filter((id) => worthOf(FEEDS[id].comp) > 1);   // #57: the auction is where all scrap comes from
@@ -193,7 +215,8 @@
       /* a lot won somewhere else (an auction round): pay for it and put it in the yard */
       deliver: (L, perT, how) => take(L, perT, how),
       /* LOAD a waiting lot by id (the plant screen's lot card, #64) */
-      load: (id) => { const L = st.yard.find((x) => x.id === id); if (L && swapIn(L)) { render(); return true; } return false; } };
+      load: (id) => { const L = st.yard.find((x) => x.id === id); if (L && swapIn(L)) { render(); return true; } return false; },
+      sample: (L, perT) => sample(L, perT), rep: (name) => repText(st.sellers[name]), sellers: () => st.sellers };
     function priceOf(L) { const q = { lot: L, perT: L.ask }; app.emit('lotPrice', q); return q.perT > 0 ? Math.ceil(q.perT) : L.ask; }
     function closeLot(L) { const q = { lot: L, award: 0 }; app.emit('lotClose', q); if (q.award > 0) take(L, q.award, 'Won at auction:'); }
 
@@ -205,12 +228,13 @@
       st.nextId = Math.max(1001, Math.floor(+d.nextId) || 0);
       st.pending = validLot(d.pending) ? d.pending : null;
       st.yard = Array.isArray(d.yard) ? d.yard.filter(validLot) : [];
+      st.sellers = d.sellers && typeof d.sellers === 'object' ? d.sellers : {};
       if (!st.board.every((l) => l.tier != null)) st.board = [];   // a board from before the tiers: deal a fresh one
       st.board.forEach((l) => { if (l.bid && !validBid(l.bid)) delete l.bid; });
     }
     app.on('load', loadState);
     if (app.S && app.S.ext) loadState(app.S.ext);   // a module that registers after boot has missed the 'load' event
-    app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending, yard: st.yard } }));
+    app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending, yard: st.yard, sellers: st.sellers } }));
     app.on('feedCost', (q) => { if (st.market[q.id] > 0) q.cost *= st.market[q.id]; });   // scales the preset price the app charges (feed market)
     const feedCost = (id) => FEEDS[id].cost * (st.market[id] > 0 ? st.market[id] : 1);
 
@@ -260,10 +284,17 @@
         const tierTag = L.tier != null ? '<span class="tier">' + app.fmtMoney(TIERS[L.tier]).replace(',000', 'k') + ' LOT</span> ' : '';
         const row = app.el('div', 'crow', '<div class="ch"><b>' + tierTag + app.esc(L.headline) + ' · ' + L.tons + ' t</b><span class="ask">' + app.fmtMoney(L.ask) + '/t</span></div>' +
           '<div class="cd">Declared: ' + compText(L.declared) + compBar(L.declared) + '</div>' +
-          '<div class="cd">' + app.esc(L.seller) + ': ' + app.esc(L.note) + ' · closes in ' + fmtH(L.expiresH - now) + (L.tons > cap ? ' · over your ' + cap + ' t batch limit' : '') + '</div>');
+          (L.sample ? '<div class="cd sampled">Sampled: ' + compText(L.sample) + compBar(L.sample) + '</div>' : '') +
+          '<div class="cd">' + app.esc(L.seller) + ' <span class="rep">(' + app.esc(repText(st.sellers[L.seller])) + ')</span>: ' + app.esc(L.note) + ' · closes in ' + fmtH(L.expiresH - now) + (L.tons > cap ? ' · over your ' + cap + ' t batch limit' : '') + '</div>');
         const b = document.createElement('button'); b.type = 'button'; b.textContent = 'BUY ' + app.fmtMoney(total); b.className = 'buy' + (S().money < total ? ' poor' : '');
         b.title = 'Pay ' + app.fmtMoney(total) + ' for the whole lot; it lands in the yard and feeds your batches until it runs out';
         b.addEventListener('click', () => buy(L));
+        if (!L.sample) {
+          const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'samp'; sb.textContent = 'SAMPLE ' + app.fmtMoney(sampleFee(L, priceOf(L)));
+          sb.title = 'A grab sample and an XRF reading: the true mix within about 3%, for 1% of the lot\'s price';
+          sb.addEventListener('click', () => sample(L, priceOf(L)));
+          row.appendChild(sb);
+        }
         row.dataset.lot = L.id; row.appendChild(b); box.appendChild(row);
       });
       app.emit('auctionRender', { box });
@@ -284,6 +315,15 @@
       S().feedPrepaid = true; S().feedOwner = 'auction';
       app.markDirty(true);   // redraw with the flag set: the feed line, the projection and the loop strip read it
       return true;
+    }
+    /* SAMPLE a lot (#75): pay the fee, see the mix within a few percent */
+    function sample(L, perT) {
+      if (!L || L.sample) return !!(L && L.sample);
+      const fee = sampleFee(L, perT);
+      if (!app.spend(fee, 'a sample of lot #' + L.id)) return false;
+      L.sample = sampleOf(L);
+      app.log('Sampled lot #' + L.id + ' for ' + app.fmtMoney(fee) + ': ' + compText(L.sample, 5).replace(/&amp;/g, '&') + ' (within about 3%). Declared: ' + compText(L.declared, 5).replace(/&amp;/g, '&') + '.', 'ok');
+      render(); app.save(); return true;
     }
     /* LOAD a waiting lot: it becomes the loaded one and the loaded one goes back to wait (#49) */
     function swapIn(L) {
@@ -321,6 +361,7 @@
       const tons = p.run.total;
       const extra = P.tramp ? ' ' + (P.padded ? 'A lot of ' : 'Some ') + TRAMP.find((t) => t.m === P.tramp).what + ' in the load.' : '';
       app.log('Weighbridge, lot #' + P.id + ': ' + compText(P.truth, 8).replace(/&amp;/g, '&') + '.' + extra, P.padded ? 'warn' : 'ok');
+      if (!P.weighed && P.seller) { P.weighed = true; st.sellers[P.seller] = recordLot(st.sellers[P.seller], P); app.log(P.seller + ': ' + repText(st.sellers[P.seller]) + '.'); }
       st.settle = { lot: P, tons };
       P.tons -= tons;
       if (P.tons < 1) { st.pending = st.yard.length ? st.yard.shift() : null; if (st.pending) app.log('Lot #' + P.id + ' is used up. Lot #' + st.pending.id + ' from the yard is next.'); }
@@ -355,7 +396,7 @@
       build(); render();
     });
     app.on('render', render);
-    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; tiers(); render(); });
+    app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; st.sellers = {}; tiers(); render(); });
     app.on('modechange', () => { tiers(); render(); });
     app.on('tick', (p) => {
       if (!(p.dh > 0)) return;

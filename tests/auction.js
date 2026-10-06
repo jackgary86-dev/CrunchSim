@@ -120,5 +120,26 @@ check(Math.abs(b.ask - Math.round(a.ask * 1.25)) <= 1, 'market factor did not sc
   check(richTop > rounds / 2, 'the $100k tier mostly draws scrap richer than car hulks (' + richTop + ' of ' + rounds + ')');
 }
 
+// #75 sampling, #76 seller records
+{
+  const r = A.mulberry32(77); let errS = 0, errD = 0, nL = 0, same = true;
+  for (let i = 0; i < 60; i++) {
+    const L = A.genLot(r, { feeds: ['elv', 'zorba', 'ewaste', 'tires'], limit: 30, market: {}, id: 500 + i });
+    const smp = A.sampleOf(L), smp2 = A.sampleOf(L);
+    if (JSON.stringify(smp) !== JSON.stringify(smp2)) same = false;
+    const dist = (c) => Object.keys(L.truth).reduce((a, m) => a + Math.abs((c[m] || 0) - L.truth[m]), 0);
+    errS += dist(smp); errD += dist(L.declared); nL++;
+  }
+  check(same, 'a lot always samples the same (seeded from its id)');
+  check(errS / nL < 0.5 * (errD / nL), 'a sample is much closer to the truth than the seller\'s declaration (' + (errS / nL).toFixed(3) + ' vs ' + (errD / nL).toFixed(3) + ' total abs error)');
+  const L0 = A.genLot(A.mulberry32(5), { feeds: ['elv'], limit: 30, market: {}, id: 9 });
+  check(A.sampleFee(L0, 100) === Math.max(A.SAMPLE_MIN, Math.ceil(0.01 * 100 * L0.tons)), 'a sample costs 1% of the lot\'s price, at least $' + A.SAMPLE_MIN);
+  let rec = null;
+  const a = { truth: { steel: 1 }, declared: { steel: 1 }, padded: false }, b = { truth: { steel: 0.5, glass: 0.5 }, declared: { steel: 0.9, glass: 0.1 }, padded: true };
+  rec = A.recordLot(rec, a); rec = A.recordLot(rec, b);
+  check(rec.lots === 2 && rec.padded === 1 && rec.opt > 0.2 && rec.opt < 0.4, 'a seller\'s record averages how optimistic their declarations were and counts padded lots');
+  check(/2 lots weighed/.test(A.repText(rec)) && /optimistic/.test(A.repText(rec)) && /1 padded/.test(A.repText(rec)) && A.repText(null) === 'new to you', 'and reads in plain words: ' + A.repText(rec));
+}
+
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nauction checks pass');
 process.exit(fails ? 1 : 0);

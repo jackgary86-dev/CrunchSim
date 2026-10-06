@@ -107,5 +107,26 @@ check(L.stationFlow(null, [], 30, 1).bins.length === 0, 'no evaluation yet: an e
   check(flows.slice(0, mag).every((f) => !f.bins.length && !f.next.length), 'skipped stations fill no bins and send nothing on');
 }
 
+/* ---- #63: - / + on a station's settings ---- */
+{
+  const M = globalThis.CS.MACHINES, step = L.stepSetting;
+  const lin = { min: 20, max: 200, step: 5 }, logS = { min: 0.1, max: 100, step: 1, log: true }, fine = { min: 1.0, max: 3.5, step: 0.05 };
+  check(step(lin, 80, 1) === 85 && step(lin, 80, -1) === 75, 'a linear setting moves by the slider\'s step');
+  check(step(lin, 200, 1) === 200 && step(lin, 20, -1) === 20, 'and stops at its min and max');
+  check(step(fine, 2.6, 1) === 2.65 && step(fine, 1.0, -1) === 1.0, 'fine steps keep their decimals (2.60 + 0.05 = 2.65, no float dust)');
+  const up = step(logS, 10, 1);
+  const f40 = Math.pow(logS.max / logS.min, 1 / 40);
+check(Math.abs(up / 10 - f40) < 0.01 && Math.abs(step(logS, up, -1) - 10) < 0.06, 'a log-scale setting moves a fortieth of its range on the log scale, and back');
+  let v = logS.min, presses = 0; while (v < logS.max && presses < 100) { v = step(logS, v, 1); presses++; }
+  check(presses >= 35 && presses <= 45, 'forty-odd presses span a log setting\'s range (' + presses + ')');
+  const tgt = M.sensor.settings.find((s) => s.enum);
+  const first = tgt.enum[0], last = tgt.enum[tgt.enum.length - 1];
+  check(step(tgt, first, 1) === tgt.enum[1] && step(tgt, first, -1) === last && step(tgt, last, 1) === first, 'the sensor sorter\'s target cycles through the materials, wrapping round');
+  check(L.fmtSetting(85, Object.assign({ unit: 'mm' }, lin)) === '85 mm' && L.fmtSetting('gold', tgt) === 'Gold', 'values read with their unit, materials by name');
+  let allOk = true;
+  for (const id in M) (M[id].settings || []).forEach((st) => { if (st.enum) return; const d = st.def; [1, -1].forEach((dir) => { const nv = step(st, d, dir); if (!(nv >= st.min && nv <= st.max) || !isFinite(nv)) allOk = false; }); });
+  check(allOk, 'every machine setting steps from its default and stays in range');
+}
+
 console.log('\n' + (n - fails) + '/' + n + ' checks passed');
 process.exit(fails ? 1 : 0);

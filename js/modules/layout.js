@@ -61,7 +61,24 @@
     bins.sort((a, b) => b.tons - a.tons);
     return { bins, next };
   }
-  CS.Layout = { SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats };
+  /* one - or + press on a machine setting (#63): the slider's own step for a linear setting, a fortieth of the range on the
+   * log scale for a log-scale one (40 presses span it; three significant figures as at the station), the next or previous option for a material
+   * pick-list; always inside min and max */
+  const LOG_STEPS = 40;
+  function stepSetting(st, v, dir) {
+    if (st.enum) { const k = st.enum.indexOf(v), n = st.enum.length; return st.enum[((k < 0 ? 0 : k) + (dir > 0 ? 1 : -1) + n) % n]; }
+    let nv;
+    if (st.log) nv = +(v * Math.pow(st.max / st.min, (dir > 0 ? 1 : -1) / LOG_STEPS)).toPrecision(3);
+    else { nv = v + (dir > 0 ? 1 : -1) * st.step; const d = st.step < 1 ? Math.min(6, Math.ceil(-Math.log10(st.step) + 1e-9)) : 0; nv = +nv.toFixed(d); }
+    return Math.min(st.max, Math.max(st.min, nv));
+  }
+  function fmtSetting(v, st) {
+    if (st.enum) return MATERIALS_REF()[v] ? MATERIALS_REF()[v].name : String(v);
+    const d = st.step < 0.1 ? 2 : st.step < 1 ? 1 : 0;
+    return (st.log && v < 1 ? v.toPrecision(2) : v.toFixed(st.log ? (v < 10 ? 1 : 0) : d)) + (st.unit ? ' ' + st.unit : '');
+  }
+  function MATERIALS_REF() { return CS.MATERIALS; }
+  CS.Layout = { SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting };
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
@@ -105,7 +122,7 @@
     bar.appendChild(modes);
     appEl.insertBefore(bar, $('#left'));
     const plant = el('section', 'panel'); plant.id = 'flow-panel';
-    plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div>' +
+    plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div><div id="flow-margin" class="flow-margin"></div>' +
       '<div class="flow"><button type="button" class="flow-nav" id="flow-prev" aria-label="Earlier machines">&lsaquo;</button><div id="flow-nodes"></div><button type="button" class="flow-nav" id="flow-next" aria-label="Later machines">&rsaquo;</button></div>' +
       '<div class="small flow-hint">Machines run left to right in the order you placed them. Click one to sit at its station and tune it.</div>';
     const center = $('#center');
@@ -291,6 +308,7 @@
     col.innerHTML = '<div class="fn-k' + (n.uid === entry ? ' entry' : '') + '">' + head + '</div><div class="fn-camwrap"></div><div class="fn-n">' + esc(M.name) + '</div><div class="fn-s">' + esc(status) + '</div>' + warn;
     const mini = miniFor(n.uid);
     if (mini) col.querySelector('.fn-camwrap').appendChild(mini.cv);
+    if (M.settings && M.settings.length) col.appendChild(settingsBox(n, M));
     const f = stationFlow(S.ev, S.line, S.tons, n.uid);
     const binsBox = el('div', 'fbins');
     binsBox.innerHTML = '<div class="fn-sub">BINS FILLED HERE</div>' + (f.bins.length ? f.bins.map((b) => binHtml(b.st, b.tons, b.port, binVerdict(n.uid + ':' + b.port))).join('') : '<div class="small">None: everything moves on.</div>');
@@ -304,6 +322,32 @@
     col.addEventListener('click', open);
     col.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     return col;
+  }
+  /* the station's settings on its column: label, - value +, one row each (#63) */
+  function settingsBox(n, M) {
+    const box = el('div', 'fset');
+    M.settings.forEach((st) => {
+      const row = el('div', 'fset-r');
+      row.appendChild(el('span', 'fset-l', esc(st.label)));
+      const minus = el('button', 'fset-b', '&minus;'), plus = el('button', 'fset-b', '+');
+      const val = el('span', 'fset-v', esc(fmtSetting(n.settings[st.id], st)));
+      [[minus, -1], [plus, 1]].forEach(([b, dir]) => {
+        b.type = 'button'; b.title = (dir > 0 ? 'Raise ' : 'Lower ') + st.label.toLowerCase();
+        const v = n.settings[st.id];
+        if (!st.enum && ((dir < 0 && v <= st.min) || (dir > 0 && v >= st.max))) b.disabled = true;
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();   // the column itself opens the station
+          n.settings[st.id] = stepSetting(st, n.settings[st.id], dir);
+          app.S.linePreset = 'custom'; const lp = document.getElementById('line-preset'); if (lp) lp.value = 'custom';
+          app.markDirty(true);
+        });
+      });
+      const ctl = el('span', 'fset-c'); ctl.appendChild(minus); ctl.appendChild(val); ctl.appendChild(plus);
+      row.appendChild(ctl); box.appendChild(row);
+    });
+    box.addEventListener('click', (e) => e.stopPropagation());
+    box.addEventListener('keydown', (e) => e.stopPropagation());   // Enter on a button must not open the station
+    return box;
   }
   function addCol() {
     const col = el('div', 'fcol add'); col.tabIndex = 0; col.setAttribute('role', 'button');
@@ -495,9 +539,23 @@
     document.body.appendChild(d);
     d.querySelectorAll('.mode-card').forEach((b) => b.addEventListener('click', () => { d.remove(); app.switchMode(b.dataset.mode); }));
   }
+  /* the live projection above the stations (#63): margin per tonne and for the batch, and what the last change did to it,
+   * so the - / + buttons on the stations can be tuned against profit without opening each station */
+  let lastMargin = null, lastDelta = 0, deltaAt = 0;
+  function renderMargin() {
+    const box = $('#flow-margin'), S = app.S; if (!box || !S.ev || !app.marginPerT) return;
+    const m = app.marginPerT(), per = m.margin, batch = per * S.tons;
+    if (lastMargin != null && Math.abs(per - lastMargin) > 0.005) { lastDelta = per - lastMargin; deltaAt = Date.now(); }
+    lastMargin = per;
+    const fresh = Date.now() - deltaAt < 6000 && Math.abs(lastDelta) >= 0.5;   // under 50 cents a tonne is noise
+    const sold = m.rev, cls = per >= 0 ? 'ok' : 'bad';
+    box.innerHTML = 'PROJECTED &#9654; margin <b class="' + cls + '">' + (per >= 0 ? '+' : '') + app.fmtMoney(per) + '/t</b> · this batch <b class="' + cls + '">' + (batch >= 0 ? '+' : '') + app.fmtMoney(batch) + '</b>' +
+      (fresh ? ' <span class="dm ' + (lastDelta > 0 ? 'ok' : 'bad') + '">' + (lastDelta > 0 ? '&#9650; +' : '&#9660; ') + app.fmtMoney(lastDelta) + '/t</span>' : '') +
+      ' <span class="small">· sells ' + app.fmtMoney(sold) + '/t · power ' + app.fmtMoney(m.powerC) + '/t · ' + (m.R > 0 ? m.R.toFixed(1) + ' t/h' : 'cannot run') + '</span>';
+  }
   function renderFlow(force) {
     const S = app.S; if (!S || !$('#flow-nodes')) return;
-    renderMode();
+    renderMode(); renderMargin();
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};

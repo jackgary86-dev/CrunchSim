@@ -151,7 +151,7 @@
       const dt = (st.total - (+st.liquid || 0)) / 1000 * tonnes, val = vb * tonnes;   // #288: free water drains off; it is never sold as the main material
       if (!(dt > 0) || (st.form === 'dross' && !(val > 0))) return;   // #292: dross with no metal in it is slag, landfilled with the furnace's own waste
       const sf = dt > 0 && g > 0 ? clamp(val / (dt * MATERIALS[main].sell * g), 0, SF_MAX) : 0;
-      lots.push({ mat: main, dt, purity: st.share, grade: g, sf, p80: st.perMat[main] ? st.perMat[main].p80 : st.p80, val: val > 0 ? val : 0, alloy: st.form === 'ingot' && st.share < 0.9 });
+      lots.push({ mat: main, dt, purity: st.share, grade: g, sf, p80: st.perMat[main] ? st.perMat[main].p80 : st.p80, val: val > 0 ? val : 0, alloy: (st.form === 'ingot' || st.form === 'dross') && st.share < 0.9 });   // #322: furnace dross is cast-off metal too: it keeps its lot on reload and never re-runs
       valTot += val > 0 ? val : 0; massTot += dt;
     });
     const cTot = isFinite(+batchCost) && +batchCost > 0 ? +batchCost : 0;
@@ -513,6 +513,7 @@
       const batchCost = Math.max(0, (r.feedC || 0)) + Math.max(0, (p.powerC || 0)) + Math.max(0, (r.extra || 0));
       const m0 = miscTotal(misc);
       const produced = absorbBins(stock, p.bins, r.done, batchCost, misc);
+      API.emit('landed', { r });   // #321: the product is in stock now: what counted in its place (a re-run bucket) stops counting
       const mAdd = miscTotal(misc) - m0;
       const txt = producedText(produced);
       if (txt) API.log('Into inventory: ' + txt + (batchCost > 0 ? ' (cost basis ' + fmtPrice(batchCost) + ' shared by value)' : '') + '.', 'ok');

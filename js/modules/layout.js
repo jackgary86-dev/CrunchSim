@@ -495,7 +495,7 @@
       return { title: 'TUNE', label: 'SET ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO ' + val, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' is set wrong for ' + what + ': ' + (D ? D.label.toLowerCase() : k) + ' ' + val + ' adds about ' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
     };
     const blk = S.feedPrepaid && !S.run && app.runBlock ? app.runBlock() : null;   // #299: RUN would refuse: say what fixes it instead
-    if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m) => app.buyMachine(m)); app.markDirty(true); } };
+    if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
     if (S.feedPrepaid && !S.run) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
     if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
@@ -529,7 +529,7 @@
   /* the advance that buys the cheapest lot: at least ADVANCE, in $100 steps, never past ADVANCE_MAX owed; 0 when the cap is reached */
   function advanceFor(cheapest) {
     if (!isFinite(cheapest)) return 0;
-    const amt = Math.max(ADVANCE, Math.ceil((cheapest - Math.max(0, app.S.money)) / 100) * 100);
+    const amt = Math.max(ADVANCE, Math.ceil((cheapest - app.S.money) / 100) * 100);   // #323: a bank in the red is covered too
     return loan + amt <= ADVANCE_MAX ? amt : 0;
   }
   function takeAdvance(amt) { amt = amt > 0 ? amt : ADVANCE; if (loan + amt > ADVANCE_MAX) return; loan += amt; app.S.money += amt; app.log('A scrap merchant advanced you ' + app.fmtMoney(amt) + (loan > amt ? ' (' + app.fmtMoney(loan) + ' owed in all)' : '') + '. A quarter of everything the yard takes in goes to repay it.', 'warn'); app.save(); app.renderAll(); }
@@ -709,7 +709,7 @@
     const S = app.S, stock = srcMap(src);
     if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log('In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.', 'warn'); return; }
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
-    if (src !== 'misc' && mats.some((m) => stock[m] && stock[m].alloy)) { app.log('The ' + label + ' bucket holds alloy ingots: a cast alloy cannot be sorted back into its metals. Sell it.', 'warn'); return; }   // #291
+    if (src !== 'misc' && mats.some((m) => stock[m] && stock[m].alloy)) { app.log('The ' + label + ' bucket holds alloy ingots or furnace dross: cast metal cannot be sorted back into its metals. Sell it.', 'warn'); return; }   // #291
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
     if (plan.error) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
     const comp = plan.comp, tot = plan.tot, tons = plan.tons, entry = defaultEntry(S.line, MACHINES);
@@ -1053,7 +1053,8 @@
     });
     app.on('batchStart', onBatchStart);
     app.on('assetValue', (q) => { if (q && rerunActive && rerunActive.worth > 0) q.value += rerunActive.worth; });   // #297
-    app.on('income', (p) => { if (p) repay(p.amount); });   // #300: refining, job pay and a paying SHIP OUT repay the advance too
+    app.on('income', (p) => { if (p) repay(p.amount); });
+    app.on('landed', () => { if (rerunActive) rerunActive.worth = 0; });   // #321   // #300: refining, job pay and a paying SHIP OUT repay the advance too
     app.on('sale', (p) => {
       if (p) repay(p.proceeds);
       setTimeout(() => renderFlow(true), 0);   // the buckets and NEXT STEP follow a sale at once

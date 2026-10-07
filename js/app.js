@@ -754,7 +754,7 @@
   function runBlock() {
     if (!S.line.length) return null;
     const ms = Object.keys(unownedIn(S.line));
-    if (ms.length) return { kind: 'buy', ms, cost: unownedCost(S.line) };
+    if (ms.length) { const miss = unownedIn(S.line); return { kind: 'buy', ms, n: ms.map((m) => Math.max(1, Math.round(miss[m] / MACHINES[m].price))), cost: unownedCost(S.line) }; }   // #323: n units of each
     const n = S.line.find((x) => !x.autoService && (x.wear || 0) >= 0.999);
     if (n) return { kind: 'service', n, i: S.line.indexOf(n), cost: serviceCost(MACHINES[n.m], n.wear) };
     return null;
@@ -800,7 +800,7 @@
     Audio.ui(why === 'complete' ? 'done' : 'click');
     API.emit('batchComplete', { r, why, net, bins: binList(), powerC });   // #298: the products land in stock first, then the rank and the card read net worth
     const before = r.rankIdx; checkRank(); const after = rankOf(netWorth());
-    showCard(r, why, dt, powerC, net, after.idx > before ? after.name : null);
+    showCard(r, why, dt, powerC, net, after.idx > before && S.mode !== 'rivals' ? after.name : null);   // #320: Rivals has no ranks
     renderRunState(); save(); renderAll();
   }
   function stepRun(realDt) {

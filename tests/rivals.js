@@ -142,7 +142,7 @@ console.log('=== tenders');
   const cu = { id: 31, mat: 'aluminum', tier: 0, tons: 3.6, purity: 0.95, mult: 1.4, windowH: 20, offerExpiresH: 999, client: 'Lakeside Wire & Cable', state: 'offered', t: 0, paid: 0 };
   const pm = { id: 32, mat: 'potmetal', tier: 0, tons: 3, purity: 0.94, mult: 1.4, windowH: 20, offerExpiresH: 999, client: 'Two Rivers Die-casting', state: 'offered', t: 0, paid: 0 };
   J.board.push(cu, pm);
-  check(RV.jobCap(red, cu) && !RV.jobCap(iron, cu) && !RV.ROSTER.some((R) => RV.jobCap(R, pm)), 'only the zorba-line specialist makes 95% aluminum; nobody makes 94% zinc');
+  check(RV.jobCap(red, cu) && (!RV.jobCap(iron, cu) || RV.jobCap(red, cu).hours < RV.jobCap(iron, cu).hours) && !RV.ROSTER.some((R) => RV.jobCap(R, pm)), 'the zorba-line specialist delivers 95% aluminum first (the car line just reaches it once water drains, #288/#323); nobody makes 94% zinc');
   RV.tenderJobs(st, 20, rng, J, {});
   const ev = RV.tenderJobs(st, 20 + RV.TENDER_H, rng, J, {});
   check(ev.length === 1 && ev[0].R.id === 'redline' && !J.board.includes(cu) && J.board.includes(pm) && st.rjobs.length === 1, 'Redline takes the aluminum job off the board after the window; the zinc job stays');

@@ -57,7 +57,7 @@
       if (!run || !p || !p.r) return;
       run.batches++; run.t += p.r.done || 0; run.kwh += p.r.kwh || 0; run.rent += p.r.rent || 0;   // #303: the inventory hook (registered first) noted the yard rent paid
       run.net += (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0);   // cash plus the products put into stock, as the batch card counts it
-      if (p.why !== 'complete') { finish(p.why === 'stopped' ? 'stopped by you' : 'the line halted'); return; }
+      if (p.why !== 'complete') { const why = p.why === 'stopped' ? 'stopped by you' : 'the line halted'; setTimeout(() => finish(why), 0); return; }   // #318: after the app draws its batch card
       setTimeout(() => {
         if (!run || app.S.run) return;
         if (app.hideCard) app.hideCard();

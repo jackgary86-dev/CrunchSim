@@ -377,6 +377,9 @@
     if (app.S && app.S.ext && app.S.ext.round) restore(app.S.ext);   // #309: registered after boot: the 'load' event has already fired
     app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? Object.assign({}, st.open, { settling: false }) : null } }));   // #306: never persist settling
     app.on('batchComplete', () => { setTimeout(checkEnd, 0); });
+    // #319: shipping out or refining the MISC also settles a last round that was waiting for it
+    const endSoon = () => { if (M_().ending && !M_().over) setTimeout(() => { if (checkEnd()) render(); }, 0); };
+    app.on('render', endSoon); app.on('sale', endSoon); app.on('income', endSoon); app.on('refined', endSoon);
     app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; busy = false; render(); setTimeout(matchPlant, 0); });
     /* A Rivals yard starts on a par with the yards it bids against (#171): established shredder yards run the classic car
      * shredder line (hammermill, zig-zag air, magnet, eddy current, sink-float), so a new match starts with that line rather

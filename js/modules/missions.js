@@ -146,7 +146,7 @@
         if (need <= 1e-9) return;
         const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross' || !st.sellable) return;
         const pm = st.perMat && st.perMat[j.mat]; if (!pm || !(pm.mass > 0)) return;
-        if (pm.mass / st.total + 1e-9 < j.purity) return;
+        if (pm.mass / Math.max(1e-9, st.total - (st.liquid || 0)) + 1e-9 < j.purity) return;   // #323: purity on the solids, as binStats measures it
         const avail = (pools[i][j.mat] == null ? pm.mass / 1000 * tonnes : pools[i][j.mat]);
         const take = Math.min(avail, need);
         pools[i][j.mat] = avail - take; need -= take; got += take;

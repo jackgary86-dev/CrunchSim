@@ -113,7 +113,8 @@
       API.log(LEVELS[next].name + ' built for ' + API.fmtMoney(LEVELS[next].cost) + ': ' + LEVELS[next].desc.toLowerCase() + '. REFINE appears on the buckets it can take.', 'ok');
       API.save(); API.markDirty(true);
     }
-    function render() {
+    function render() { if (panel) { if (API.keepFocus) API.keepFocus(panel.querySelector('.rf-body'), renderNow); else renderNow(); } }   // #314
+    function renderNow() {
       if (!panel) return;
       const body = panel.querySelector('.rf-body'); body.innerHTML = '';
       LEVELS.slice(1).forEach((L, i) => {

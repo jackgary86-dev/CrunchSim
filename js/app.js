@@ -49,6 +49,21 @@
    * Queries (modules edit the payload): 'feedCost' {id, cost}, 'plantValue' {key, value} (add to a plant upgrade value), 'assetValue' {value} (add owned assets to net worth).
    */
   const hooks = {};
+  /* #314: rebuild a panel (build) without losing the player's place. While a field in it has focus (a half-typed TARGET price,
+   * an open select) the rebuild waits until focus leaves the panel; a focused button gets focus back at the same place. */
+  const FOCUSABLES = 'button, input, select, textarea, [tabindex]';
+  function keepFocus(box, build) {
+    const a = typeof document !== 'undefined' ? document.activeElement : null;
+    if (!box || !a || typeof a.tagName !== 'string' || box.contains(a) !== true) { if (box) box.csWait = null; build(); return; }
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) && !/^(checkbox|radio|button)$/.test(a.type)) {
+      if (!box.csWaitHooked) { box.csWaitHooked = true; box.addEventListener('focusout', () => setTimeout(() => { const w = box.csWait; if (w && box.contains(document.activeElement) !== true) { box.csWait = null; w(); } }, 0)); }
+      box.csWait = build; return;
+    }
+    const i = Array.prototype.indexOf.call(box.querySelectorAll(FOCUSABLES), a), txt = a.textContent;
+    box.csWait = null; build();
+    const now = Array.from(box.querySelectorAll(FOCUSABLES)), b = now.find((x) => x.tagName === a.tagName && x.textContent === txt) || now[i];
+    if (b && !b.disabled && b.focus) b.focus({ preventScroll: true });
+  }
   const API = {
     on(evt, fn) { (hooks[evt] || (hooks[evt] = [])).push(fn); if (evt === 'boot' && API.booted) fn(); },
     emit(evt, payload) { (hooks[evt] || []).forEach((fn) => { try { fn(payload); } catch (e) { console.error('module hook ' + evt, e); } }); },
@@ -61,6 +76,7 @@
       if (ref && ref.parentElement === col) col.insertBefore(sec, ref); else col.appendChild(sec);
       return sec;
     },
+    keepFocus,
     booted: false
   };
   CS.app = API;   // exposed before boot so modules loaded after this file can register hooks; boot() fills in the rest of the API
@@ -420,17 +436,23 @@
     if (M.mix) for (const m in M.mix) mech.appendChild(el('span', null, '<i style="width:' + Math.round(M.mix[m] * 100) + '%"></i><em>' + esc(CS.MECH_LABEL[m]) + ' ' + Math.round(M.mix[m] * 100) + '%</em>'));
     else mech.appendChild(el('span', null, '<em>' + esc(M.cat.toUpperCase()) + '</em>'));
     $('#m-how').textContent = M.how; $('#m-best').textContent = M.best; $('#m-avoid').textContent = M.avoid;
+    renderLineLock();   // #313
   }
   function fmtSetting(v, st) { if (typeof v !== 'number') return MATERIALS[v] ? MATERIALS[v].name : String(v); const d = st.step < 0.1 ? 2 : st.step < 1 ? 1 : 0; return (st.log && v < 1 ? v.toPrecision(2) : v.toFixed(d)) + ' ' + st.unit; }
   function swatch(id) { const D = MATERIALS[id]; return D ? '<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + D.color + ';vertical-align:middle" title="' + esc(D.name) + '"></i>' : ''; }
 
   /* ---------------- bank panel ---------------- */
+  const advanceOwed = () => (API.layout && API.layout.loan ? API.layout.loan() : 0);   // #312: the yard advance still owed (layout.js)
   function renderBank() {
     const nw = netWorth(), r = rankOf(nw);
-    $('#bank-readouts').innerHTML = ro('BANK', fmtMoney(S.money), '', S.money < 0 ? 'bad' : 'good') + ro('NET WORTH', fmtMoney(nw), '') + ro('LIFETIME EARNED', fmtMoney(S.lifetime), '') + ro('PLANT VALUE', fmtMoney(assetValue()), '');
+    const owe = advanceOwed();
+    $('#bank-readouts').innerHTML = ro('BANK', fmtMoney(S.money), '', S.money < 0 ? 'bad' : 'good') + ro('NET WORTH', fmtMoney(nw), '') + ro('LIFETIME EARNED', fmtMoney(S.lifetime), '') + ro('PLANT VALUE', fmtMoney(assetValue()), '') + (owe > 0 ? ro('ADVANCE OWED', fmtMoney(owe), '', 'bad') : '');   // #312: the yard advance, repaid from 25% of what the yard takes in
     $('#rank-from').textContent = r.name.toUpperCase();
     $('#rank-to').textContent = r.nextName ? r.nextName.toUpperCase() + ' ' + fmtMoney(r.next) : 'TOP RANK';
     $('#rank-fill').style.width = (r.next ? clamp((nw - r.floor) / (r.next - r.floor), 0, 1) * 100 : 100) + '%';
+    keepFocus($('#plant-upgrades'), renderUpgrades); keepFocus($('#next-buy'), renderNextPurchase);   // #314: a rebuild every batch must not drop focus
+  }
+  function renderUpgrades() {
     const pu = $('#plant-upgrades'); pu.innerHTML = '';
     for (const key in PLANT_UPGRADES) {
       const U = PLANT_UPGRADES[key], lvl = S.plant[key], maxed = lvl >= U.costs.length;
@@ -440,7 +462,6 @@
       else { b.textContent = fmtMoney(U.costs[lvl]); b.className = 'buy' + (S.money < U.costs[lvl] ? ' poor' : ''); b.addEventListener('click', () => { if (buyPlant(key)) markDirty(true); else renderBank(); }); }
       row.appendChild(b); pu.appendChild(row);
     }
-    renderNextPurchase();
   }
 
   /* ---------------- next purchase ----------------
@@ -731,9 +752,11 @@
     if (S.run) return;
     const b = $('#btn-run'), rn = $('#run-net'), E = Eco();
     const nothing = AUCTION_ONLY && !S.feedPrepaid;   // #65: no projection for material you do not have
-    const pr = !nothing && E && m && S.line.length && m.R > 0 ? E.projectBatch(m, S.tons, S.ev.nodes) : null;
+    const A = CS.Auction && CS.Auction.live, P = A && A.pending ? A.pending() : null, lotT = typeof API.runLabel === 'function' && API.runLabel(false) && P && S.feedOwner === 'auction' && P.tons > S.tons ? P.tons : 0;   // #316: RUN THE LOT projects the whole lot
+    const pr = !nothing && E && m && S.line.length && m.R > 0 ? E.projectBatch(m, lotT || S.tons, S.ev.nodes) : null;
     b.innerHTML = runLabel(false) + (pr ? '<small class="proj">' + (pr.net >= 0 ? '+' : '') + fmtMoney(pr.net) + '</small>' : '');
-    b.classList.toggle('neg', !!(pr && pr.negative)); b.title = pr && pr.reason ? pr.reason : 'Run a batch (Space)';
+    b.classList.toggle('neg', !!(pr && pr.negative)); b.title = pr && pr.reason ? pr.reason : lotT ? 'Run the whole lot, ' + fmtNum(lotT, 0) + ' t (Space)' + (pr ? ': about ' + fmtMoney(pr.net) + ' projected' : '') : 'Run a batch (Space)';
+    const why = runWhy(); b.disabled = !!why; if (why) b.title = why;   // #313: RUN would refuse: say why on the button
     rn.textContent = pr && pr.reason ? pr.reason : ''; rn.className = 'num small' + (pr && pr.reason ? ' reason' : ''); rn.title = rn.textContent;
   }
 
@@ -758,6 +781,20 @@
     const n = S.line.find((x) => !x.autoService && (x.wear || 0) >= 0.999);
     if (n) return { kind: 'service', n, i: S.line.indexOf(n), cost: serviceCost(MACHINES[n.m], n.wear) };
     return null;
+  }
+  /* #313: why RUN would refuse now ('' when it may start, or while it is STOP): the header RUN is disabled with this as its title */
+  function runWhy() {
+    if (S.run || (CS.Autorun && CS.Autorun.live && CS.Autorun.live.active())) return '';
+    if (!S.line.length) return 'Add at least one machine first';
+    if (AUCTION_ONLY && !S.feedPrepaid) return 'Nothing is loaded: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket';
+    const blk = runBlock(); if (!blk) return '';
+    return blk.kind === 'buy' ? 'The yard does not own ' + blk.ms.map((x) => MACHINES[x].name).join(', ') + ': buy or remove ' + (blk.ms.length > 1 ? 'them' : 'it') : 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out: service it';
+  }
+  /* #313: the line's controls are refused while a batch runs (runLocked): disable them and say why instead of a deny sound per click */
+  function renderLineLock() {
+    const on = !!S.run, t = on ? RUN_LOCK : '';
+    ['#btn-remove', '#m-src'].forEach((q) => { const e = $(q); if (e) { e.disabled = on; e.title = t; } });
+    const box = $('#m-settings'); if (box && box.querySelectorAll) Array.from(box.querySelectorAll('input, select')).forEach((e) => { e.disabled = on; e.title = t; });
   }
   function startRun() {
     if (S.run) { stopRun('stopped'); return; }
@@ -837,7 +874,8 @@
   }
   function renderRunState() {
     const on = !!S.run;
-    $('#btn-run').innerHTML = runLabel(on); $('#btn-run').classList.toggle('running', on); if (on) $('#btn-run').classList.remove('neg');
+    $('#btn-run').innerHTML = runLabel(on); $('#btn-run').classList.toggle('running', on); if (on) { $('#btn-run').classList.remove('neg'); $('#btn-run').disabled = false; }
+    renderLineLock();   // #313
     if (!on && S.ev) renderRunProjection(marginPerT());
     $('#btn-stop').disabled = !on;
     const cs = $('#cam-status'); cs.classList.remove('hidden'); cs.textContent = on ? 'RUNNING' : 'STANDBY'; cs.classList.toggle('on', on); cs.classList.toggle('idle', !on);
@@ -845,6 +883,7 @@
   function renderHeader() {
     $('#clock').textContent = fmtClock(S.clock);
     $('#money').textContent = fmtMoney(S.money); $('#money').classList.toggle('bad', S.money < 0);
+    const owe = advanceOwed(), bl = $('#money').previousElementSibling; if (bl) { const t = owe > 0 ? 'BANK · OWE ' + fmtMoney(owe) : 'BANK'; if (bl.textContent !== t) { bl.textContent = t; bl.classList.toggle('bad', owe > 0); bl.title = owe > 0 ? 'Yard advance owed: 25% of every sale repays it, and net worth counts it as a debt' : ''; } }   // #312
     const nw = netWorth(); $('#worth').textContent = fmtMoney(nw); if (S.mode !== 'rivals') $('#rank').textContent = rankOf(nw).name;   // Rivals shows the match place there (modes.js)
     $('#tonnes').textContent = fmtNum(S.tonnes + (S.run ? S.run.done : 0), S.tonnes > 100 ? 0 : 1) + ' t';
     $('#prog').style.width = S.run ? (100 * S.run.done / S.run.total) + '%' : '0%';

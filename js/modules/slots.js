@@ -44,7 +44,8 @@
       API.log('Sorter slot ' + owned + ' built for $' + p.toLocaleString('en-US') + ': the plant can now hold ' + owned + ' sorters.', 'ok');
       API.save(); API.markDirty(true);
     }
-    function render() {
+    function render() { if (panel && API.S) { if (API.keepFocus) API.keepFocus(panel.querySelector('.sl-body'), renderNow); else renderNow(); } }   // #314
+    function renderNow() {
       if (!panel || !API.S) return;
       const body = panel.querySelector('.sl-body'); body.innerHTML = '';
       const used = sortersIn(API.S.line), p = nextPrice(owned);

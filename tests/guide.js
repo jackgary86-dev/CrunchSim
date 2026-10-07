@@ -19,6 +19,9 @@ check(G.nextStep(done, { loaded: true, batches: 1, sold: 1 }) === null, 'and the
 // #256: keyboard and screen-reader access
 check(G.escapeSkips('Escape', false, false, true) && G.escapeSkips('Escape', false, true, false), 'Escape skips the guide from the page or from inside it');
 check(!G.escapeSkips('Escape', true, false, true) && !G.escapeSkips('Escape', false, false, false) && !G.escapeSkips('Enter', false, true, true), 'but not when something else handled it, focus is in another control, or the key is not Escape');
+// #315: the first lot is one batch and is used up after step 3: step 3 names both RUN labels, step 7 is about the next lot
+check(/RUN THE LOT/.test(G.STEPS[2].text) && /RUN BATCH/.test(G.STEPS[2].text), 'step 3 says what RUN THE LOT and RUN BATCH do with the one-batch pallet lot');
+check(/next lot/i.test(G.STEPS[6].title + G.STEPS[6].text) && G.STEPS[6].target.indexOf('#btn-run') < 0 && G.STEPS[6].target.indexOf('#tool-auction') >= 0, 'step 7 points at the next lot (Auction), not at a RUN with nothing loaded');
 const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'modules', 'guide.js'), 'utf8');
 check(/setAttribute\('role', 'region'\)/.test(src) && /aria-live="polite"/.test(src) && /tabindex="-1"/.test(src), 'the layer is a labelled region whose box is a polite live region and can take focus');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' guide checks pass');

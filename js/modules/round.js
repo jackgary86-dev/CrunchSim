@@ -348,7 +348,7 @@
           const eb = main.querySelector('#round-end'); if (eb) eb.addEventListener('click', () => { if (checkEnd(true)) render(); });
           return;
         }
-        h += '<div class="round-next">' + (r && r.done && !r.won.you ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '') +
+        h += '<div class="round-next">' + (r && r.done && !r.won.you ? (miscT() >= 1 ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '<p class="warn">No bin for you this round, and your MISC bin holds under 1 t: nothing to run this round.</p>') : '') +
           (can ? '' : '<p class="small">' + (app.S.run ? 'A batch is running.' : M_().ending ? 'The last bin is in your yard: run it through the plant to end the match.' : 'Your yard still holds a bin: run it through the plant first.') + ' The next round opens when the yard is empty.</p>') +
           '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (M_().ending ? 'RUN THE LAST BIN TO FINISH' : st.n > 0 ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
         main.innerHTML = h;

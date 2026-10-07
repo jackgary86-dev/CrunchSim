@@ -145,6 +145,7 @@ node tests/sinkfloat.js
 node tests/slots.js
 node tests/small-fixes.js
 node tests/stamp.js
+node tests/ui-fixes.js
 node tests/universal.js
 node tests/valuation.js
 node tests/wiring.js

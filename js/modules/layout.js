@@ -259,7 +259,7 @@
     drawer.addEventListener('click', (e) => { if (e.target === drawer) closeDrawer(); });
     // #137: the drawer sits at the side under the toolbar; a click anywhere else on the screen (not the toolbar) closes it
     document.addEventListener('mousedown', (e) => {
-      if (!openDrawer || drawer.contains(e.target) || e.target.closest('#toolbar, #top, .overlay:not(#drawer), #scorecard, .guide, .title-screen')) return;
+      if (!openDrawer || drawer.contains(e.target) || e.target.closest('#toolbar, #top, .overlay:not(#drawer), #scorecard, .guide, .title-screen, #help')) return;
       closeDrawer();
     });
     station.addEventListener('click', (e) => { if (e.target === station) closeStation(); });
@@ -538,7 +538,9 @@
   let lastBatch = null;
   function renderSideCards() {
     const nb = $('#next-body'); if (nb) {
-      const keyOf = (x) => x.title + '|' + x.sub + '|' + x.label, act = (x) => x.title + '|' + x.label, a = nextStep(), key = keyOf(a);
+      const keyOf = (x) => x.title + '|' + x.sub + '|' + x.label, act = (x) => x.title + '|' + x.label, a = nextStep();
+      if (a.title === 'SELL' && loan > 0) a.sub += ' A quarter of it repays the ' + app.fmtMoney(loan) + ' yard advance.';   // #312
+      const key = keyOf(a);
       if (nb.dataset.key !== key) {   // unchanged: keep the button (and its focus) under the pointer
         nb.dataset.key = key; nb.dataset.act = act(a);
         nb.innerHTML = '<div class="ns-t">' + esc(a.title) + '</div><div class="ns-s">' + esc(a.sub) + '</div>';
@@ -569,7 +571,7 @@
       const a = nextAction();
       h = '<div class="lc-empty"><div class="small">Nothing is loaded.</div><button type="button" class="primary lc-go">' + esc(a.label) + '</button><div class="small">' + esc(a.sub) + '</div></div>';
     }
-    if (yard && yard.length && S.mode !== 'rivals') h += '<div class="lc-yard"><div class="fn-sub">WAITING IN THE YARD</div>' + yard.map((L) => '<div class="lc-y"><span><b>#' + L.id + '</b> ' + esc(L.headline) + ' · ' + fmtW(L.tons) + '</span><button type="button" data-lot="' + L.id + '"' + (S.run ? ' disabled' : '') + '>LOAD</button></div>').join('') + '</div>';
+    if (yard && yard.length && S.mode !== 'rivals') h += '<div class="lc-yard"><div class="fn-sub">WAITING IN THE YARD</div>' + yard.map((L) => '<div class="lc-y"><span><b>#' + L.id + '</b> ' + esc(L.headline) + ' · ' + fmtW(L.tons) + '</span><button type="button" data-lot="' + L.id + '" aria-label="Load lot #' + L.id + '"' + (S.run ? ' disabled' : '') + '>LOAD</button></div>').join('') + '</div>';
     box.innerHTML = h;
     const go = box.querySelector('.lc-go'); if (go) go.addEventListener('click', () => nextAction().go());
     box.querySelectorAll('.lc-y button').forEach((b) => b.addEventListener('click', () => { if (A.load(+b.dataset.lot)) renderFlow(true); }));
@@ -645,9 +647,10 @@
       const minus = el('button', 'fset-b', '&minus;'), plus = el('button', 'fset-b', '+');
       const val = el('span', 'fset-v', esc(fmtSetting(n.settings[st.id], st)));
       [[minus, -1], [plus, 1]].forEach(([b, dir]) => {
-        b.type = 'button'; b.title = (dir > 0 ? 'Raise ' : 'Lower ') + st.label.toLowerCase();
+        b.type = 'button'; b.title = (dir > 0 ? 'Raise ' : 'Lower ') + st.label.toLowerCase(); b.setAttribute('aria-label', b.title);   // #317: not just 'minus' / 'plus'
         const v = n.settings[st.id];
         if (!st.enum && ((dir < 0 && v <= st.min) || (dir > 0 && v >= st.max))) b.disabled = true;
+        if (app.S.run) { b.disabled = true; b.title = 'Stop the batch before changing the line'; }   // #313: runLocked would refuse it
         b.addEventListener('click', (e) => {
           e.stopPropagation();   // the column itself opens the station
           if (app.runLocked && app.runLocked()) return;   // #295
@@ -705,6 +708,16 @@
     return true;
   }
   function srcMap(src) { const Inv = CS.Inventory; return src === 'misc' ? (Inv.misc ? Inv.misc() : {}) : Inv.stock(); }
+  /* #313: why RE-RUN would refuse this bucket now ('' when it may load); the button is disabled with this as its title */
+  function rerunWhy(mats, src) {
+    const S = app.S, stock = srcMap(src);
+    if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) return 'In Rivals your MISC bin runs only in a round where you win no bin';
+    if (S.run) return 'Wait for the batch to finish before loading a bucket';
+    if (src !== 'misc' && mats.some((m) => stock[m] && stock[m].alloy)) return 'Alloy ingots cannot be sorted back into their metals: sell them';
+    if (rerunPlan(stock, mats, app.plantValue ? app.plantValue('logistics') : 1).error) return 'Under 1 t: too little to run a batch. Sell it, or let it fill up';
+    return '';
+  }
+  function rerunButton(re, mats, src, title) { const why = rerunWhy(mats, src); re.disabled = !!why; re.title = why || title; }   // #313
   function rerun(mats, label, src) {
     const S = app.S, stock = srcMap(src);
     if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log('In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.', 'warn'); return; }
@@ -743,7 +756,7 @@
     const label = loaded.label; loaded = null;
     if (S.feedOwner === 'rerun') { S.feedPrepaid = false; S.feedOwner = null; }   // only our own flag: another module may have loaded its feed
     S.feedOpts = null;
-    app.log('The ' + label + ' bucket is no longer loaded: the feed was changed, so it stays in the bucket and the feed is charged at the normal price.', 'warn');
+    app.log('The ' + label + ' bucket is no longer loaded: the feed was changed, so it stays in the bucket.' + (S.feedPrepaid ? '' : ' Nothing is loaded now: win a lot in the Auction or RE-RUN a bucket.'), 'warn');   // #316: feed is auction-only (#57)
     app.markDirty();   // the feed cost and projected margin change with the flag
   }
   function onBatchStart(p) {
@@ -867,8 +880,8 @@
       const D = MATERIALS[x.m], row = el('div', 'bk shelf'), e = (CS.Inventory.stock() || {})[x.m] || {};
       const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
       row.innerHTML = unitPic(x.m, x.t, e.p80) + '<span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span></span>';
-      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay); sell.addEventListener('click', () => withMoney(sell, () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); }));
-      const re = el('button', null, 'RE-RUN'); re.type = 'button'; re.title = 'Load this bucket as the next batch\'s feed'; re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
+      const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay) + (loan > 0 ? ' (25% repays the ' + app.fmtMoney(loan) + ' yard advance)' : ''); sell.addEventListener('click', () => withMoney(sell, () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); }));
+      const re = el('button', null, 'RE-RUN'); re.type = 'button'; rerunButton(re, [x.m], 'stock', 'Load this bucket as the next batch\'s feed'); re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re);
       const rf = refineButton(x.m); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
       row.classList.add('clicky'); row.title = D.name + ': prices, jobs and selling part of it are in SELL';   // #144
@@ -879,7 +892,7 @@
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
       row.innerHTML = '<span class="unit svg" style="--us:' + Math.round(26 + 18 * Math.min(1, Math.sqrt(b.misc.t / 40))) + 'px" title="a skip of mixed material"><svg viewBox="0 0 40 40" aria-hidden="true">' + unitSvg('skip') + '</svg></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
-      const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; re.title = 'Send the mixed material back through the plant'; re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
+      const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; rerunButton(re, mats, 'misc', 'Send the mixed material back through the plant'); re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re);
       const rf = refineMiscButton(); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
       // #168: ship it out when the plant cannot sort it: the metal in it pays a little, landfill takes the rest
@@ -995,7 +1008,7 @@
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0]);
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0, CS.Round && CS.Round.live && CS.Round.live.miscAllowed ? CS.Round.live.miscAllowed() : 0]);   // miscAllowed: the MISC RE-RUN button (#313)
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';

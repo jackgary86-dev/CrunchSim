@@ -300,14 +300,14 @@
       const yardRow = (L) => {
         const row = app.el('div', 'crow yard', '<div class="ch"><b>WAITING IN THE YARD: LOT #' + L.id + '</b><span class="ask">' + app.fmtMoney(L.ask) + '/t paid</span></div><div class="cd">' + L.tons + ' t of ' + app.esc(L.headline) + ' · declared: ' + compText(L.declared) + '</div>');
         const b = document.createElement('button'); b.type = 'button'; b.textContent = 'LOAD'; b.className = 'buy'; b.disabled = run;
-        b.title = 'Load this lot as the feed; the loaded one goes back to wait in the yard';
+        b.title = 'Load this lot as the feed; the loaded one goes back to wait in the yard'; b.setAttribute('aria-label', 'Load lot #' + L.id + ', ' + L.tons + ' t of ' + L.headline);   // #317
         b.addEventListener('click', () => { if (swapIn(L)) render(); });
         row.appendChild(b); box.appendChild(row);
       };
       if (P) {
         const loaded = S().feedPrepaid && S().feedOwner === 'auction' && sameComp(S().comp, P.truth);
         const row = app.el('div', 'crow yard', '<div class="ch"><b>IN THE YARD: LOT #' + P.id + '</b><span class="ask">' + app.fmtMoney(P.ask) + '/t paid</span></div><div class="cd">' + P.tons + ' t of ' + app.esc(P.headline) + ' · declared: ' + compText(P.declared) + compBar(P.declared) + '</div><div class="cd">' + (loaded ? 'Loaded as the feed, prepaid. Run the batch.' : P.arriving && run ? 'Won at the gavel: it loads when this batch ends.' : 'Not loaded: the feed was changed by hand.') + '</div>');
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = loaded ? 'LOADED' : 'LOAD'; b.className = loaded ? 'buy max' : 'buy'; b.disabled = loaded || run;
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = loaded ? 'LOADED' : 'LOAD'; b.className = loaded ? 'buy max' : 'buy'; b.disabled = loaded || run; b.setAttribute('aria-label', (loaded ? 'Lot #' + P.id + ' is loaded' : 'Load lot #' + P.id + ', ' + P.tons + ' t of ' + P.headline));   // #317
         b.addEventListener('click', () => { if (loadPending()) { app.log('Lot #' + P.id + ' loaded as the feed again.', 'ok'); render(); } });
         row.appendChild(b); box.appendChild(row);
       }

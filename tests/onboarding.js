@@ -18,6 +18,13 @@ const IDS = ['stage-auction', 'stage-haulin', 'stage-offload', 'stage-shred', 's
 for (const id of IDS) ok(OB.SVG.includes('id="' + id + '"'), 'embedded SVG contains ' + id);
 ok(OB.STAGES.length === 6 && OB.STAGES.every((s, i) => IDS[i] === 'stage-' + s.id && s.n === i + 1), 'STAGES mirror the six ids in order');
 for (const s of OB.STAGES) ok(s.targets.length > 0 && s.targets.every((t) => /^#[a-z-]+$/.test(t)), 'stage ' + s.id + ' names panel selectors');
+{ // #311: a stage whose panel lives in a drawer opens that drawer; none points at a stashed panel (feed, bank)
+  const by = (id) => OB.STAGES.find((s) => s.id === id);
+  ok(by('auction').drawer === 'auction' && by('sell').drawer === 'sell' && by('sell').targets[0] === '#inventory-panel', 'auction and sell stages open their drawers; sell points at the Sell drawer');
+  ok(OB.STAGES.every((s) => s.targets.every((t) => t !== '#feed-panel' && t !== '#bank-panel')), 'no stage points at the stashed feed or bank panels');
+  ok(by('haulin').targets[0] === '#lot-card' && by('offload').targets[0] === '#lot-card', 'haul in and offload point at the loaded-lot card');
+  ok(/if \(st\.drawer\) L\.showDrawer\(st\.drawer\)/.test(require('fs').readFileSync(MOD, 'utf8')), 'goStage opens the drawer before it looks for the panel');
+}
 ok((OB.SVG.match(/data-stage="/g) || []).length >= 12, 'captions and scenes both carry data-stage');
 
 ok(/<svg [^>]*viewBox="0 0 1800 620"/.test(OB.SVG), 'viewBox kept so the strip scales');

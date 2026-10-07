@@ -22,9 +22,12 @@ check(t.inert(modal).length === 0 && !t.pageInert(modal), 'nothing open: nothing
 t.open('drawer');
 check(!t.pageInert(modal) && t.inert(modal).length === 0, 'the drawer is not modal: the toolbar beside it stays usable');
 t.open('title'); t.open('round');
-check(t.pageInert(modal) && t.inert(modal).sort().join() === 'station,title', 'a modal layer makes the page and every other modal layer inert but itself');
+check(t.pageInert(modal) && t.inert(modal).sort().join() === 'drawer,station,title', 'a modal layer makes the page, every other modal layer and the side drawer under it inert but itself (#310)');
 t.close('round');
-check(t.inert(modal).sort().join() === 'round,station', 'the title is the live layer again once the round closes');
+check(t.inert(modal).sort().join() === 'drawer,round,station', 'the title is the live layer again once the round closes');
+t.close('title'); t.close('drawer'); t.open('title'); t.open('drawer');
+check(t.inert(modal).sort().join() === 'round,station', 'a side drawer opened above the top modal layer stays live');
+t.close('drawer'); t.close('title');
 
 /* #240: the drawer is modal exactly while it covers the screen (max-width:900px) */
 const mm = (w) => (q) => ({ matches: q === '(max-width: 900px)' && w <= 900 });

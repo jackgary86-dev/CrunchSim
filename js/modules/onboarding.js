@@ -240,15 +240,15 @@
 </svg>
 `;
 
-  /* The six numbered stages and the panel each one jumps to. The first selector that exists wins, so auction and
-   * haul-in go to the auction panel when ticket #24's module has added it and to the feed panel otherwise. */
+  /* The six numbered stages, the drawer each one opens (none: the plant screen, drawers closed) and the panel it jumps to.
+   * The first selector on screen wins. #311: the auction and sell panels live in drawers, so the stage opens its drawer first. */
   const STAGES = [
-    { id: 'auction', n: 1, label: 'Auction', targets: ['#auction-panel', '#feed-panel'] },
-    { id: 'haulin', n: 2, label: 'Haul in', targets: ['#auction-panel', '#feed-panel'] },
-    { id: 'offload', n: 3, label: 'Offload', targets: ['#feed-panel'] },
-    { id: 'shred', n: 4, label: 'Shred', targets: ['#line-panel', '#flow-panel'] },
-    { id: 'sort', n: 5, label: 'Sort', targets: ['#bins', '#plant-panel', '#flow-panel'] },
-    { id: 'sell', n: 6, label: 'Smelt & sell', targets: ['#bank-panel'] }
+    { id: 'auction', n: 1, label: 'Auction', drawer: 'auction', targets: ['#auction-panel'] },
+    { id: 'haulin', n: 2, label: 'Haul in', targets: ['#lot-card'] },
+    { id: 'offload', n: 3, label: 'Offload', targets: ['#lot-card'] },
+    { id: 'shred', n: 4, label: 'Shred', targets: ['#flow-panel', '#line-panel'] },
+    { id: 'sort', n: 5, label: 'Sort', targets: ['#flow-panel', '#bins'] },
+    { id: 'sell', n: 6, label: 'Smelt & sell', drawer: 'sell', targets: ['#inventory-panel'] }
   ];
 
   /* The first-run tour. Each step points at the first selector that exists. */
@@ -350,8 +350,9 @@
     }
     function goStage(id) {
       const st = STAGES.find((s) => s.id === id); if (!st) return;
-      const target = first(st.targets); if (!target) return;
       const help = document.getElementById('help'); if (help) help.classList.add('hidden');
+      const L = app.layout; if (L) { if (st.drawer) L.showDrawer(st.drawer); else { L.closeDrawer(); L.closeStation(); } }   // #311: bring the stage's panel on screen first
+      const target = first(st.targets); if (!target) return;
       const panel = target.closest('.panel') || target;
       target.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'center' });
       highlight(panel);

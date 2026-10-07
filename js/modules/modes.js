@@ -99,7 +99,7 @@
       title.querySelectorAll('[data-go]').forEach((b) => {
         let armed = false;   // #195: NEW MATCH over a live match needs a second click, like RESTART RIVALS
         b.addEventListener('click', () => {
-          if (b.dataset.go === 'progress-new') { if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'CLICK AGAIN: WIPE THIS YARD'; b.classList.add('danger'); return; } go('progress'); if (app.S.mode === 'progress') newYard(); return; }
+          if (b.dataset.go === 'progress-new') { if (!b.dataset.armed) { const t0 = b.textContent, d0 = b.classList.contains('danger'); b.dataset.armed = '1'; b.textContent = 'CLICK AGAIN: WIPE THIS YARD'; b.classList.add('danger'); setTimeout(() => { if (b.dataset.armed && b.isConnected) { delete b.dataset.armed; b.textContent = t0; b.classList.toggle('danger', d0); } }, 3000); return; } go('progress'); if (app.S.mode === 'progress') newYard(); return; }
           if (b.dataset.go === 'rivals-new' && liveMatch(R) && !armed) { armed = true; b.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; b.classList.add('danger'); setTimeout(() => { if (armed && b.isConnected) { armed = false; b.textContent = 'NEW MATCH'; b.classList.remove('danger'); } }, 3000); return; }
           go(b.dataset.go);
         });
@@ -143,8 +143,8 @@
       b.querySelector('#set-sound').addEventListener('click', () => { const m = document.getElementById('btn-mute'); if (m) m.click(); showSettings(); });
       b.querySelector('#set-motion').addEventListener('click', () => { rmMem = reduceMotion() ? '0' : '1'; try { localStorage.setItem(RM_KEY, rmMem); } catch (e) { /* ignore */ } applyMotion(); showSettings(); });
       const g = b.querySelector('#set-guide'); if (g) g.addEventListener('click', () => { closeSettings(); if (CS.Guide && CS.Guide.live) CS.Guide.live.begin(); });
-      const r = b.querySelector('#set-restart'); if (r) { let armed = false; r.addEventListener('click', () => { if (!armed) { armed = true; r.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; return; } closeSettings(); const ng = document.getElementById('btn-newgame'); if (ng) { ng.click(); ng.click(); } }); }
-      const ny = b.querySelector('#set-newyard'); if (ny) { let armed = false; ny.addEventListener('click', () => { if (app.S.run) { app.log('Stop the running batch first.', 'warn'); return; } if (!armed) { armed = true; ny.textContent = 'CLICK AGAIN: WIPE THIS YARD'; return; } closeSettings(); newYard(); }); }
+      const r = b.querySelector('#set-restart'); if (r) { let armed = false; r.addEventListener('click', () => { if (!armed) { armed = true; r.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; setTimeout(() => { if (armed) { armed = false; r.textContent = 'RESTART RIVALS'; } }, 3000); return; } closeSettings(); const ng = document.getElementById('btn-newgame'); if (ng) { ng.click(); ng.click(); } }); }
+      const ny = b.querySelector('#set-newyard'); if (ny) { let armed = false; ny.addEventListener('click', () => { if (app.S.run) { app.log('Stop the running batch first.', 'warn'); return; } if (!armed) { armed = true; ny.textContent = 'CLICK AGAIN: WIPE THIS YARD'; setTimeout(() => { if (armed) { armed = false; ny.textContent = 'NEW YARD'; } }, 3000); return; } closeSettings(); newYard(); }); }   // #317: NEW YARD and RESTART RIVALS disarm after 3 s like NEW MATCH
       b.querySelector('#set-menu').addEventListener('click', () => { closeSettings(); showTitle(); });
       if (svPanel) b.querySelector('#set-save').appendChild(svPanel);
       sets.classList.remove('hidden');

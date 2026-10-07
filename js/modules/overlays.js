@@ -23,11 +23,11 @@
       close(id) { without(id); },
       top() { return ids.length ? ids[ids.length - 1] : null; },
       list() { return ids.slice(); },
-      /* which of the known modal layers are inert now: all but the topmost modal one that is open (none when no modal is open) */
+      /* which layers are inert now: every modal one but the topmost modal one that is open, and an open side panel under it (#310); none when no modal is open */
       inert(modal) {
         const open = ids.filter((id) => modal[id]);
         const top = open.length ? open[open.length - 1] : null;
-        return top === null ? [] : Object.keys(modal).filter((id) => modal[id] && id !== top);
+        return top === null ? [] : Object.keys(modal).filter((id) => id !== top && (modal[id] || (ids.indexOf(id) >= 0 && ids.indexOf(id) < ids.indexOf(top))));
       },
       /* does the page behind the layers need to be inert: is any open layer modal */
       pageInert(modal) { return ids.some((id) => modal[id]); },

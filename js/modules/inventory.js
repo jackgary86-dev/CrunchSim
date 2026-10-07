@@ -464,11 +464,13 @@
       ctx.fillStyle = cur >= base ? '#5cffb1' : '#ff5c6c'; ctx.beginPath(); ctx.arc(xs(prices.length - 1), ys(cur), 2.2, 0, 2 * Math.PI); ctx.fill();
     }
 
-    function renderPanel() {
+    function renderPanel() { if (body) { if (API.keepFocus) API.keepFocus(body, renderPanelNow); else renderPanelNow(); } }   // #314: a typed TARGET price survives the next batch
+    function renderPanelNow() {
       if (!body) return;
       const mu = marketMul(), market = mv(), tot = stockTotals(stock, market, mu), M = Market();
       const sto = storage(stock, ownedBays(storageLevel()), miscTotal(misc));
       body.innerHTML = '';
+      const owe = API.layout && API.layout.loan ? API.layout.loan() : 0, owedNote = function () { return owe > 0 ? '25% of the sale repays the ' + fmtPrice(owe) + ' yard advance' : ''; };   // #312
       const ros = API.el('div', 'readouts', API.ro('STOCK VALUE', fmtPrice(tot.value), '', tot.value > 0 ? 'good' : '') + API.ro('UNITS', API.fmtNum(tot.units, tot.units >= 10 ? 0 : 1), '') + API.ro('IN STOCK', API.fmtNum(tot.t, 1), 't') +
         API.ro('YARD BAYS', sto.bays + ' / ' + sto.owned, 'used / owned', sto.hired > 0 ? 'hi' : '') + API.ro('STORAGE', fmtPrice(sto.rent), '/batch', sto.hired > 0 ? 'hi' : '') + API.ro('COST BASIS', fmtPrice(tot.cost), ''));
       body.appendChild(ros);
@@ -487,7 +489,7 @@
           '<div class="cur">cost <b class="' + (cost > 0 && price < cost ? 'bad' : '') + '">' + fmtPrice(cost) + '</b>/t · ' + (sto.perMat[mat] ? sto.perMat[mat] + ' bay' + (sto.perMat[mat] === 1 ? '' : 's') : 'shared bay') + '</div>' +
           '<canvas class="spark" title="Price over the last 30 batches: list (grey), your cost (amber), target (green)"></canvas>' +
           '<div class="tgt"><label>TARGET $<input type="number" min="0" step="1" placeholder="—" value="' + (tg && tg.price > 0 ? Math.round(tg.price) : '') + '">/t</label><label><input type="checkbox"' + (tg && tg.auto ? ' checked' : '') + '>AUTO-SELL</label></div></span>');
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'buy'; b.textContent = 'SELL ' + fmtPrice(lotValue(stock, mat, market, mu));
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'buy'; b.textContent = 'SELL ' + fmtPrice(lotValue(stock, mat, market, mu)); b.title = owedNote();
         b.addEventListener('click', function () { sellMat(mat); });
         row.appendChild(b); body.appendChild(row);
         drawSpark(row.querySelector('canvas.spark'), mat);
@@ -496,7 +498,7 @@
         ae.addEventListener('change', function () { onTargetInput(mat, pe, ae); });
       });
       const all = document.createElement('button'); all.type = 'button'; all.className = 'buy' + (rows.length ? '' : ' poor'); all.disabled = !rows.length;
-      all.textContent = 'SELL ALL · ' + fmtPrice(tot.value); all.style.width = '100%'; all.style.marginTop = '6px';
+      all.textContent = 'SELL ALL · ' + fmtPrice(tot.value); all.title = owedNote(); all.style.width = '100%'; all.style.marginTop = '6px';
       all.addEventListener('click', sellEverything);
       body.appendChild(all);
       const mt = miscTotal(misc);

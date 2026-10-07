@@ -171,7 +171,7 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 #log .bad { color: var(--red); } #log .warn { color: var(--amber); } #log .ok { color: var(--green); }
 
 /* modal */
-.modal { position: fixed; inset: 0; background: rgba(3,6,10,.8); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 20px; }
+.modal { position: fixed; inset: 0; background: rgba(3,6,10,.8); display: flex; align-items: center; justify-content: center; z-index: 80; padding: 20px; }   /* #310: help sits above a station, the drawer and the LOT DONE card */
 .modal-box { background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px; max-width: 760px; max-height: 90vh; overflow-y: auto; padding: 20px 26px; position: relative; line-height: 1.5; }
 .modal-box h2 { font-family: var(--mono); letter-spacing: 3px; color: var(--cyan); margin-top: 0; }
 .modal-box h3 { font-family: var(--mono); letter-spacing: 2px; font-size: 12px; color: var(--muted); text-transform: uppercase; }
@@ -591,7 +591,7 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 body[data-mode="rivals"] #btn-newgame { display: inline-block; }
 
 /* ---------- two games, two screens (#87) ---------- */
-.title-screen { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; background: radial-gradient(ellipse at 50% 30%, #0f1a26 0%, #070a0f 70%); overflow: auto; }
+.title-screen { position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-start; justify-content: flex-start; padding: 16px; background: radial-gradient(ellipse at 50% 30%, #0f1a26 0%, #070a0f 70%); overflow: auto; }
 .title-screen.hidden { display: none; }
 .tt-box { width: min(860px, 100%); text-align: center; }
 .tt-logo { font-family: var(--mono); font-size: 46px; letter-spacing: 8px; color: var(--text); }
@@ -682,6 +682,7 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   #left { padding-bottom: 0; }
   #last-card { display: none; }
   #drawer.overlay { top: 0; width: 100%; z-index: 60; }   /* a drawer is the whole screen; CLOSE brings the plant back */
+  body.lay #scorecard { z-index: 65; }   /* #317: the LOT DONE card shows over the full-screen drawer */
   #drawer .sheet { border-left: 0; }
   .runbox:not(:has(#btn-run.running)) .progress { display: none; }
 }
@@ -743,7 +744,7 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 
 /* #128: the title screen's yard */
 .title-screen canvas.tt-yard { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.title-screen .tt-box { position: relative; z-index: 1; }
+.title-screen .tt-box { position: relative; z-index: 1; margin: auto; }   /* #317: centred by auto margins, so a box taller than a short screen scrolls instead of clipping its top */
 .tt-card { background: rgba(12, 18, 26, .9); }
 .tt-ic { width: 48px; height: 32px; }
 

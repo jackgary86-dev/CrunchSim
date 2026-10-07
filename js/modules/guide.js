@@ -2,11 +2,11 @@
  * first lot on the real screen, one prompt at a time; each prompt waits for you to do the thing:
  *   1 buy the pallet lot in the $1k tier (dealt for the lesson, never a padded trap)
  *   2 look at THE BIN: everything the grinder breaks falls in there, mixed
- *   3 press RUN BATCH
+ *   3 press RUN (RUN THE LOT or RUN BATCH: the pallet lot is a single batch, so both run it once; #315)
  *   4 the buckets: the wood comes out pure, so it SELLS; the magnet's nails carry splinters, so they wait in MISC
  *   5 sell the wood
  *   6 the first sorter to buy: a sink-float (water) tank, for the windows lots: wood floats, glass sinks
- *   7 the rest of the lot: RUN THE LOT, then bigger lots
+ *   7 the next lot: 1 BATCH or THE LOT beside RUN, then bigger lots
  * It can be skipped, and replayed from the help. Steps and their checks are pure (CS.Guide) for tests/guide.js.
  */
 (function (G) {
@@ -15,11 +15,11 @@
   const STEPS = [
     { id: 'buy', title: 'BUY YOUR FIRST LOT', text: 'Material only comes from the scrap auction. Open the Auction and buy the pallets in the $1k tier: wood with nails in it, a lot your hammermill and magnet can handle.', target: ['#auction-panel .crow[data-lot] .cbtns button.buy', '#tool-auction'], wait: (s) => s.loaded },   // #104: the lot's BUY once the drawer is open
     { id: 'bin', title: 'THE BIN', text: 'The hammermill breaks the pallets and everything falls into THE BIN: wood, nails and a little plastic, all mixed. Mixed material sells for nothing. Sorting is how you make money.', target: '.fcol.bincol', next: true },
-    { id: 'run', title: 'RUN IT', text: 'Press RUN. The magnet pulls the nails out of the BIN while the batch runs, and the wood goes on past it.', target: '#btn-run', wait: (s) => s.batches >= 1 },
+    { id: 'run', title: 'RUN IT', text: 'Press RUN (or Space). This lot is a single batch, so RUN THE LOT and RUN BATCH both run it once. The magnet pulls the nails out of the BIN while the batch runs, and the wood goes on past it.', target: '#btn-run', wait: (s) => s.batches >= 1 },
     { id: 'buckets', title: 'PURE SELLS, MIXED WAITS', text: 'With the nails out, the wood is 98% pure, so it sells. The nails came off with splinters stuck to them: under 90% steel, so they wait in the MISC bucket until a sorter can clean them.', target: '.fcol.buckets', next: true },
     { id: 'sell', title: 'SELL THE WOOD', text: 'Press SELL on the wood bucket. Pure material pays a premium: the cleaner the bucket, the higher the price.', target: '.bk.shelf', wait: (s) => s.sold >= 1 },
     { id: 'pair', title: 'YOUR FIRST SORTER', text: 'From the $3k tier the board deals old windows: wood, glass and steel. A sink-float (water) tank splits them: it comes filled with plain water (1.0 g/cc), so the wood floats and the glass sinks. The Plant drawer sells it, and NEXT PURCHASE ranks what each sorter would add. Each richer tier on the board needs the next machine.', target: '#tool-plant', next: true },
-    { id: 'lot', title: 'RUN THE REST', text: 'Beside RUN, THE LOT runs batch after batch until a lot is used up (1 BATCH runs just one). Then buy bigger lots, sell what is pure, and grow the plant. That is the game.', target: ['#run-pick', '#btn-run'], next: true, last: true }
+    { id: 'lot', title: 'THE NEXT LOT', text: 'Buy the next lot in the Auction. Once it is loaded, the choice beside RUN picks 1 BATCH (one batch) or THE LOT (batch after batch until the lot is used up). Then buy bigger lots, sell what is pure, and grow the plant. That is the game.', target: ['#run-pick', '#tool-auction'], next: true, last: true }   // #315: the first lot is used up by now
   ];
   /* the step to show: the first one not done; a waiting step is done when its check passes on the snapshot */
   function nextStep(done, snap) {

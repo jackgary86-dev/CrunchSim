@@ -41,9 +41,15 @@
   const BOARD = { min: 3, max: 6, arriveH: 6 };   // three to six open lots; a new one arrives about every 6 sim hours (Poisson)
   // #48: the board the game shows is six lots, one per price tier. A tier's lot is about that much money's worth of scrap at a
   // fair price: a skip of mixed junk for $1k up to hundreds of tonnes, or a few tonnes of circuit boards, for $100k.
-  const TIERS = [1000, 3000, 8000, 20000, 50000, 100000];
+  const TIERS = [1000, 3000, 8000, 20000, 50000, 100000, 1000000, 10000000];
   const TIER_TONS = [0.1, 4000];
-  const TIER_MAX_T = [30, 80, 200, 600, 1500, 4000];   // #103: the most a tier lot weighs, so cheap scrap is not a mountain (a few batches at that stage's batch size)
+  const TIER_MAX_T = [30, 80, 200, 600, 1500, 4000, 3000, 10000];   // #103: the most a tier lot weighs, so cheap scrap is not a mountain (a few batches at that stage's batch size)
+  // #343 #344: the $1M and $10M tiers open with rank (index into RANKS: Plant operator, Industrial group). They deal trainloads, up to the
+  // rail siding (3,000 t) and loop track (10,000 t) logistics levels, so income keeps growing with the plant; the six base tiers are always dealt
+  const TIER_RANK = [0, 0, 0, 0, 0, 0, 3, 4], BASE_TIERS = 6;
+  const TIER_FIT_T = [4000, 4000, 4000, 4000, 4000, 4000, 15000, 100000];   // a feed fits a tier when the budget buys at most this many tonnes at a fair price (bulk scrap is then capped at TIER_MAX_T)
+  function tiersOpen(rankIdx) { let n = 0; TIER_RANK.forEach((r) => { if (r <= (+rankIdx || 0)) n++; }); return Math.max(BASE_TIERS, n); }
+  function tierLabel(k) { const v = TIERS[k]; return v >= 1e6 ? '$' + v / 1e6 + 'M' : '$' + v / 1000 + 'k'; }
   /* What each tier deals, lined up with the machines a plant can afford by then (start: hammermill and magnet):
    *   $1k  steel and wood only (pallets, office clear-outs): the starting magnet pulls the nails, the wood is left clean
    *   $3k  plus old windows (wood, glass, steel): a sink-float (water) tank floats the wood off the glass
@@ -51,6 +57,9 @@
    *   $20k car hulks and white goods: an eddy current separator throws the non-ferrous metals
    *   $50k zorba and mixed skips: density and size splits between the non-ferrous metals
    *   $100k electronics and connector pins: a sensor sorter picks copper, brass and the precious metals
+   *   $1M   trainloads of car hulks, white goods and mixed skips, or a barge of zorba (from Plant operator)
+   *   $10M  a unit train of the same bulk shredder feed (from Industrial group): the shredder line that got the yard here can run it;
+   *         a cheap feed hits the 10,000 t cap well under the tier's money, only zorba spends it all
    * Gel and water are never dealt: there is nothing to sort. */
   const TIER_FEEDS = [
     ['pallets', 'chair'],
@@ -58,7 +67,9 @@
     ['rubble', 'tires', 'appliance', 'windows'],
     ['elv', 'appliance', 'tires'],
     ['zorba', 'elv', 'everything', 'appliance'],
-    ['ewaste', 'pins', 'zorba']
+    ['ewaste', 'pins', 'zorba'],
+    ['elv', 'everything', 'appliance', 'zorba'],
+    ['elv', 'everything', 'appliance', 'zorba']
   ];   // a lot is at least a tonne and at most 4,000 t (a few trainloads)
   // feed market random walk: 3%/sqrt(h) (LME aluminium moves ~0.3%/sqrt(h), x10 for sim pace), mean-reverting to list price over about a day, pinned to 0.8-1.3x
   const MARKET = { lo: 0.8, hi: 1.3, sigma: 0.03, kappa: 0.05 };
@@ -92,12 +103,12 @@
     const tiered = opts.tier != null && !!TIER_FEEDS[opts.tier];
     if (tiered) { const tf = TIER_FEEDS[opts.tier].filter((id) => feeds.includes(id)); if (tf.length) pool = tf; }   // the tier's feeds (they line up with the machines)
     if (opts.budget > 0) {   // a tier lot: only feeds whose fair price puts the budget between 1 and 4,000 t
-      const fits = pool.filter((id) => { const fa = worthOf(FEEDS[id].comp) * fairRatio(id); return fa > 0.5 && opts.budget / fa >= TIER_TONS[0] && opts.budget / fa <= TIER_TONS[1]; });
+      const fits = pool.filter((id) => { const fa = worthOf(FEEDS[id].comp) * fairRatio(id); return fa > 0.5 && opts.budget / fa >= TIER_TONS[0] && opts.budget / fa <= (opts.tier != null && TIER_FIT_T[opts.tier] ? TIER_FIT_T[opts.tier] : TIER_TONS[1]); });
       if (fits.length) pool = fits;
       // richer tiers draw richer scrap: the candidates sorted by value per tonne, and tier k picks from the top part of the list
       if (!tiered && opts.tier > 0 && pool.length > 2) {
         const ranked = pool.slice().sort((a, b) => worthOf(FEEDS[a].comp) * fairRatio(a) - worthOf(FEEDS[b].comp) * fairRatio(b));
-        pool = ranked.slice(Math.min(ranked.length - 2, Math.floor(ranked.length * opts.tier / (TIERS.length + 1))));
+        pool = ranked.slice(Math.min(ranked.length - 2, Math.floor(ranked.length * opts.tier / (BASE_TIERS + 1))));
       }
     }
     const base = pick(rng, pool), F = FEEDS[base];
@@ -158,14 +169,15 @@
     while (st.board.length < BOARD.min) st.board.push(mk());
     return st.board.length !== before;
   }
-  /* The tiered board (#48): one open lot per price tier, always six. Closed or sold tiers refill at once with a fresh lot. */
+  /* The tiered board (#48): one open lot per price tier, six and opts.tiers (#344: up to eight, opened by rank). Closed or sold tiers refill at once with a fresh lot. */
   function tickTiers(st, rng, clockH, opts) {
     const before = st.board.map((l) => l.id).join(',');
     const closed = st.board.filter((l) => !(l.expiresH > clockH));
     st.board = st.board.filter((l) => l.expiresH > clockH && l.tier != null);
     if (opts && typeof opts.onClose === 'function') closed.forEach(opts.onClose);
+    const open = opts && opts.tiers > 0 ? Math.min(TIERS.length, opts.tiers) : BASE_TIERS;
     TIERS.forEach((budget, k) => {
-      if (st.board.some((l) => l.tier === k)) return;
+      if (k >= open || st.board.some((l) => l.tier === k)) return;
       st.board.push(genLot(rng, Object.assign({}, opts, { clockH, id: st.nextId++, budget, tier: k })));
     });
     st.board.sort((a, b) => a.tier - b.tier);
@@ -214,7 +226,7 @@
     const pct = Math.round(rec.opt * 100);
     return rec.lots + ' lot' + (rec.lots === 1 ? '' : 's') + ' weighed · declarations ' + (Math.abs(pct) < 3 ? 'honest' : (pct > 0 ? '+' : '') + pct + '% ' + (pct > 0 ? 'optimistic' : 'pessimistic')) + (rec.padded ? ' · ' + rec.padded + ' padded' : '');
   }
-  CS.Auction = { TIER_FEEDS, TIER_MAX_T, SAMPLE_SIGMA, SAMPLE_FEE, SAMPLE_MIN, sampleOf, sampleFee, recordLot, repText, TIERS, TIER_TONS, tickTiers, mulberry32, genLot, tickBoard, marketStep, worthOf, fairRatio, validLot, sameComp, minBid, placeBid, validBid, ALWAYS, DEAL, MULT, MARKET, BOARD, BID, WORTH_FACTOR };
+  CS.Auction = { TIER_FEEDS, TIER_MAX_T, TIER_RANK, TIER_FIT_T, BASE_TIERS, tiersOpen, tierLabel, SAMPLE_SIGMA, SAMPLE_FEE, SAMPLE_MIN, sampleOf, sampleFee, recordLot, repText, TIERS, TIER_TONS, tickTiers, mulberry32, genLot, tickBoard, marketStep, worthOf, fairRatio, validLot, sameComp, minBid, placeBid, validBid, ALWAYS, DEAL, MULT, MARKET, BOARD, BID, WORTH_FACTOR };
 
   /* ---------------- game wiring (browser only) ---------------- */
   function init() {
@@ -223,7 +235,9 @@
     const rng = mulberry32(0); let seeded = false, lastKey = '', panel = null, gate = null, stale = false;
     const S = () => app.S, clockH = () => app.S.clock / 3600;
     const feeds = () => Object.keys(FEEDS).filter((id) => worthOf(FEEDS[id].comp) > 1);   // #57: the auction is where all scrap comes from
-    const genOpts = () => ({ feeds: feeds(), limit: app.plantValue('logistics'), market: st.market, onClose: closeLot });
+    let rankMemo = { key: null, idx: 0 };   // #344: the rank opens the $1M and $10M tiers; net worth is read again when the clock, the batch count or the bank moves, not every tick
+    const rankIdx = () => { const s = S(), k = Math.floor(clockH() * 4) + ':' + (s ? s.batches + ':' + Math.round(Math.log(Math.max(1, s.money)) * 20) : ''); if (rankMemo.key !== k) { let i = 0; try { i = app.rankOf(app.netWorth()).idx; } catch (e) { i = 0; } rankMemo = { key: k, idx: i }; } return rankMemo.idx; };
+    const genOpts = () => ({ feeds: feeds(), limit: app.plantValue('logistics'), market: st.market, onClose: closeLot, tiers: tiersOpen(rankIdx()) });
     /* hooks for js/modules/rivals.js (ticket #31): the live board, the yard lot, a redraw; 'lotPrice' {lot, perT} may raise the buy price,
      * 'veto:auctionBuy' {lot} may refuse a purchase, 'lotClose' {lot, award} may award a closing lot to the operator at award $/t,
      * and 'auctionRender' {box} lets a module add to the board after each redraw (lot rows carry data-lot) */
@@ -318,7 +332,7 @@
       if (!st.board.length) box.appendChild(app.el('div', 'empty', 'No lots on the board.'));
       st.board.slice().sort((a, b) => (a.tier == null ? 99 : a.tier) - (b.tier == null ? 99 : b.tier) || a.expiresH - b.expiresH).forEach((L) => {
         const total = priceOf(L) * L.tons;
-        const tierTag = L.tier != null ? '<span class="tier" title="Tier ' + (L.tier + 1) + ': lots up to this price, and at most ' + TIER_MAX_T[L.tier] + ' t">UP TO ' + app.fmtMoney(TIERS[L.tier]).replace(',000', 'k') + '</span> ' : '';   // #172: a capped lot costs less than its tier
+        const tierTag = L.tier != null ? '<span class="tier" title="Tier ' + (L.tier + 1) + ': lots up to this price, and at most ' + TIER_MAX_T[L.tier] + ' t">UP TO ' + tierLabel(L.tier) + '</span> ' : '';   // #172: a capped lot costs less than its tier
         const row = app.el('div', 'crow', '<div class="ch"><b>' + tierTag + app.esc(L.headline) + ' · ' + L.tons + ' t</b><span class="ask">' + app.fmtMoney(L.ask) + '/t</span></div>' +
           '<div class="cd">Declared: ' + compText(L.declared) + compBar(L.declared) + '</div>' + (() => { const e = app.lotEstimate ? app.lotEstimate(L.sample || L.declared) : null; return e == null ? '' : '<div class="cd est' + (e < L.ask ? ' bad' : '') + '" title="What your line as it stands would make of this mix per tonne, after power and wear, before the price">Your line: ~' + app.fmtMoney(Math.max(0, e)) + '/t against ' + app.fmtMoney(L.ask) + '/t asked' + (e < L.ask ? ' (a loss as it stands)' : '') + '</div>'; })() +
           (L.sample ? '<div class="cd sampled">Sampled: ' + compText(L.sample) + compBar(L.sample) + '</div>' : '') +

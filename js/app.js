@@ -1018,8 +1018,8 @@
       S.owned = new Set(STARTER_MACHINES.concat((d.owned || []).filter((m) => MACHINES[m])));
       // units: saved counts, or (older saves) as many as the saved line already uses, and at least one per type owned
       S.units = {}; S.owned.forEach((m) => { S.units[m] = 1; }); S.line.forEach((n) => { if (S.owned.has(n.m)) S.units[n.m] = Math.max(S.units[n.m], S.line.filter((x) => x.m === n.m).length); });
-      if (d.units && typeof d.units === 'object') for (const m in d.units) if (S.owned.has(m)) S.units[m] = clamp(Math.floor(+d.units[m] || 1), 1, 99);
-      S.shelf = {}; for (const m in (d.shelf || {})) if (MACHINES[m] && Array.isArray(d.shelf[m])) S.shelf[m] = d.shelf[m].slice(0, 99).map((u) => ({ wear: clamp(+(u && u.wear) || 0, 0, 1), autoService: !!(u && u.autoService) }));
+      if (d.units && typeof d.units === 'object') for (const m in d.units) if (S.owned.has(m)) S.units[m] = clamp(Math.floor(+d.units[m] || 1), 1, 10000);   // #340: no unit is lost on reload (a big hall holds far more than 99 of a small machine)
+      S.shelf = {}; for (const m in (d.shelf || {})) if (MACHINES[m] && Array.isArray(d.shelf[m])) S.shelf[m] = d.shelf[m].slice(0, 10000).map((u) => ({ wear: clamp(+(u && u.wear) || 0, 0, 1), autoService: !!(u && u.autoService) }));
       S.levels = {}; for (const k in (d.levels || {})) if (MACHINES[k]) S.levels[k] = clamp(Math.floor(+d.levels[k] || 0), 0, LEVEL_MAX);
       S.plant = { logistics: 0, power: 0, market: 0, nitrogen: 0 }; for (const k in PLANT_UPGRADES) if (d.plant && isFinite(+d.plant[k])) S.plant[k] = clamp(Math.floor(+d.plant[k]), 0, PLANT_UPGRADES[k].costs.length);
       S.speed = [1, 10, 60].includes(+d.speed) ? +d.speed : 1; S.muted = !!d.muted; S.clock = +d.clock || 0;

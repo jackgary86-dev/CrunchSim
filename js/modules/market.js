@@ -208,6 +208,7 @@
 
     function onBatchComplete(p) {
       const r = p && p.r; if (!countsAsRound(r, p && p.why)) return;
+      if (p && !p.perMat && CS.Sim && CS.Sim.prices) p.perMat = Object.assign({}, CS.Sim.prices.perMat || {});   // #339: the factors this batch's bins were valued at, kept before the round steps
       step(live, clockHour());
       applyToSim(live);
       logRound();

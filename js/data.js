@@ -711,7 +711,7 @@
     ln2farm: { name: 'Nitrogen tank farm', icon: '🧊', desc: 'Bulk liquid nitrogen deliveries', unit: '× LN2 price', levels: [1.0, 0.85, 0.70], costs: [10000, 35000] }
   };
   // Rank is read from net worth: bank plus what the plant would sell for.
-  const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [500000, 'Processor'], [2500000, 'Plant operator'], [12000000, 'Industrial group'], [60000000, 'Mega-plant']];   // balance pass #12: roughly 10 / 25 / 45 / 80 / 140 batches
+  const RANKS = [[0, 'Scrapyard'], [120000, 'Recycler'], [500000, 'Processor'], [2500000, 'Plant operator'], [12000000, 'Industrial group'], [60000000, 'Mega-plant']];   // balance pass #12: roughly 10 / 25 / 45 / 80 / 140 batches. #344: the advice follower reaches Industrial group in ~160-245 and Mega-plant in ~240-345 with the $1M and $10M lot tiers (it was ~400 and ~1,500)
 
   /* ---------------- SOURCES ---------------- */
   const SOURCES = [

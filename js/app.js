@@ -61,9 +61,10 @@
       if (!box.csWaitHooked) { box.csWaitHooked = true; box.addEventListener('focusout', () => setTimeout(() => { const w = box.csWait; if (w && box.contains(document.activeElement) !== true) { box.csWait = null; w(); } }, 0)); }
       box.csWait = build; return;
     }
-    const i = Array.prototype.indexOf.call(box.querySelectorAll(FOCUSABLES), a), txt = a.textContent;
+    // #330: match the rebuilt control on its stable data-focus-key (row + role); an unkeyed one only on a unique non-empty tag+type+text; never by index (a gone row must not hand focus, and the next Enter, to its neighbour)
+    const fk = (x) => { const v = x && (x.getAttribute ? x.getAttribute('data-focus-key') : x.dataset && x.dataset.focusKey); return typeof v === 'string' ? v : ''; }, key = fk(a), txt = a.textContent || '';
     box.csWait = null; build();
-    const now = Array.from(box.querySelectorAll(FOCUSABLES)), b = now.find((x) => x.tagName === a.tagName && x.textContent === txt) || now[i];
+    const now = Array.from(box.querySelectorAll(FOCUSABLES)), same = key ? now.filter((x) => fk(x) === key) : txt ? now.filter((x) => !fk(x) && x.tagName === a.tagName && x.type === a.type && x.textContent === txt) : [], b = same.length === 1 ? same[0] : null;
     if (b && !b.disabled && b.focus) b.focus({ preventScroll: true });
   }
   const API = {
@@ -469,7 +470,7 @@
     for (const key in PLANT_UPGRADES) {
       const U = PLANT_UPGRADES[key], lvl = S.plant[key], maxed = lvl >= U.costs.length;
       const row = el('div', 'urow', '<span class="ic">' + U.icon + '</span><span><div class="nm">' + esc(U.name) + ' <span class="small">LV ' + lvl + '</span></div><div class="cur">' + esc(U.desc) + ' · now <b>' + esc(fmtPlant(key)) + '</b>' + (maxed ? '' : ' → ' + esc(fmtPlantVal(key, U.levels[lvl + 1]))) + '</div></span>');
-      const b = document.createElement('button'); b.type = 'button';
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.focusKey = 'plant:' + key;   // #330
       if (maxed) { b.textContent = 'MAX'; b.className = 'buy max'; b.disabled = true; }
       else { b.textContent = fmtMoney(U.costs[lvl]); b.className = 'buy' + (S.money < U.costs[lvl] ? ' poor' : ''); b.addEventListener('click', () => { if (buyPlant(key)) markDirty(true); else renderBank(); }); }
       row.appendChild(b); pu.appendChild(row);
@@ -633,6 +634,7 @@
       const where = p.ms.length > 1 ? 'on ' + from + ', then the second on its ' + p.port2.toUpperCase() : 'on ' + from;
       const row = el('div', 'urow', '<span class="ic ok">&#9650;</span><span><div class="nm">' + esc(name) + ' <b class="ok">+' + fmtMoney(p.gain) + '/t</b></div><div class="cur">' + esc(where) + ' · pays back in ' + fmtNum(Math.ceil(price / p.gain), 0) + ' t</div></span>');
       const b = document.createElement('button'); b.type = 'button'; b.textContent = 'BUY & PLACE ' + fmtMoney(price); b.className = 'buy' + (S.money < price ? ' poor' : ''); b.title = p.ms.length > 1 ? 'Buy both and add them to the line' : 'Buy it and add it to the line';
+      b.dataset.focusKey = 'buy:' + p.ms.join('+') + '@' + p.src.uid + '/' + p.src.port;   // #330: a bought pick's row is gone, so focus is not handed to the next pick
       b.addEventListener('click', () => buyAndAdd(p));
       row.appendChild(b); box.appendChild(row);
     });

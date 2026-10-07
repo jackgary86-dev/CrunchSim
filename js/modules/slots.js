@@ -34,7 +34,7 @@
   /* ======================= page integration ======================= */
   function start() {
     const API = CS.app; if (!API || API.slotsStarted) return; API.slotsStarted = true;
-    let owned = START, panel = null;
+    let owned = START, panel = null, trial = 0;   // #331: trial: extra slots NEXT STEP pretends to own while it asks NEXT PURCHASE what a slot would let in
     function buy() {
       const p = nextPrice(owned); if (!p) return;
       if (!API.spend(p, 'Sorter slot ' + (owned + 1))) { render(); return; }
@@ -51,7 +51,7 @@
       const used = sortersIn(API.S.line), p = nextPrice(owned);
       let pips = ''; for (let k = 1; k <= MAX; k++) pips += '<i class="' + (k <= used ? 'used' : k <= owned ? 'free' : 'locked') + '"></i>';
       const row = API.el('div', 'urow', '<span class="ic">&#9636;</span><span><div class="nm">Sorter slots <b>' + used + ' / ' + owned + '</b> <span class="small">in use / owned, ' + MAX + ' at most</span></div><div class="slot-pips">' + pips + '</div><div class="cur">' + (p ? 'Slot ' + (owned + 1) + ' adds room for one more sorter.' : 'The sorting hall is full size.') + '</div></span>');
-      const b = document.createElement('button'); b.type = 'button';
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.focusKey = 'slot-buy';   // #330
       if (!p) { b.textContent = 'MAX'; b.className = 'buy max'; b.disabled = true; }
       else { b.textContent = API.fmtMoney(p); b.className = 'buy' + (API.S.money < p ? ' poor' : ''); b.title = 'Buy sorter slot ' + (owned + 1); b.addEventListener('click', buy); }
       row.appendChild(b); body.appendChild(row);
@@ -61,7 +61,7 @@
     API.on('save', () => ({ slots: { owned } }));
     API.on('assetValue', (q) => { if (q) q.value += assetValue(owned); });
     API.on('newgame', () => { owned = START; render(); });
-    API.on('veto:addMachine', (p) => (p ? addVeto(API.S.line, p.m, owned, p.pending) : ''));
+    API.on('veto:addMachine', (p) => (p ? addVeto(API.S.line, p.m, Math.min(MAX, owned + trial), p.pending) : ''));
     API.on('veto:applyLine', (p) => (p ? lineVeto(p.nodes, owned, p.name) : ''));
     API.on('boot', () => {
       panel = API.addPanel('left', 'slots-panel', 'Sorting hall', 'bank-panel');
@@ -69,7 +69,7 @@
       render();
     });
     API.on('render', render);
-    CS.Slots.live = { owned: () => owned, used: () => sortersIn(API.S.line), next: () => nextPrice(owned), buy };
+    CS.Slots.live = { owned: () => Math.min(MAX, owned + trial), used: () => sortersIn(API.S.line), next: () => nextPrice(owned), buy, trial: (k) => { trial = Math.max(0, k | 0); } };
   }
   if (CS.app) start();
   else if (typeof document !== 'undefined' && document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

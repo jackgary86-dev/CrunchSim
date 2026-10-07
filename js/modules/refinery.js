@@ -120,7 +120,7 @@
       LEVELS.slice(1).forEach((L, i) => {
         const l = i + 1, have = level >= l;
         const row = API.el('div', 'urow', '<span class="ic">' + (l === 1 ? '&#9832;' : '&#9733;') + '</span><span><div class="nm">' + API.esc(L.name) + (have ? ' <span class="small">BUILT</span>' : '') + '</div><div class="cur">' + API.esc(L.desc) + '</div></span>');
-        const b = document.createElement('button'); b.type = 'button';
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.focusKey = 'refinery:' + l;   // #330
         if (have) { b.textContent = 'BUILT'; b.className = 'buy max'; b.disabled = true; }
         else if (l > level + 1) { b.textContent = API.fmtMoney(L.cost); b.className = 'buy poor'; b.disabled = true; b.title = 'Build the ' + LEVELS[l - 1].name.toLowerCase() + ' first'; }
         else { b.textContent = API.fmtMoney(L.cost); b.className = 'buy' + (API.S.money < L.cost ? ' poor' : ''); b.addEventListener('click', buy); }

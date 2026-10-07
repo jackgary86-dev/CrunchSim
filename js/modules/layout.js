@@ -25,13 +25,13 @@
     });
     return { clean, misc };
   }
-  /* what RE-RUN would load: the bucket's blend as fractions, and whole tonnes capped by the batch limit and the stock */
+  /* what RE-RUN would load: the bucket's blend as fractions, and all of it when it fits the batch limit, else the limit */
   function rerunPlan(stock, mats, cap) {
     const comp = {}, sizes = {}; let tot = 0;
     mats.forEach((m) => { const e = stock && stock[m], t = e ? e.t : 0; if (t > 0) { comp[m] = t; tot += t; if (e.p80 > 0) sizes[m] = e.p80; } });
     if (tot < 1) return { error: 'small', tot };
     for (const m in comp) comp[m] /= tot;
-    return { comp, sizes, tot, tons: Math.max(1, Math.min(Math.floor(tot), cap)) };   // sizes: the recorded p80 of each material (#41)
+    return { comp, sizes, tot, tons: tot <= cap ? Math.round(tot * 1000) / 1000 : Math.floor(cap) };   // sizes: the recorded p80 of each material (#41); #350: a bucket that fits one batch runs whole
   }
   /* where a re-run bucket goes in: the first station that is not a shredder or crusher; null (the head feed, station 1)
    * when that is station 1 or the line is all size reduction (#42) */
@@ -505,6 +505,12 @@
   }
   function binPic(c) { const e = Object.entries(c || {}).filter((x) => x[1] > 0).sort((a, b) => a[1] - b[1]); return '<div class="lc-bin"><div class="lc-fill">' + e.map((x) => '<i style="flex:' + x[1].toFixed(4) + ';background:' + MATERIALS[x[0]].color + '"></i>').join('') + '</div></div>'; }
   /* what to do when nothing is loaded: one clear action, by mode */
+  /* #349: the board as it is: its lot count and tier range (the $1M and $10M tiers open with rank) */
+  function boardLine() {
+    const A = CS.Auction && CS.Auction.live, b = A ? A.board() : [], T = b.map((L) => L.tier).filter((t) => t != null);
+    if (!b.length) return 'The board is empty until the next refresh.';
+    return b.length + ' lot' + (b.length > 1 ? 's wait' : ' waits') + ' on the board' + (T.length ? ', from ' + CS.Auction.tierLabel(Math.min.apply(null, T)) + ' to ' + CS.Auction.tierLabel(Math.max.apply(null, T)) : '') + '.';
+  }
   function nextAction() {
     const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0, RL = CS.Round && CS.Round.live;
     if (S.mode === 'rivals' && RL) {
@@ -515,7 +521,7 @@
       const st = RL.state();
       return { label: RL.canStart() ? (st.n ? 'NEXT AUCTION ROUND' : 'START THE MATCH') : 'OPEN THE AUCTION', sub: 'Material comes only from bins you win at auction, or your MISC bin in a round you win nothing.', go: () => showDrawer('auction') };
     }
-    return { label: 'BUY A LOT', sub: 'Material comes only from the auction or your MISC bucket. Six lots wait on the board, from $1k to $100k.' + (mt >= 1 ? ' Or RE-RUN your MISC bucket: ' + fmtW(mt) + ' of mixed material is waiting.' : ''), go: () => showDrawer('auction') };
+    return { label: 'BUY A LOT', sub: 'Material comes only from the auction or your MISC bucket. ' + boardLine() + (mt >= 1 ? ' Or RE-RUN your MISC bucket: ' + fmtW(mt) + ' of mixed material is waiting.' : ''), go: () => showDrawer('auction') };
   }
   /* #135: the one next step, decided in one place for every state: the bottom note and the NEXT STEP card both show it */
   let npCache = { at: 0, key: '', v: null };
@@ -578,8 +584,10 @@
   }
   function nextStep() {
     const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0;
+    const lotOn = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();
+    if (!S.run && lotOn) return { title: 'RUNNING', label: 'STOP THE LOT', sub: 'The next batch of the lot starts in a moment.', go: () => CS.Autorun.live.finish('stopped by you'), quiet: true };   // #352: between a lot's own batches
     if (S.run) {
-      const lot = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();
+      const lot = lotOn;
       return { title: 'RUNNING', label: lot ? 'STOP THE LOT' : 'STOP', sub: fmtW(S.run.total - S.run.done) + ' to go in this batch' + (lot ? ', then the rest of the lot' : '') + '.', go: () => $('#btn-run').click(), quiet: true };
     }
     const stock0 = I && I.stock ? I.stock() : {};
@@ -612,6 +620,8 @@
     const stock = I && I.stock ? I.stock() : {};
     let best = null; for (const m in stock) { const v = I.quote ? I.quote(m) : 0; if (stock[m].t > 0.05 && v > 0 && (!best || v > best.v)) best = { m, v }; }
     if (S.mode === 'rivals' && !(best && best.v >= 50)) { const a = nextAction(); return Object.assign({ title: 'NEXT' }, a); }
+    { const RF = CS.Refinery && CS.Refinery.live, q = best && RF && RF.level() ? RF.quote(best.m) : null;   // #353: when refining pays more than selling, say so
+      if (q && q.ok && q.gain > 0 && q.net >= 50) return { title: 'REFINE', label: 'REFINE ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(q.net), sub: 'Cast into ' + q.form + ' it pays ' + app.fmtMoney(q.gain) + ' more than selling it as scrap.', go: () => { RF.refine(best.m); renderFlow(true); } }; }
     if (best && best.v >= 50) return { title: 'SELL', label: 'SELL ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(best.v), sub: 'A pure bucket is money waiting: ' + fmtW(stock[best.m].t) + ' of ' + MATERIALS[best.m].name.toLowerCase() + '.', go: () => { if (I.sellMat) I.sellMat(best.m); } };
     const p = topPurchase();
     const A0 = CS.Auction && CS.Auction.live, board0 = A0 ? A0.board() : [], lotPrice = (L) => (A0 && A0.priceOf ? A0.priceOf(L) : L.ask) * L.tons;
@@ -853,7 +863,7 @@
     app.markDirty(true);
     const k = entry == null ? 0 : S.line.findIndex((n) => n.uid === entry);
     offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === (entry == null ? S.line[0].uid : entry)));   // page the plant screen to the entry station
-    app.log('Loaded the ' + label + ' bucket as the feed: ' + tons + ' t per batch, no feed cost, entering at station ' + (k + 1) + '.' + (tot > tons ? ' The rest stays in the bucket (batch limit ' + cap + ' t).' : '') + ' Pick another entry station above the plant if you like, then press RUN BATCH.', 'ok');
+    app.log('Loaded the ' + label + ' bucket as the feed: ' + tons + ' t per batch, no feed cost, entering at station ' + (k + 1) + '.' + (tot > tons + 1e-6 ? ' The rest stays in the bucket (batch limit ' + cap + ' t).' : '') + ' Pick another entry station above the plant if you like, then press RUN BATCH.', 'ok');
     renderFlow(true);
   }
   function setEntry(uid) {
@@ -1169,7 +1179,7 @@
     box.appendChild(bucketsCol());
     $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + MACHINE_COLS >= seq.length;
     const SL = CS.Slots && CS.Slots.live;
-    $('#flow-count').textContent = S.line.length + ' machine' + (S.line.length === 1 ? '' : 's') + (SL ? ' · sorters ' + SL.used() + ' / ' + SL.owned() + ' slots' : '') + (S.line.length > MACHINE_COLS ? ' · showing ' + (offset + 1) + '-' + Math.min(S.line.length, offset + MACHINE_COLS) : '');
+    $('#flow-count').textContent = S.line.length + ' machine' + (S.line.length === 1 ? '' : 's') + (SL ? ' · sorters ' + SL.used() + ' / ' + SL.owned() + ' slots' : '') + (seq.length > MACHINE_COLS ? (() => { const st = seq.slice(offset, offset + MACHINE_COLS).filter((x) => x.n).map((x) => x.i + 1); return st.length ? ' · showing station' + (st.length > 1 ? 's ' + st[0] + '-' + st[st.length - 1] : ' ' + st[0]) : ''; })() : '');   // #351: the stations on screen, not columns (the BIN and + are columns too)
   }
 
   function init() {

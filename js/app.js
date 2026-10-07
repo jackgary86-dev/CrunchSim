@@ -1072,7 +1072,7 @@
     $('#log').innerHTML = '';
     applyLinePreset('starter');
     lastRankIdx = rankOf(netWorth()).idx;
-    log('New game. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Grind the junk, sort it, sell only what is pure.', 'ok');
+    if (S.mode !== 'rivals') log('New game. You own a hammermill shredder, a magnetic drum and ' + fmtMoney(START_BANK) + '. Grind the junk, sort it, sell only what is pure.', 'ok');   // #348: a Rivals match logs its own car line
     API.emit('newgame'); renderAll(); save();
     const b = $('#btn-newgame'); resetArmed = false; b.textContent = RESTART_LABEL; b.classList.remove('bad');
     // #174: a new game opens on the guided first lot, not the help (which stays one click away on ?)

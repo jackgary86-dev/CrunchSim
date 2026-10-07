@@ -57,6 +57,8 @@
     Object.keys(reg).forEach((id) => { if (reg[id].el.isConnected) reg[id].el.inert = under.indexOf(id) >= 0; });
   }
   function focusIn(el) {
+    // #347: the station view takes focus itself, not its CLOSE button, so Space runs and stops the batch there (Escape closes)
+    if (el.id === 'station') { if (!el.hasAttribute('tabindex')) el.tabIndex = -1; el.focus(); return; }
     const t = el.querySelector(FOCUSABLE);
     if (t) t.focus(); else { if (!el.hasAttribute('tabindex')) el.tabIndex = -1; el.focus(); }
   }

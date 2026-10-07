@@ -67,16 +67,20 @@
       const im = app.el('button', null, 'IMPORT SAVE'); im.type = 'button';
       row.appendChild(ex); row.appendChild(im); body.appendChild(row);
       const box = app.el('div', 'sv-box hidden'); body.appendChild(box);
+      // #346: a shown code is the game as it was: it goes away once the game moves on, and COPY / DOWNLOAD take a fresh one
+      const dropExport = () => { const t = box.querySelector('textarea[readonly]'); if (t) { box.classList.add('hidden'); box.innerHTML = ''; } };
+      ['batchComplete', 'sale', 'modechange', 'income', 'lotBought'].forEach((e) => app.on(e, dropExport));
       ex.addEventListener('click', () => {
-        const code = exportCode();
+        let code = exportCode();
+        const fresh = () => { code = exportCode(); const t = box.querySelector('textarea'); if (t) t.value = code; return code; };
         box.classList.remove('hidden');
         // a hosted viewer's frame may not allow downloads: offer the file only on a normal page (GitHub Pages, local)
         let top = false; try { top = window.top === window; } catch (e) { top = false; }
         box.innerHTML = '<textarea class="sv-code" readonly rows="4"></textarea><div class="sv-row"><button type="button" class="sv-copy">COPY</button>' + (top ? '<button type="button" class="sv-dl">DOWNLOAD FILE</button>' : '<span class="small">Copy the code and keep it somewhere safe.</span>') + '</div>';
         const ta = box.querySelector('textarea'); ta.value = code; ta.select();
-        box.querySelector('.sv-copy').addEventListener('click', () => { ta.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(() => app.log('Save code copied.', 'ok'), () => document.execCommand('copy')); } catch (e) { document.execCommand('copy'); } });
+        box.querySelector('.sv-copy').addEventListener('click', () => { fresh(); ta.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(() => app.log('Save code copied.', 'ok'), () => document.execCommand('copy')); } catch (e) { document.execCommand('copy'); } });
         const dl = box.querySelector('.sv-dl'); if (dl) dl.addEventListener('click', () => {
-          const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([code], { type: 'text/plain' })); a.download = 'crunchsim-save.txt';
+          fresh(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([code], { type: 'text/plain' })); a.download = 'crunchsim-save.txt';
           document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
         });
       });

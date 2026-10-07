@@ -51,7 +51,7 @@
       const sc = document.getElementById('scorecard');
       if (sc) { sc.innerHTML = body; sc.classList.remove('hidden'); }
       if (why === 'the lot is used up' && CS.Milestones && CS.Milestones.live) CS.Milestones.live.lotRun();
-      app.log('Lot #' + r.lot + ': ' + r.batches + ' batches, ' + app.fmtNum(r.t, 1) + ' t, ' + (r.net - r.paid >= 0 ? '+' : '') + app.fmtMoney(r.net - r.paid) + ' after the lot price (' + why + ').', r.net - r.paid >= 0 ? 'ok' : 'warn');
+      app.log('Lot #' + r.lot + ': ' + r.batches + ' batch' + (r.batches === 1 ? '' : 'es') + ', ' + app.fmtNum(r.t, 1) + ' t, ' + (r.net - r.paid >= 0 ? '+' : '') + app.fmtMoney(r.net - r.paid) + ' after the lot price (' + why + ').', r.net - r.paid >= 0 ? 'ok' : 'warn');
     }
     app.on('batchComplete', (p) => {
       if (!run || !p || !p.r) return;

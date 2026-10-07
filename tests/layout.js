@@ -28,7 +28,8 @@ check(L.splitBuckets({}, MAT_ORDER).clean.length === 0 && L.splitBuckets(null, M
 /* ---- RE-RUN plan ---- */
 let p = L.rerunPlan(stock, ['rubber', 'castiron'], 30);
 check(!p.error && near(p.comp.rubber + p.comp.castiron, 1) && near(p.comp.rubber, 1.1 / 2.1), 'MISC re-runs as its own blend, as fractions');
-check(p.tons === 2 && p.tons <= p.tot, 'whole tonnes, never more than the bucket holds');
+check(near(p.tons, 2.1) && p.tons <= p.tot + 1e-9, 'a bucket that fits one batch runs whole (#350), never more than it holds');
+check(L.rerunPlan({ steel: { t: 75, p80: 20 } }, ['steel'], 30).tons === 30, 'a bigger bucket runs a full batch and keeps the rest');
 p = L.rerunPlan(stock, ['steel'], 5);
 check(p.tons === 5 && near(p.comp.steel, 1), 'the batch limit caps a big bucket; the rest stays');
 check(L.rerunPlan(stock, ['glass'], 30).error === 'small', 'a bucket under 1 t is too small to run');

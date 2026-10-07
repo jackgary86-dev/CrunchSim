@@ -48,7 +48,7 @@
       if (CS.Audio && CS.Audio.fx) CS.Audio.fx('fanfare');
     }
     function check() {
-      if (!ready) return;
+      if (!ready || (app.S && app.S.mode === 'rivals')) return;   // #348: Rivals has no ranks and no milestones panel
       const s = snapshot();
       st.miscMax = Math.max(st.miscMax, s.misc); s.miscMax = st.miscMax;
       if (s.rank > st.rankSeen) { if (st.rankSeen || s.rank) toast('NEW RANK', app.rankOf(app.netWorth()).name); st.rankSeen = s.rank; }

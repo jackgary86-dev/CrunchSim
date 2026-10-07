@@ -31,7 +31,7 @@
     { id: 'gels', name: 'Gels & liquids', feeds: ['gel', 'lab'], color: '#5fa8d3' }
   ];
   const PLAYERS = ['ironside', 'magpie', 'redline'];   // the three rival yards at the table
-  const OPEN = 0.6, STEP = 0.05, STEP_MIN = 1, MIN_SIZE = 1500, BIN_SPREAD = [0.6, 1.5];
+  const OPEN = 0.6, STEP = 0.05, STEP_MIN = 1, MIN_SIZE = 1500, BIN_SPREAD = [0.6, 1.5], BIN_BATCHES = 3;   // #327: a bin is at most three batches of your plant
 
   function roundSize(money, stockValue) { return Math.max(MIN_SIZE, Math.round(0.5 * Math.max(0, money || 0) + Math.max(0, stockValue || 0))); }
   function nextBid(price, opening) { return price > 0 ? Math.max(price + STEP_MIN, Math.ceil(price * (1 + STEP))) : opening; }
@@ -46,9 +46,11 @@
       // a feed fits the round when its budget buys at least 0.1 t at the fair price (gold pins wait for the big rounds)
       let feeds = cat.feeds.filter((f) => FEEDS[f] && A.worthOf(FEEDS[f].comp) > 1 && budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) >= 0.1);
       if (!feeds.length) feeds = cat.feeds.filter((f) => FEEDS[f]).sort((a, b) => A.worthOf(FEEDS[a].comp) - A.worthOf(FEEDS[b].comp)).slice(0, 1);
+      { const fit = feeds.filter((f) => budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) <= BIN_BATCHES * Math.max(1, opts.limit || 30)); if (fit.length) feeds = fit; }   // #327: the richer scrap of the category when the cheap kind would fill hundreds of batches
       const L = A.genLot(rng, { feeds: [feeds[Math.floor(rng() * feeds.length)]], budget, market: opts.market || {}, limit: opts.limit || 30, clockH: opts.clockH || 0, id: (opts.id0 || 1) + k });
       const x = budget / L.ask;   // the bin is sized to the round at its asking price, down to 0.1 t for rich scrap
-      L.tons = x < 10 ? Math.max(0.1, Math.round(x * 10) / 10) : Math.round(Math.min(x, 4000));
+      const cap = BIN_BATCHES * Math.max(1, opts.limit || 30);   // #327: rounds keep pace: a bin runs in a few batches, not hundreds
+      L.tons = x < 10 ? Math.max(0.1, Math.round(x * 10) / 10) : Math.round(Math.min(x, cap));
       L.cat = cat.id; L.catName = cat.name; L.opening = Math.max(1, Math.round(L.ask * OPEN));
       return L;
     });
@@ -100,7 +102,7 @@
   /* #171: a yard buys on trade credit: a won bin may take the bank down to -$5,000 (repaid from sales; it counts against worth),
    * so one bad bin does not lock a player out of the rest of the match */
   const CREDIT = 5000;
-  CS.Round = { CREDIT, CATEGORIES, PLAYERS, OPEN, STEP, STEP_MIN, MIN_SIZE, BIN_SPREAD, roundSize, nextBid, makeCards, rivalPurse, rivalMax, settleRivals,
+  CS.Round = { CREDIT, CATEGORIES, PLAYERS, OPEN, STEP, STEP_MIN, MIN_SIZE, BIN_SPREAD, BIN_BATCHES, roundSize, nextBid, makeCards, rivalPurse, rivalMax, settleRivals,
     MATCH_LENGTHS, MATCH_DEFAULT, YIELD, SPECIAL, PROCESS, MISC_RUN, COLORS, fullValue, rivalYield, rivalProfit, purseScale, machinesOf, foldReason, standings };
 
   /* ======================= page integration ======================= */
@@ -403,7 +405,9 @@
       /* the match table for other panels: every seat with its worth, bins and tonnes, ranked (#111) */
       table: () => { const m = M_(); return standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, name: nameOf(id), label: id === 'you' ? 'you' : rival(id).label, worth: worthOf(id), bins: id === 'you' ? m.you.bins : recOf(id).bins, t: id === 'you' ? m.you.t : recOf(id).t }))); },
       round: () => ({ n: st.n, length: M_().length, over: !!M_().over }),
-      useMisc: () => { st.misc = false; app.save(); }
+      useMisc: () => { st.misc = false; app.save(); },
+      ending: () => !!M_().ending && !M_().over,   // #325: the last round is waiting for your MISC batch
+      endMatch: () => { const ok = checkEnd(true); if (ok) render(); return ok; }
     };
   }
   if (CS.app) start();

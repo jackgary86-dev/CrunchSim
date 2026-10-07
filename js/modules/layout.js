@@ -502,6 +502,8 @@
     const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0, RL = CS.Round && CS.Round.live;
     if (S.mode === 'rivals' && RL) {
       if (RL.round().over) return { label: 'SEE THE STANDINGS', sub: 'The match is over.', go: () => showDrawer('auction') };   // #305: before the MISC step
+      const endNow = RL.ending && RL.ending() && !S.run && !(RL.miscAllowed() && mt >= 1 && lineSortsMisc());
+      if (endNow) return { label: 'END THE MATCH', sub: 'The last round is played and your line cannot pull anything pure out of your MISC: the standings can freeze now.', go: () => { if (RL.endMatch()) showDrawer('auction'); } };   // #325
       if (RL.miscAllowed() && mt >= 1 && lineSortsMisc()) return { label: 'RUN YOUR MISC', sub: 'No bin for you this round: ' + fmtW(mt) + ' of mixed material is waiting.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
       const st = RL.state();
       return { label: RL.canStart() ? (st.n ? 'NEXT AUCTION ROUND' : 'START THE MATCH') : 'OPEN THE AUCTION', sub: 'Material comes only from bins you win at auction, or your MISC bin in a round you win nothing.', go: () => showDrawer('auction') };
@@ -518,16 +520,39 @@
   }
   /* #169: does the line, as it stands, pull anything pure out of the MISC bucket? (cached on the line and the pile) */
   let sortCache = { key: '', v: false };
+  /* #326: the upgrade that lets the next sorter in, when floor space or sorter slots are what block it */
+  function blockedUpgrade() {
+    const S = app.S, U = CS.PLANT_UPGRADES, SL = CS.Slots && CS.Slots.live;
+    const why = ['sinkfloat', 'eddy', 'air', 'screen'].map((m) => app.veto('addMachine', { m })).find((w) => w) || '';
+    if (/floor|hall/i.test(why) && U && U.room && S.plant.room < U.room.costs.length) {
+      const lvl = S.plant.room, cost = U.room.costs[lvl];
+      return { title: 'GROW', label: 'BUY A BIGGER PLANT HALL ' + app.fmtMoney(cost), sub: 'The next machine has no floor space: the Plant hall goes from ' + U.room.levels[lvl] + ' to ' + U.room.levels[lvl + 1] + ' m².', cost, go: () => app.buyPlant('room') };
+    }
+    if (/slot/i.test(why) && SL && SL.next()) {
+      const cost = SL.next();
+      return { title: 'GROW', label: 'BUY A SORTER SLOT ' + app.fmtMoney(cost), sub: 'Every sorter slot is in use: a new one lets the plant hold ' + (SL.owned() + 1) + ' sorters.', cost, go: () => SL.buy() };
+    }
+    return null;
+  }
+  /* #326: bigger batches once the lots on the board are more than one and a half batches */
+  function logisticsStep(board, spare) {
+    const S = app.S, U = CS.PLANT_UPGRADES && CS.PLANT_UPGRADES.logistics; if (!U || S.run || S.plant.logistics >= U.costs.length) return null;
+    const lvl = S.plant.logistics, cost = U.costs[lvl], now = app.plantValue ? app.plantValue('logistics') : U.levels[lvl];
+    const big = (board || []).filter((L) => L.tons > 1.5 * now).length;
+    if (big < 2 || cost > spare) return null;
+    return { title: 'GROW', label: 'BIGGER BATCHES ' + app.fmtMoney(cost), sub: big + ' lots on the board are well over your ' + fmtW(now) + ' batch: Feed logistics takes ' + fmtW(now + U.levels[lvl + 1] - U.levels[lvl]) + ' a batch.', cost, go: () => app.buyPlant('logistics') };
+  }
   function lineSortsMisc() {
     const S = app.S, I = CS.Inventory, misc = I && I.misc ? I.misc() : {};
     if (!S.line.length) return false;
     const plan = rerunPlan(misc, Object.keys(misc), 30); if (plan.error) return false;   // as a re-run would feed it: its own shred sizes
-    const key = S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src)).join() + '|' + Object.keys(plan.comp).map((m) => m + Math.round(plan.comp[m] * plan.tot)).join();
+    const key = S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src)).join() + '|' + Object.keys(plan.comp).map((m) => m + Math.round(plan.comp[m] * plan.tot * 1000) + '@' + (plan.sizes[m] || 0).toFixed(3)).join();   // #324: by the kilogram: a shrinking pile must not keep an old answer
     if (sortCache.key === key) return sortCache.v;
     let v = false;
     try {
       const ev = Sim.evalLine(S.line, plan.comp, { sizes: plan.sizes, entry: defaultEntry(S.line, MACHINES) });
-      v = ev.terminals.some((t) => { const st = Sim.binStats(t.stream.m, t.form); return st.sellable && st.total > 30; });   // over 3% of the feed comes out pure
+      let rev = 0; ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m, t.form); if (st.sellable && st.total > 30) rev += st.value; });   // over 3% of the feed comes out pure
+      v = rev >= 5;   // #324: and it pays for the re-run's power and rent (~$5 a tonne), or BUY A LOT is the better step
     } catch (e) { v = false; }
     sortCache = { key, v }; return v;
   }
@@ -567,6 +592,11 @@
       const price = app.pairPrice ? app.pairPrice(p) : 0;
       if (price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
+    // #326: the plant upgrades that unblock growth: a bigger hall or a sorter slot when the next machine has nowhere to go, and
+    // feed logistics once the lots on the board are well over a batch. They keep their cost in net worth; the next lot stays affordable.
+    const spare = S.money - (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest);
+    if (!p && S.mode !== 'rivals') { const up = blockedUpgrade(); if (up && up.cost <= spare) return up; }
+    if (S.mode !== 'rivals') { const lg = logisticsStep(board0, spare); if (lg) return lg; }
     if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const tn = tuneFor(mp.comp, 'your MISC pile', { sizes: mp.sizes, entry: defaultEntry(S.line, MACHINES) }); if (tn) return tn; } }
     if (mt >= 1 && lineSortsMisc()) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material: your line pulls something pure out of it.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
     const cap = app.plantValue ? app.plantValue('logistics') : 30, dq = I && I.dumpQuote ? I.dumpQuote() : null;

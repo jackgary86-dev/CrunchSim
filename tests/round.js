@@ -14,12 +14,13 @@ for (let seed = 1; seed <= 30; seed++) {
   const cards = R.makeCards(rng, size, { limit: 30 });
   if (cards.length !== 3 || new Set(cards.map((c) => c.cat)).size !== 3) distinct = false;
   cards.forEach((L) => {
-    const tot = L.ask * L.tons; if (L.tons > 0.15 && L.tons < 3999 && (tot < 0.4 * size || tot > 2 * size)) sized = false;
+    const tot = L.ask * L.tons; if (L.tons > 0.15 && L.tons < R.BIN_BATCHES * 30 - 0.5 && (tot < 0.4 * size || tot > 2 * size)) sized = false;   // a bin capped at three batches (#327) may be worth less
     const top = Math.max.apply(null, Object.values(L.declared)); if (L.cat !== 'mixed' && top < 0.25) heavy = false;   // a mixed skip is mixed by design
     if (!(L.opening > 0 && L.opening < L.ask)) opens = false;
   });
 }
 check(distinct, 'each round deals three bins from three different categories');
+{ let big = 0; for (let seed = 1; seed <= 30; seed++) R.makeCards(A.mulberry32(seed), 2000 + seed * 2000, { limit: 30 }).forEach((L) => { if (L.tons > R.BIN_BATCHES * 30) big++; }); check(big === 0, '#327: no bin is more than three batches of the plant (' + big + ' over)'); }
 check(sized, 'a bin is worth about the round size at its asking price (0.6-1.5x, with the lot generator\'s spread)');
 check(heavy, 'every bin but the mixed skip is heavy in one material (at least a quarter of it)');
 check(opens, 'bidding opens below the seller\'s ask');

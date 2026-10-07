@@ -87,7 +87,7 @@
       top = Math.max(12, Math.min(top, window.innerHeight - bh - 12));   // #302: always on screen, over the target if it must be
       Object.assign(box.style, { left: left + 'px', top: top + 'px', transform: 'none', width: bw + 'px' });
     }
-    app.on('sale', () => { sold++; if (g.on) show(); });
+    app.on('sale', () => { if (app.S.mode !== 'progress') return; sold++; if (g.on) show(); });   // #309: a Rivals sale does not finish a paused Progress guide's SELL step
     app.on('render', () => { if (g.on) show(); });
     app.on('batchComplete', () => { if (g.on) setTimeout(show, 50); });
     let acc = 0; app.on('tick', (p) => { if (!g.on) return; acc += (p && p.dt) || 0; if (acc > 0.4) { acc = 0; show(); } });

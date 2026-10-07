@@ -390,6 +390,7 @@
         ev.forEach((e) => { if (e.outbid === 'you') log('Outbid on lot #' + e.lot.id + ': ' + nameOf(e.by) + ' bids ' + money(e.perT) + '/t. BID again or let it go.', 'warn'); });
         redrawAuction();
       }
+      if (S() && S().mode === 'rivals') return changed;   // #307: Rivals has no job board, so no deliveries and no tenders
       // deliveries that are due
       settleJobs(st, h).forEach((d) => { changed = true; news(d.R.name + ' delivered ' + fnum(d.rj.job.tons, 1) + ' t of ' + MATERIALS[d.rj.job.mat].name.toLowerCase() + ' to ' + d.rj.job.client + (d.rj.slip ? ', late' : '') + '.'); });
       const L = jobsLive();

@@ -92,7 +92,7 @@ tools/stamp.js    node version of the index.html cache-bust stamp (no Python nee
 tests/            Node scripts that exercise the physics core and the game modules
 ```
 
-Run the checks with (`tests/app-env.js` is a shared DOM stub, not a test):
+Run the checks with (`tests/app-env.js` and `tests/browser-env.js` are shared DOM stubs, not tests):
 
 ```bash
 node tests/app-run.js
@@ -100,6 +100,7 @@ node tests/app-storage.js
 node tests/auction.js
 node tests/audio-idle.js
 node tests/blueprints.js
+node tests/boot-order.js
 node tests/cam-resize.js
 node tests/economics.js
 node tests/endgame.js
@@ -132,6 +133,7 @@ node tests/probe.js
 node tests/progression.js
 node tests/readme.js
 node tests/refinery.js
+node tests/rivals-flow.js
 node tests/rivals-match.js
 node tests/rivals.js
 node tests/round.js

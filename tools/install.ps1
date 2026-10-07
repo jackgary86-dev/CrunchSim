@@ -5,6 +5,9 @@
 #   tools\install.ps1 -Uninstall     remove the app and its shortcuts (your saves are kept)
 #   tools\install.ps1 -Uninstall -Purge   also delete the saves
 #
+# The setup package (python tools/package.py -> dist/CrunchSim-Setup.zip) has the same layout plus a cache\ folder with
+# three.js and the fonts, so it installs on a PC with no network; it also adds CrunchSim to Settings > Apps for uninstalling.
+#
 # What it does:
 #   - copies index.html, plant3d.html, gallery.html, css/ and js/ to %LOCALAPPDATA%\CrunchSim\app
 #   - downloads three.js and the two fonts once into the app folder (cached, so updates work offline)
@@ -22,10 +25,12 @@ $Cache = Join-Path $Root 'cache'
 $ProfileDir = Join-Path $Root 'profile'   # the browser profile: localStorage (your saves) lives here
 $Shell = New-Object -ComObject WScript.Shell
 $Links = @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'CrunchSim.lnk'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'CrunchSim.lnk'))
+$UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\CrunchSim'   # the entry in Settings > Apps (per user, no admin)
 
 if ($Uninstall) {
   $Links | ForEach-Object { if (Test-Path $_) { Remove-Item $_ -Force } }
   if (Test-Path $App) { Remove-Item $App -Recurse -Force }
+  if (Test-Path $UninstallKey) { Remove-Item $UninstallKey -Recurse -Force }
   if ($Purge -and (Test-Path $Root)) { Remove-Item $Root -Recurse -Force; Write-Host 'CrunchSim removed, saves included.' }
   else { Write-Host "CrunchSim removed. Your saves are kept in $ProfileDir (run with -Uninstall -Purge to delete them)." }
   return
@@ -52,6 +57,9 @@ if (Test-Path $App) { Remove-Item $App -Recurse -Force }
 New-Item -ItemType Directory -Force $App | Out-Null
 foreach ($f in 'index.html', 'plant3d.html', 'gallery.html') { Copy-Item (Join-Path $Repo $f) $App }
 foreach ($d in 'css', 'js') { Copy-Item (Join-Path $Repo $d) (Join-Path $App $d) -Recurse }
+# the setup package brings three.js and the fonts in cache\: seed the cache with them, so nothing needs downloading
+$Bundled = Join-Path $Repo 'cache'
+if (Test-Path $Bundled) { Get-ChildItem $Bundled -File | ForEach-Object { $t = Join-Path $Cache $_.Name; if (-not (Test-Path $t)) { Copy-Item $_.FullName $t } } }
 
 function Get-Cached([string]$url, [string]$name, [scriptblock]$valid) {
   # a file from the web, kept in the cache so a reinstall does not need the network. #293: $valid checks the content, so a
@@ -157,8 +165,21 @@ foreach ($l in $Links) {
   $s.Save()
 }
 
+# ---- Settings > Apps: an uninstall entry for this user, run by a copy of this script kept with the install ----
+try {
+  Copy-Item $PSCommandPath (Join-Path $Root 'install.ps1') -Force
+  $Version = if (Test-Path (Join-Path $Repo 'version.txt')) { (Get-Content (Join-Path $Repo 'version.txt') -TotalCount 1).Trim() } else { (Get-Date).ToString('yyyy.M.d') }
+  New-Item -Path $UninstallKey -Force | Out-Null
+  $props = @{
+    DisplayName = 'CrunchSim'; DisplayVersion = $Version; Publisher = 'CrunchSim'; DisplayIcon = $Icon; InstallLocation = $Root
+    UninstallString = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $Root 'install.ps1')`" -Uninstall"
+    NoModify = 1; NoRepair = 1
+  }
+  foreach ($k in $props.Keys) { New-ItemProperty -Path $UninstallKey -Name $k -Value $props[$k] -PropertyType $(if ($props[$k] -is [int]) { 'DWord' } else { 'String' }) -Force | Out-Null }
+} catch { Write-Warning ('Could not add CrunchSim to Settings > Apps: ' + $_.Exception.Message) }
+
 Write-Host ''
 Write-Host 'CrunchSim is installed. Open it from the Desktop or Start Menu shortcut.'
 Write-Host 'Saves from the website do not carry over by themselves: there use Settings > EXPORT SAVE, here IMPORT.'
-Write-Host 'To update: pull the new version and run install.cmd again (your saves are kept).'
+Write-Host 'To update: run the new install.cmd (or the new setup package). Your saves are kept. Uninstall from Settings > Apps.'
 if (-not $NoLaunch) { Start-Process -FilePath $Browser -ArgumentList $Flags }

@@ -110,6 +110,27 @@ const broken = Sim.buildLine(LINES.car); broken[2].src = { uid: 999999, port: 'p
 const bl = layout(broken);
 check(bl.nodes[2].src === 'feed' && bl.belts.some((b) => b.from === 'feed' && b.to.uid === broken[2].uid), 'an unknown source is treated as head feed');
 
+/* ---- #290: an Omniprocessor line: one bin per material plus rejects, every bin on the floor ---- */
+const omniDef = { name: 'Omni', feed: 'everything', nodes: [{ m: 'twin', s: { width: 60 }, src: 'feed' }, { m: 'omni', s: {}, src: '1:product' }] };
+const om = audit('Omniprocessor line', omniDef, 'everything');
+check(om.bins.every((b) => Number.isInteger(b.lane) && isFinite(b.z) && b.x < 100), 'every omni bin has a lane near the machine (' + om.bins.length + ' bins, furthest x ' + Math.max.apply(null, om.bins.map((b) => b.x)) + ' m)');
+check(new Set(om.bins.map((b) => b.slot + ',' + b.lane)).size === om.bins.length, 'no two omni bins share a cell');
+check(Plant3D.primaryPort(MACHINES.omni) === 'rejects' && Plant3D.portsOf(MACHINES.omni).indexOf('rejects') >= 0, "the omni's primary port is one it has");
+const omLine = Sim.buildLine(omniDef), omEv = Sim.evalLine(omLine, FEEDS.everything.comp), omNode = omLine[1], omInf = omEv.nodes[1];
+const never = () => 0.999999;   // dice that never reject
+check(['steel', 'copper', 'wood', 'glass'].every((m) => Plant3D.routePort(omNode, omInf, m, 50, never).port === m), 'a fragment leaves the omni down the chute of its own material');
+check(Plant3D.routePort(omNode, omInf, 'steel', 50, never).port in omEv.ports || omEv.terminals.some((t) => t.key === omNode.uid + ':steel'), 'that chute is a real port of the omni');
+check(Plant3D.routePort(Sim.buildLine(LINES.car)[0], Sim.evalLine(Sim.buildLine(LINES.car), FEEDS.elv.comp).nodes[0], 'steel', 50, never).port === 'product', 'an ordinary shredder still sends fragments to product');
+
+/* ---- #289: the floor prices furnace bins and draws power as the game does ---- */
+const fl = [Sim.makeNode('hammer'), Sim.makeNode('induction')]; fl[1].src = { uid: fl[0].uid, port: 'product' };
+const fev = Sim.evalLine(fl, { aluminum: 0.9, plastic: 0.1 }), fb = Plant3D.binsOf(fev);
+const ingot = fb.find((b) => b.port === 'product' && b.uid === fl[1].uid), loose = Sim.binStats(fev.terminals.find((t) => t.key === ingot.key).stream.m);
+check(ingot.st.form === 'ingot' && ingot.st.value > loose.value * 1.3, 'the furnace product is priced as ingot ($' + ingot.st.value.toFixed(0) + ' vs $' + loose.value.toFixed(0) + ' as loose scrap)');
+check(fb.some((b) => b.port === 'dross' && b.st.form === 'dross'), 'the dross bin is priced as dross');
+const hn = fev.nodes[0], big = 1e6;
+check(Math.abs(Plant3D.nodePower(hn, 0, big) - hn.M.prated) < 1e-9 && Math.abs(Plant3D.nodePower(hn, 3, big) - hn.M.prated * (1 + CS.LEVEL_FX.power * 3)) < 1e-9, 'a levelled machine draws up to its levelled rating, as in the game');
+
 // wheel zoom: one Firefox notch (3 lines) must zoom about as much as one Chrome notch (100 px), and pages more
 const { wheelZoom } = Plant3D;
 const chrome = wheelZoom(40, 100, 0), ff = wheelZoom(40, 3, 1), pg = wheelZoom(40, 1, 2);

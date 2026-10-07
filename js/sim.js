@@ -276,8 +276,9 @@
         return Math.min(0.98, Math.max(0.02, p));
       }
       case 'sinkfloat': {
-        const rho = D.state === 'liquid' ? 1.0 : D.density;
-        return 1 / (1 + Math.exp((rho - s.sg) / (0.05 * s.sg + 0.03)));
+        if (D.state === 'liquid') return 1;   // #288: free liquid joins the medium and leaves with the overflow, never in the sinks
+        // #288: clear water cuts sharply (plastic at 0.95 floats 84% at 1.0, was 65%); a heavy-media slurry (2+ g/cc) keeps its wider spread
+        return 1 / (1 + Math.exp((D.density - s.sg) / Math.min(0.05 * s.sg + 0.03, Math.max(0.03, 0.11 * s.sg - 0.09))));
       }
       case 'sensor': {
         // XRT / LIBS belt sorters classify every piece and eject the targets with air jets. Real units run at
@@ -534,18 +535,21 @@
   }
   /* mats: {materialId: psd}. form (optional): 'ingot' or 'dross' from a furnace; anything else is priced as loose scrap. */
   function binStats(mats, form) {
-    let total = 0; const groups = {}, perMat = {};
+    let total = 0, liquid = 0; const groups = {}, perMat = {}, wet = {};
     for (const mat in mats) {
       const m = sum(mats[mat]); if (m <= 0) continue;
-      total += m; const g = GROUP[mat] || mat; groups[g] = (groups[g] || 0) + m;
-      perMat[mat] = { mass: m, p80: percentile(mats[mat]) };
+      total += m; perMat[mat] = { mass: m, p80: percentile(mats[mat]) };
+      if (MATERIALS[mat] && MATERIALS[mat].state === 'liquid') { liquid += m; wet[mat] = m; continue; }   // #288: free liquid drains off a bin: it is weighed but never sets its purity
+      const g = GROUP[mat] || mat; groups[g] = (groups[g] || 0) + m;
     }
+    const solid = total - liquid, G = solid > 0 ? groups : wet;   // a bin of nothing but liquid is still that liquid (a drum of water, worth nothing)
     let dom = 0, domG = null;
-    for (const g in groups) if (groups[g] > dom) { dom = groups[g]; domG = g; }
-    const share = total > 0 ? dom / total : 0;
+    for (const g in G) if (G[g] > dom) { dom = G[g]; domG = g; }
+    const share = total > 0 ? dom / (solid > 0 ? solid : total) : 0;
     const ingot = form === 'ingot', dross = form === 'dross', loose = !ingot && !dross;
     // dross is a furnace by-product sold to dross processors as it is; everything else must be sorted to sell
-    const sellable = total > 0 && (dross || share >= PURE_MIN);
+    // #291: a cast ingot always sells, priced by ingotGrade (an off-spec melt is an alloy ingot, not loose MISC)
+    const sellable = solid > 0 && (dross || ingot || share >= PURE_MIN);
     let grade = !sellable ? 0 : ingot ? ingotGrade(share) : dross ? 1 : pureGrade(share);
     // reference price of what the bucket is sold as
     let refSell = 0, refMass = 0;
@@ -570,10 +574,10 @@
       let price = ingot ? (D.ingot || D.sell) : D.sell;
       if (loose && (GROUP[mat] || mat) !== domG) price = Math.min(price, refSell);
       perMat[mat].priceFactor = loose && D.sell > 0 ? price / D.sell : 1;     // price paid relative to the list price (inventory lots)
-      const v = perMat[mat].mass / 1000 * price * prices.market * ((prices.perMat && prices.perMat[mat]) || 1) * sf * grade * (form === 'dross' ? DROSS_VALUE : 1);   // per-material factor: market swings (#33)
+      const v = perMat[mat].mass / 1000 * price * prices.market * ((prices.perMat && prices.perMat[mat]) || 1) * sf * grade * (dross ? (D.melt != null ? DROSS_VALUE : 0) : 1);   // per-material factor: market swings (#33); #292: dross pays only for the metal in it
       perMat[mat].value = v; value += v;
     }
-    return { total, share, domGroup: domG, main, sellable, grade, klass, value, perMat, p80: percentile(aggregateMap(mats)), form: form || null };
+    return { total, share, domGroup: domG, main, sellable, grade, klass, value, perMat, p80: percentile(aggregateMap(mats)), form: form || null, liquid };
   }
   function aggregateMap(mats) {
     const a = new Float64Array(NB);

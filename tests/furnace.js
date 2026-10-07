@@ -77,5 +77,21 @@ check(k.last.eT > z.last.eT && k.last.meltLoss > z.last.meltLoss, 'the kiln burn
 const plain = Sim.binStats(ingots.m);
 check(plain.form === null && Math.abs(plain.value - Sim.binStats(ingots.m, undefined).value) < 1e-9, 'binStats(mats) without a form still prices as loose scrap');
 
+// #291: an off-spec melt is an alloy ingot: it sells at the ingot grade, it is never MISC
+console.log('\n=== #291: Al 85 / Cu 15 into an induction furnace at 1200 C');
+{ const L = [Sim.makeNode('induction', { tap: 1200 })], ev = Sim.evalLine(L, { aluminum: 0.85, copper: 0.15 }, { sizes: { aluminum: 30, copper: 30 } });
+  const t = ev.terminals.find((x) => x.port === 'product'), st = Sim.binStats(t.stream.m, t.form);
+  console.log('  ingot purity ' + f(st.share * 100, 1) + '%, grade ' + f(st.grade, 3) + ', $' + f(st.value, 0));
+  check(st.share < Sim.PURE_MIN && st.sellable && Math.abs(st.grade - Sim.ingotGrade(st.share)) < 1e-12 && st.value > 0, 'an ' + f(st.share * 100, 0) + '% ingot sells at the ingot grade ' + f(st.grade, 2));
+  check(!Sim.binStats(t.stream.m).sellable, 'the same mix as loose scrap is still MISC'); }
+// #292: dross pays only for the metal in it
+console.log('\n=== #292: non-metals in dross');
+for (const fu of ['induction', 'arc']) {
+  const ev = Sim.evalLine([Sim.makeNode(fu)], { plastic: 1 }, { sizes: { plastic: 20 } }), d = ev.terminals.find((t) => t.port === 'dross'), st = Sim.binStats(d.stream.m, d.form);
+  check(st.total > 900 && st.value === 0, fu + ': pure plastic in dross is worth nothing ($' + f(st.value, 2) + ' for ' + f(st.total, 0) + ' kg)');
+}
+{ const st = Sim.binStats(Sim.makeFeed({ aluminum: 0.5, plastic: 0.5 }, 1000).m, 'dross');
+  check(st.perMat.plastic.value === 0 && st.perMat.aluminum.value > 0, 'in mixed dross the aluminum is paid and the plastic is not'); }
+
 console.log(fails ? '\n' + fails + ' FAILURE(S)' : '\nall furnace checks pass');
 process.exit(fails ? 1 : 0);

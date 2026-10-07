@@ -27,7 +27,7 @@
   const HOPPER_SIZE = [2.8, 2.4, 2.8];  // m: a whole-car infeed hopper
   const MAX_W = SIZE.comminution[0];
 
-  function primaryPort(M) { return M.kind === 'separator' ? 'extract' : 'product'; }
+  function primaryPort(M) { return M.omni ? 'rejects' : M.kind === 'separator' ? 'extract' : 'product'; }   // #290: the omni has no 'product' port
   function portsOf(M) { return CS.portsOf(M); }   // #279: the shared list in data.js
   function srcKey(src) { return !src || src === 'feed' ? 'feed' : src.uid + ':' + src.port; }
 
@@ -92,7 +92,7 @@
         let slot = nd.slot + 1, lane = null, guard = 0;
         while (lane == null && guard++ < 200) {
           const cand = []; if (prim) cand.push(nd.lane);
-          for (let j = 1; j <= 6; j++) cand.push(nd.lane + j, nd.lane - j);
+          for (let j = 1; j <= 6 + guard; j++) cand.push(nd.lane + j, nd.lane - j);   // #290: widen as it steps on, so 17 omni bins all find a lane
           if (!prim) cand.push(nd.lane);
           for (let i = 0; i < cand.length && lane == null; i++) {
             const L = cand[i]; if (cells[ck(slot, L)]) continue;
@@ -101,6 +101,7 @@
           }
           if (lane == null) slot++;
         }
+        if (lane == null) { slot = nd.slot + 1; lane = Math.max.apply(null, Object.keys(cells).map(function (c) { return Math.abs(+c.split(',')[1]); })) + 1; }   // #290: never leave a bin off the floor
         const b = { key: key, uid: nd.uid, port: port, index: bins.length, slot: slot, lane: lane, x: slot * PITCH, z: lane * LANE_W, w: BIN_SIZE[0], h: BIN_SIZE[1], d: BIN_SIZE[2], label: M.outs ? M.outs[port] : port };
         bins.push(b); cells[ck(slot, lane)] = { type: 'bin', key: key };
         addBelt({ uid: nd.uid, port: port }, nd, port, { bin: b.index }, b);
@@ -124,7 +125,24 @@
     return { x: pts[0][0], z: pts[0][1], dx: 1, dz: 0 };
   }
 
-  CS.Plant3D = { layout: layout, beltPoint: beltPoint, wheelZoom: wheelZoom, primaryPort: primaryPort, portsOf: portsOf, PITCH: PITCH, LANE_W: LANE_W, BELT_Y: BELT_Y, BELT_W: BELT_W, BELT_SPEED: BELT_SPEED, SIZE: SIZE, BIN_SIZE: BIN_SIZE, HOPPER_SIZE: HOPPER_SIZE };
+  /* which port a fragment of `mat`, `mm` big leaves a node by, using the same physics the sim uses for the mass flows; rnd()
+   * is the dice. Returns { port, mm } (mm: its size after the node). Pure, so tests/plant3d-layout.js can check it. */
+  function routePort(node, inf, mat, mm, rnd) {
+    const M = MACHINES[node.m], D = MATERIALS[mat];
+    if (M.kind === 'separator') return { port: rnd() < Sim.pExtract(M, node.settings, D, mm) ? 'extract' : 'residue', mm: mm };
+    if (M.kind === 'furnace') { const pmf = inf && inf.perMat && inf.perMat[mat]; return { port: (pmf && rnd() < (pmf.meltFrac || 0)) ? 'product' : 'dross', mm: mm }; }
+    if (M.kind === 'conditioner') return { port: 'product', mm: D.state === 'liquid' && D.feed.blockP80 ? D.feed.blockP80 * (0.6 + 0.8 * rnd()) : mm, frozen: true };
+    const pm = inf && inf.perMat ? inf.perMat[mat] : null;
+    if (pm && pm.mass > 0 && rnd() < pm.rejMass / pm.mass) return { port: 'rejects', mm: mm };
+    if (pm && pm.P80 > 0) mm = Math.min(mm, pm.P80 * (0.6 + 0.8 * rnd()));
+    return { port: M.omni ? mat : 'product', mm: mm };   // #290: the omni fires every particle down the chute of its own material
+  }
+  /* kW a node draws at head rate R: capped at its rating, which grows with the machine level as in the game (#289) */
+  function nodePower(n, level, R) { const FX = CS.LEVEL_FX || { power: 0.1 }; return Math.min(n.M.prated * (1 + FX.power * Math.max(0, Math.min(CS.LEVEL_MAX || 5, level || 0))), n.M.pidle + R * n.ePerHead); }
+  /* the end bins of an evaluated line, priced as the game prices them: a furnace's ingots and dross carry their form (#289) */
+  function binsOf(ev) { return ev.terminals.map(function (t) { return { key: t.key, uid: t.uid, port: t.port, st: Sim.binStats(t.stream.m, t.form), temp: t.stream.temp }; }); }
+
+  CS.Plant3D = { layout: layout, routePort: routePort, nodePower: nodePower, binsOf: binsOf, beltPoint: beltPoint, wheelZoom: wheelZoom, primaryPort: primaryPort, portsOf: portsOf, PITCH: PITCH, LANE_W: LANE_W, BELT_Y: BELT_Y, BELT_W: BELT_W, BELT_SPEED: BELT_SPEED, SIZE: SIZE, BIN_SIZE: BIN_SIZE, HOPPER_SIZE: HOPPER_SIZE };
 
   /* ================= everything below needs a browser ================= */
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -155,12 +173,12 @@
   function recompute() {
     V.ev = Sim.evalLine(V.line, V.comp);
     V.mr = Sim.maxRate(V.ev.nodes, V.line);
-    V.binsInfo = V.ev.terminals.map(function (t) { return { key: t.key, uid: t.uid, port: t.port, st: Sim.binStats(t.stream.m), temp: t.stream.temp }; });
+    V.binsInfo = binsOf(V.ev);
     let cap = 0; V.binsInfo.forEach(function (b) { cap = Math.max(cap, b.st.total); });
     V.capKg = Math.max(1, cap * V.tons);
   }
   function headRate() { return V.mr ? V.mr.R : 0; }
-  function plantPower(R) { let P = 0; V.ev.nodes.forEach(function (n) { P += Math.min(n.M.prated, n.M.pidle + R * n.ePerHead); }); return P; }
+  function plantPower(R) { let P = 0; V.ev.nodes.forEach(function (n, k) { P += nodePower(n, V.line[k] && V.line[k].level, R); }); return P; }
   function revenuePerT() { let v = 0; V.binsInfo.forEach(function (b) { if (Sim.binMatters(b.st)) v += b.st.value; }); return v; }
   function nodeIndex(uid) { for (let k = 0; k < V.line.length; k++) if (V.line[k].uid === uid) return k; return -1; }
 
@@ -593,14 +611,9 @@
     }
     /* which port a fragment leaves node k by, using the same physics the sim uses for the mass flows */
     function routeAt(k, f) {
-      const node = V.line[k], M = MACHINES[node.m], inf = V.ev.nodes[k], D = MATERIALS[f.mat];
-      if (M.kind === 'separator') return Math.random() < Sim.pExtract(M, node.settings, D, f.mm) ? 'extract' : 'residue';
-      if (M.kind === 'furnace') { const pmf = inf && inf.perMat && inf.perMat[f.mat]; return (pmf && Math.random() < (pmf.meltFrac || 0)) ? 'product' : 'dross'; }
-      if (M.kind === 'conditioner') { f.frozen = true; if (D.state === 'liquid' && D.feed.blockP80) f.mm = D.feed.blockP80 * (0.6 + 0.8 * Math.random()); return 'product'; }
-      const pm = inf.perMat[f.mat];
-      if (pm && pm.mass > 0 && Math.random() < pm.rejMass / pm.mass) return 'rejects';
-      if (pm && pm.P80 > 0) f.mm = Math.min(f.mm, pm.P80 * (0.6 + 0.8 * Math.random()));
-      return 'product';
+      const r = routePort(V.line[k], V.ev.nodes[k], f.mat, f.mm, Math.random);
+      f.mm = r.mm; if (r.frozen) f.frozen = true;
+      return r.port;
     }
     function stepFragments(dt) {
       for (let i = 0; i < MAX_FRAG; i++) {

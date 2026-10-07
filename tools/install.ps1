@@ -53,14 +53,29 @@ New-Item -ItemType Directory -Force $App | Out-Null
 foreach ($f in 'index.html', 'plant3d.html', 'gallery.html') { Copy-Item (Join-Path $Repo $f) $App }
 foreach ($d in 'css', 'js') { Copy-Item (Join-Path $Repo $d) (Join-Path $App $d) -Recurse }
 
-function Get-Cached([string]$url, [string]$name) {
-  # a file from the web, kept in the cache so a reinstall does not need the network
+function Get-Cached([string]$url, [string]$name, [scriptblock]$valid) {
+  # a file from the web, kept in the cache so a reinstall does not need the network. #293: $valid checks the content, so a
+  # captive-portal or error page that came back as 200 is thrown away (and a bad file cached by an older install with it)
   $path = Join-Path $Cache $name
+  if ((Test-Path $path) -and $valid -and -not (& $valid $path)) { Remove-Item $path -Force }
   if (-not (Test-Path $path)) {
     try { Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' }
     catch { if (Test-Path $path) { Remove-Item $path -Force }; return $null }
+    if ($valid -and -not (& $valid $path)) { Remove-Item $path -Force; return $null }
   }
   return $path
+}
+# #293: what a good download looks like: three.js names its REVISION, the font CSS has @font-face rules, a font file is a
+# woff2 / woff / OpenType / TrueType file and not an HTML page
+$ThreeOk = { param($p) (Get-Item $p).Length -gt 100KB -and ([IO.File]::ReadAllText($p)).Contains('REVISION') }
+$FontsCssOk = { param($p) (Get-Item $p).Length -gt 100 -and ([IO.File]::ReadAllText($p)).Contains('@font-face') }
+$FontOk = { param($p)
+  $b = [IO.File]::ReadAllBytes($p)
+  $b.Length -gt 1KB -and (@('wOF2', 'wOFF', 'OTTO', 'true', "$([char]0)$([char]1)$([char]0)$([char]0)") -contains [Text.Encoding]::ASCII.GetString($b, 0, 4)) }
+# #293: a file:/// URL with each path segment escaped, so a profile path with '#', '%' or a space still opens the game
+function Get-FileUrl([string]$path) {
+  $segs = $path -split '\\'
+  return 'file:///' + $segs[0] + '/' + (($segs | Select-Object -Skip 1 | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/')
 }
 function Edit-Html([string]$file, [scriptblock]$change) {
   $p = Join-Path $App $file
@@ -70,7 +85,7 @@ function Edit-Html([string]$file, [scriptblock]$change) {
 
 # ---- three.js for the plant floor ----
 $ThreeUrl = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
-$three = Get-Cached $ThreeUrl 'three-r128.min.js'
+$three = Get-Cached $ThreeUrl 'three-r128.min.js' $ThreeOk
 if ($three) {
   New-Item -ItemType Directory -Force (Join-Path $App 'vendor') | Out-Null
   Copy-Item $three (Join-Path $App 'vendor\three.min.js')
@@ -79,7 +94,7 @@ if ($three) {
 
 # ---- the fonts (Share Tech Mono, IBM Plex Sans) ----
 $FontsUrl = 'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap'
-$fontsCss = Get-Cached $FontsUrl 'fonts.css'
+$fontsCss = Get-Cached $FontsUrl 'fonts.css' $FontsCssOk
 if ($fontsCss) {
   $css = [IO.File]::ReadAllText($fontsCss)
   $dir = Join-Path $App 'fonts'; New-Item -ItemType Directory -Force $dir | Out-Null
@@ -87,7 +102,7 @@ if ($fontsCss) {
   foreach ($m in [regex]::Matches($css, 'url\((https://fonts\.gstatic\.com/[^)]+)\)')) {
     $u = $m.Groups[1].Value
     $name = 'font-' + ([BitConverter]::ToString([Security.Cryptography.SHA1]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($u))).Replace('-', '').Substring(0, 12)) + [IO.Path]::GetExtension(($u -split '\?')[0])
-    $f = Get-Cached $u $name
+    $f = Get-Cached $u $name $FontOk
     if (-not $f) { $ok = $false; break }
     Copy-Item $f (Join-Path $dir $name)
     $css = $css.Replace($u, $name)
@@ -126,7 +141,7 @@ try {
 } catch { $Icon = $Browser }
 
 # ---- shortcuts: an app window with its own profile, so the speed flags apply and the saves stay together ----
-$Url = 'file:///' + ((Join-Path $App 'index.html') -replace '\\', '/')
+$Url = Get-FileUrl (Join-Path $App 'index.html')
 $Flags = @(
   "--app=`"$Url`"", "--user-data-dir=`"$ProfileDir`"", '--no-first-run', '--no-default-browser-check',
   '--window-size=1600,960',

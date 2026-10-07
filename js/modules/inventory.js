@@ -20,7 +20,8 @@
  *
  * Sorted only (#52): a batch's pure bins (one material at 90% or better, Sim.binStats sellable) go into stock as one
  * lot of their main material; mixed bins go to the MISC store { mat: { t, p80 } }, which cannot be sold and is only
- * re-run through the plant. A saved stock lot below 90% purity (from before this rule) moves to MISC on load.
+ * re-run through the plant. A saved stock lot below 90% purity (from before this rule) moves to MISC on load. A cast ingot
+ * always sells (#291): one below 90% is an alloy ingot, held under its main metal at the ingot grade and flagged alloy.
  *
  * Hold-to-sell (ticket #34): a per-material price target raises an alert in the event log when the market reaches it
  * and, with the auto-sell switch on (off by default), sells the lot at once. Yard bays rent per round; the owned bays grow
@@ -68,13 +69,14 @@
   /* Add dt tonnes of `mat` with the given bin qualities and (optionally) the $ cost of producing them.
    * Weighted merge, value preserving (see the header). */
   const SF_MAX = 3;   // sf carries the form too: an ingot lot sits above 1 (ingot price is up to ~1.9x scrap), dross far below
-  function addLot(stock, mat, dt, purity, grade, sf, p80, cost) {
+  function addLot(stock, mat, dt, purity, grade, sf, p80, cost, alloy) {
     if (!(dt > 0) || !MATERIALS[mat]) return;
     purity = clamp(+purity || 0, 0, 1); grade = clamp(isFinite(+grade) ? +grade : 1, 0, 1.5); sf = clamp(isFinite(+sf) ? +sf : 1, 0, SF_MAX);
     cost = isFinite(+cost) && +cost > 0 ? +cost : 0;
     const lnp = Math.log(p80 > 0 ? p80 : 1e-3);
     const e = stock[mat];
-    if (!e) { stock[mat] = { t: dt, purity, grade, sf, p80: Math.exp(lnp), cost }; return; }
+    if (!e) { stock[mat] = { t: dt, purity, grade, sf, p80: Math.exp(lnp), cost }; if (alloy) stock[mat].alloy = true; return; }
+    if (alloy) e.alloy = true;   // #291: once an alloy ingot is in the lot, the lot is cast metal of mixed spec: it sells, it never re-runs
     const t = e.t + dt;
     const g = (e.t * e.grade + dt * grade) / t;
     const vs = e.t * e.grade * e.sf + dt * grade * sf;       // sum of value terms, to be preserved
@@ -129,7 +131,7 @@
     (bins || []).forEach(function (b) {
       const st = b && b.st; if (!st || !(st.total > 0)) return;
       const sellable = st.sellable != null ? st.sellable : st.share >= 0.9;
-      if (!sellable) {
+      if (!sellable && st.form !== 'ingot') {   // #291: a cast ingot is never broken back into MISC by material
         if (misc) for (const mat in st.perMat) { const pm = st.perMat[mat]; if (pm && pm.mass > 0) addMisc(misc, mat, pm.mass / 1000 * tonnes, pm.p80); }
         return;
       }
@@ -146,15 +148,16 @@
         const div = mk * (pf[mat] || 1);
         vb += isFinite(+pm.value) && div > 0 ? pm.value / div : pm.mass / 1000 * MATERIALS[mat].sell * (pm.priceFactor == null ? 1 : pm.priceFactor) * (isFinite(+pm.sizeFactor) ? +pm.sizeFactor : 1) * g;
       }
-      const dt = st.total / 1000 * tonnes, val = vb * tonnes;
+      const dt = (st.total - (+st.liquid || 0)) / 1000 * tonnes, val = vb * tonnes;   // #288: free water drains off; it is never sold as the main material
+      if (!(dt > 0) || (st.form === 'dross' && !(val > 0))) return;   // #292: dross with no metal in it is slag, landfilled with the furnace's own waste
       const sf = dt > 0 && g > 0 ? clamp(val / (dt * MATERIALS[main].sell * g), 0, SF_MAX) : 0;
-      lots.push({ mat: main, dt, purity: st.share, grade: g, sf, p80: st.perMat[main] ? st.perMat[main].p80 : st.p80, val: val > 0 ? val : 0 });
+      lots.push({ mat: main, dt, purity: st.share, grade: g, sf, p80: st.perMat[main] ? st.perMat[main].p80 : st.p80, val: val > 0 ? val : 0, alloy: st.form === 'ingot' && st.share < 0.9 });
       valTot += val > 0 ? val : 0; massTot += dt;
     });
     const cTot = isFinite(+batchCost) && +batchCost > 0 ? +batchCost : 0;
     lots.forEach(function (l) {
       const cost = cTot > 0 ? cTot * (valTot > 0 ? l.val / valTot : l.dt / massTot) : 0;
-      addLot(stock, l.mat, l.dt, l.purity, l.grade, l.sf, l.p80, cost);
+      addLot(stock, l.mat, l.dt, l.purity, l.grade, l.sf, l.p80, cost, l.alloy);
       const p = produced[l.mat] || (produced[l.mat] = { t: 0, lnp: 0, cost: 0 });
       p.lnp = (p.t * p.lnp + l.dt * Math.log(l.p80 > 0 ? l.p80 : 1e-3)) / (p.t + l.dt); p.t += l.dt; p.cost += cost;
     });
@@ -170,7 +173,7 @@
     const e = stock[mat];
     if (!e || !(e.t > 0) || !(t > 0)) return { t: 0, purity: 0, grade: 0, sf: 0, p80: 0, cost: 0 };
     const take = Math.min(+t, e.t), fr = take / e.t;
-    const out = { t: take, purity: e.purity, grade: e.grade, sf: e.sf, p80: e.p80, cost: (e.cost || 0) * fr };
+    const out = { t: take, purity: e.purity, grade: e.grade, sf: e.sf, p80: e.p80, cost: (e.cost || 0) * fr, alloy: !!e.alloy };
     e.t -= take; e.cost = (e.cost || 0) - out.cost;
     if (e.t <= 1e-9) delete stock[mat];
     return out;
@@ -315,7 +318,7 @@
   function serialize(stock, mkt, targets, misc) {
     const s = {}, tg = {}, mi = {};
     for (const mat in (misc || {})) { const e = misc[mat]; if (e && e.t > 0) mi[mat] = { t: e.t, p80: e.p80 }; }
-    for (const mat in stock) { const e = stock[mat]; if (e && e.t > 0) s[mat] = { t: e.t, purity: e.purity, grade: e.grade, sf: e.sf, p80: e.p80, cost: e.cost || 0 }; }
+    for (const mat in stock) { const e = stock[mat]; if (e && e.t > 0) { s[mat] = { t: e.t, purity: e.purity, grade: e.grade, sf: e.sf, p80: e.p80, cost: e.cost || 0 }; if (e.alloy) s[mat].alloy = true; } }
     for (const mat in (targets || {})) { const t = targets[mat]; if (t && t.price > 0) tg[mat] = { price: t.price, auto: !!t.auto, hit: !!t.hit }; }
     return { stock: s, misc: mi, market: { hour: mkt.hour, drift: Object.assign({}, mkt.drift), trend: Object.assign({}, mkt.trend) }, targets: tg };
   }
@@ -327,8 +330,8 @@
     const s = d.stock && typeof d.stock === 'object' ? d.stock : {};
     for (const mat in s) {
       const e = s[mat]; if (!MATERIALS[mat] || !e || !(+e.t > 0)) continue;
-      if (!(+e.purity >= 0.9)) { addMisc(misc, mat, +e.t, +e.p80); continue; }   // saved before #52: unsorted stock is MISC now
-      addLot(stock, mat, +e.t, +e.purity, +e.grade, +e.sf, +e.p80, +e.cost);
+      if (!(+e.purity >= 0.9) && e.alloy !== true) { addMisc(misc, mat, +e.t, +e.p80); continue; }   // saved before #52: unsorted stock is MISC now (an alloy ingot lot is sorted, #291)
+      addLot(stock, mat, +e.t, +e.purity, +e.grade, +e.sf, +e.p80, +e.cost, e.alloy === true);
     }
     const mi = d.misc && typeof d.misc === 'object' ? d.misc : {};
     for (const mat in mi) { const e = mi[mat]; if (MATERIALS[mat] && e && +e.t > 0) addMisc(misc, mat, +e.t, +e.p80); }
@@ -550,7 +553,7 @@
     /* #96: tonnes a stopped batch took out of a bucket and did not run go back where they came from */
     Inv.putBack = function (src, mat, out) {
       if (!out || !(out.t > 0)) return;
-      if (src === 'misc') addMisc(misc, mat, out.t, out.p80); else addLot(stock, mat, out.t, out.purity, out.grade, out.sf, out.p80, out.cost);
+      if (src === 'misc') addMisc(misc, mat, out.t, out.p80); else addLot(stock, mat, out.t, out.purity, out.grade, out.sf, out.p80, out.cost, out.alloy);
       renderPanel(); API.save();
     };
     Inv.dumpMisc = function () {   // #168

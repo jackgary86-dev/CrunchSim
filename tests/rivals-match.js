@@ -23,8 +23,7 @@ function match(seed, strategy, rounds) {
   const rng = A.mulberry32(seed), worth = { you: START }, bins = { you: 0 };
   R.PLAYERS.forEach((id) => { worth[id] = START; bins[id] = 0; });
   for (let n = 1; n <= rounds; n++) {
-    const size = R.roundSize(worth.you * 0.4, 0);
-    const cards = R.makeCards(rng, size, { limit: 30 });
+    const cards = R.makeCards(rng, R.roundSize(worth.you * 0.4, 0), { limit: 30 }), size = R.dealtSize(cards);   // #334: the round is what its bins are worth
     const won = {};
     cards.forEach((L) => {
       const mx = {};
@@ -58,7 +57,8 @@ const fair = play('fair', 12), always = play('always', 12), pass = play('pass', 
 console.log('  strategy   avg place   bins won   avg gain     within 25% of the leader');
 [['fair', fair], ['always', always], ['pass', pass]].forEach(([n, r]) => console.log('  ' + n.padEnd(9) + f(r.place, 2).padStart(9) + (f(r.share * 100) + '%').padStart(11) + ('$' + f(r.gain)).padStart(12) + (f(r.close * 100) + '%').padStart(12)));
 check(fair.share >= 0.15 && fair.share <= 0.5, 'a fair bidder wins a real share of the bins, not all of them (' + f(fair.share * 100) + '%)');
-check(fair.close >= 0.5 && fair.place <= 2.6, 'and finishes in contention: within 25% of the leader in most matches, average place ' + f(fair.place, 2));
+// #334: rounds are sized to the plant (bins of at most three batches), so a rich round deals smaller bins: in contention in 2 of 5
+check(fair.close >= 0.4 && fair.place <= 2.6, 'and finishes in contention: within 25% of the leader in 2 of 5 matches or more, average place ' + f(fair.place, 2));
 // in an open auction the winner pays a step over the runner-up, so outbidding everyone does not go broke: it buys the bins the
 // rivals would have overpaid for and earns far less than bidding to fair value
 check(always.gain < 0.6 * fair.gain && always.place > fair.place, 'outbidding everyone earns far less than bidding to fair value ($' + f(always.gain) + ' against $' + f(fair.gain) + ')');

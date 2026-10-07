@@ -46,15 +46,20 @@
       // a feed fits the round when its budget buys at least 0.1 t at the fair price (gold pins wait for the big rounds)
       let feeds = cat.feeds.filter((f) => FEEDS[f] && A.worthOf(FEEDS[f].comp) > 1 && budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) >= 0.1);
       if (!feeds.length) feeds = cat.feeds.filter((f) => FEEDS[f]).sort((a, b) => A.worthOf(FEEDS[a].comp) - A.worthOf(FEEDS[b].comp)).slice(0, 1);
-      { const fit = feeds.filter((f) => budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) <= BIN_BATCHES * Math.max(1, opts.limit || 30)); feeds = fit.length ? fit : feeds.slice().sort((a, b) => A.worthOf(FEEDS[b].comp) - A.worthOf(FEEDS[a].comp)).slice(0, 1); }   // #327: the richer scrap of the category when the cheap kind would fill hundreds of batches; #334: none fits, the richest feed (fewest tonnes for the budget)
-      const L = A.genLot(rng, { feeds: [feeds[Math.floor(rng() * feeds.length)]], budget, market: opts.market || {}, limit: opts.limit || 30, clockH: opts.clockH || 0, id: (opts.id0 || 1) + k });
+      const cap = BIN_BATCHES * Math.max(1, opts.limit || 30), capV = (x) => cap * A.worthOf(FEEDS[x].comp) * A.fairRatio(x);
+      const full = feeds.filter((x) => capV(x) >= budget);   // the scrap that fills the round in a few batches; when none fits, the richest feed of the category (#334)
+      const f = full.length ? full[Math.floor(rng() * full.length)] : feeds.slice().sort((x, y) => A.worthOf(FEEDS[y].comp) - A.worthOf(FEEDS[x].comp))[0];
+      // #334: the round is sized to the plant: a bin holds at most three batches of your plant (the tonnes are capped below),
+      // and the round's size for purses and MISC credit is what the bins dealt are worth (dealtSize)
+      const L = A.genLot(rng, { feeds: [f], budget, market: opts.market || {}, limit: opts.limit || 30, clockH: opts.clockH || 0, id: (opts.id0 || 1) + k });
       const x = budget / L.ask;   // the bin is sized to the round at its asking price, down to 0.1 t for rich scrap
-      const cap = BIN_BATCHES * Math.max(1, opts.limit || 30);   // #327: rounds keep pace: a bin runs in a few batches, not hundreds
       L.tons = x < 10 ? Math.max(0.1, Math.round(x * 10) / 10) : Math.round(Math.min(x, cap));
       L.cat = cat.id; L.catName = cat.name; L.opening = Math.max(1, Math.round(L.ask * OPEN));
       return L;
     });
   }
+  /* #334: a round sized to the plant: its size is the mean worth of the bins dealt (each at most three batches of the plant) */
+  function dealtSize(cards) { return cards.length ? Math.max(1, Math.round(cards.reduce((a, L) => a + L.ask * L.tons, 0) / cards.length)) : MIN_SIZE; }
   function rivalPurse(R, size) { return Math.round(R.budget / 25000 * 2 * size); }
   /* the most rival R pays for card L, $/t: its own valuation (declared mix, trust, specialities, market) capped by its purse */
   function rivalMax(R, L, factor, size, scale) {
@@ -102,7 +107,7 @@
   /* #171: a yard buys on trade credit: a won bin may take the bank down to -$5,000 (repaid from sales; it counts against worth),
    * so one bad bin does not lock a player out of the rest of the match */
   const CREDIT = 5000;
-  CS.Round = { CREDIT, CATEGORIES, PLAYERS, OPEN, STEP, STEP_MIN, MIN_SIZE, BIN_SPREAD, BIN_BATCHES, roundSize, nextBid, makeCards, rivalPurse, rivalMax, settleRivals,
+  CS.Round = { CREDIT, CATEGORIES, PLAYERS, OPEN, STEP, STEP_MIN, MIN_SIZE, BIN_SPREAD, BIN_BATCHES, roundSize, dealtSize, nextBid, makeCards, rivalPurse, rivalMax, settleRivals,
     MATCH_LENGTHS, MATCH_DEFAULT, YIELD, SPECIAL, PROCESS, MISC_RUN, COLORS, fullValue, rivalYield, rivalProfit, purseScale, machinesOf, foldReason, standings };
 
   /* ======================= page integration ======================= */
@@ -145,8 +150,9 @@
       if (st.n === 0) { const m = M_(); m.start = app.netWorth(); m.over = false; m.ending = false; m.final = null; PLAYERS.forEach((id) => { if (rival(id)) m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }; }); }
       st.n++; st.misc = false;
       const rng = CS.Auction.mulberry32((st.seed ^ Math.imul(st.n, 2654435761) ^ Math.floor(app.S.clock)) >>> 0);
-      const size = roundSize(app.S.money, stockValue());
-      const cards = makeCards(rng, size, { market: {}, limit: app.plantValue('logistics'), clockH: app.S.clock / 3600, id0: 3000 + st.n * 10 });
+      const want = roundSize(app.S.money, stockValue());
+      const cards = makeCards(rng, want, { market: {}, limit: app.plantValue('logistics'), clockH: app.S.clock / 3600, id0: 3000 + st.n * 10 });
+      const size = dealtSize(cards);   // #334: the round is what its bins are worth: the purses and the MISC credit follow it
       const players = ['you'].concat(PLAYERS.filter((id) => rival(id)));
       const scales = {}; players.forEach((id) => { if (id !== 'you') scales[id] = purseScale(rivalRec(id).worth, M_().start); });
       const maxes = cards.map((L) => { const o = {}; players.forEach((id) => { if (id !== 'you') o[id] = rivalMax(rival(id), L, factor, size, scales[id]); }); return o; });

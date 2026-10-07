@@ -28,7 +28,7 @@
       const lot = lotNow(); if (!lot || app.S.run) return;
       const t0 = totals();
       const P = CS.Auction.live.pending();
-      run = { lot, batches: 0, t: 0, net: 0, kwh: 0, stock0: t0.stock, misc0: t0.misc, money0: app.S.money, paid: P && P.paid > 0 ? P.paid * (P.tons / (P.boughtTons || P.tons)) : 0 };
+      run = { lot, batches: 0, t: 0, net: 0, rent: 0, kwh: 0, stock0: t0.stock, misc0: t0.misc, money0: app.S.money, paid: P && P.paid > 0 ? P.paid * (P.tons / (P.boughtTons || P.tons)) : 0 };
       app.log('Running the whole of lot #' + lot + ': batch after batch until it is used up.', 'ok');
       app.startRun(); if (!app.S.run) { run = null; label(); return; }   // nothing ran: no card, the app has said why
       label();
@@ -42,11 +42,11 @@
     }
     function finish(why) {
       const r = run; run = null; label(); if (!r) return;
-      const t1 = totals();
+      const t1 = totals(), gain = r.net - r.paid - r.rent;   // #303: yard rent is part of what the lot cost
       const body = '<div class="card lotcard"><h2>LOT #' + r.lot + ' DONE<span>' + r.batches + ' batch' + (r.batches === 1 ? '' : 'es') + ' · ' + app.fmtNum(r.t, 1) + ' t</span></h2>' +
-        '<div class="net ' + (r.net - r.paid >= 0 ? 'ok' : 'bad') + '"><small>THE WHOLE LOT · AFTER WHAT IT COST</small>' + (r.net - r.paid >= 0 ? '+' : '') + app.fmtMoney(r.net - r.paid) + '</div>' +
+        '<div class="net ' + (gain >= 0 ? 'ok' : 'bad') + '"><small>THE WHOLE LOT · AFTER WHAT IT COST</small>' + (gain >= 0 ? '+' : '') + app.fmtMoney(gain) + '</div>' +
         '<div class="small">' + app.esc(why) + '</div>' +
-        '<div class="rows"><div>Products made, less power and wear</div><b>' + app.fmtMoney(r.net) + '</b><div>Lot price</div><b>' + app.fmtMoney(r.paid) + '</b><div>Sorted stock added</div><b>' + app.fmtNum(Math.max(0, t1.stock - r.stock0), 1) + ' t</b><div>To MISC</div><b>' + app.fmtNum(Math.max(0, t1.misc - r.misc0), 1) + ' t</b><div>Power</div><b>' + app.fmtNum(r.kwh, 0) + ' kWh</b><div>Bank</div><b>' + app.fmtMoney(r.money0) + ' &#8594; ' + app.fmtMoney(app.S.money) + '</b></div>' +
+        '<div class="rows"><div>Products made, less power and wear</div><b>' + app.fmtMoney(r.net) + '</b><div>Lot price</div><b>' + app.fmtMoney(r.paid) + '</b>' + (r.rent > 0 ? '<div>Yard rent</div><b>' + app.fmtMoney(r.rent) + '</b>' : '') + '<div>Sorted stock added</div><b>' + app.fmtNum(Math.max(0, t1.stock - r.stock0), 1) + ' t</b><div>To MISC</div><b>' + app.fmtNum(Math.max(0, t1.misc - r.misc0), 1) + ' t</b><div>Power</div><b>' + app.fmtNum(r.kwh, 0) + ' kWh</b><div>Bank</div><b>' + app.fmtMoney(r.money0) + ' &#8594; ' + app.fmtMoney(app.S.money) + '</b></div>' +
         '<div class="tip small">Click to dismiss. Sell or refine your buckets, then buy the next lot.</div></div>';
       const sc = document.getElementById('scorecard');
       if (sc) { sc.innerHTML = body; sc.classList.remove('hidden'); }
@@ -55,7 +55,7 @@
     }
     app.on('batchComplete', (p) => {
       if (!run || !p || !p.r) return;
-      run.batches++; run.t += p.r.done || 0; run.kwh += p.r.kwh || 0;
+      run.batches++; run.t += p.r.done || 0; run.kwh += p.r.kwh || 0; run.rent += p.r.rent || 0;   // #303: the inventory hook (registered first) noted the yard rent paid
       run.net += (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0);   // cash plus the products put into stock, as the batch card counts it
       if (p.why !== 'complete') { finish(p.why === 'stopped' ? 'stopped by you' : 'the line halted'); return; }
       setTimeout(() => {

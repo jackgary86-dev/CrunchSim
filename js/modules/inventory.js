@@ -515,20 +515,23 @@
       if (txt) API.log('Into inventory: ' + txt + (batchCost > 0 ? ' (cost basis ' + fmtPrice(batchCost) + ' shared by value)' : '') + '.', 'ok');
       if (mAdd > 1e-6) API.log('Into MISC: ' + API.fmtNum(mAdd, 1) + ' t of mixed material that no sorter separated. It cannot be sold: re-run it through different sorters.', txt ? '' : 'warn');
       // a round in the yard: rent on every bay in use, owned ones cheap, hired ones dear
-      const sto = chargeStorage(stock, ownedBays(storageLevel()), miscTotal(misc));
+      // #304: a batch stopped before it ran a tonne is not a round in the yard (the market's rule too): no rent
+      const sto = r.done >= 1 || p.why === 'complete' ? chargeStorage(stock, ownedBays(storageLevel()), miscTotal(misc)) : Object.assign(storage(stock, ownedBays(storageLevel()), miscTotal(misc)), { rent: 0 });
+      r.rent = 0;
       if (sto.rent > 0) {
         const due = Math.min(sto.rent, Math.max(0, API.S.money));   // a yard that cannot pay its rent is carried until it sells: rent never digs the bank into the red
         if (due < sto.rent) API.log('Yard rent of ' + fmtPrice(sto.rent - due) + ' waived this batch: the bank is empty. Sell stock or ship MISC out to free the bays.', 'warn');
-        API.S.money -= due;
+        API.S.money -= due; r.rent = due;   // #303: the lot card counts the rent paid
         API.log('Yard storage: ' + sto.bays + ' bay' + (sto.bays === 1 ? '' : 's') + ' in use (' + sto.own + ' owned, ' + sto.hired + ' hired), rent ' + fmtPrice(sto.rent) + ' this batch.' + (sto.hired > 0 ? ' Sell stock or buy Yard storage in the Plant drawer.' : ''), sto.hired > 0 ? 'warn' : '');
       }
-      const card = document.querySelector('#scorecard .card');
-      if (card) {
+      if (typeof document !== 'undefined') setTimeout(function () {   // #298: the app draws the card after the batchComplete hooks
+        const card = document.querySelector('#scorecard .card');
+        if (!card || card.querySelector('.inv-units')) return;
         const line = API.el('div', 'small', '<b class="cyan">UNITS PRODUCED</b> ' + (txt ? API.esc(txt) : 'none') + (mAdd > 1e-6 ? ' · <b class="cyan">TO MISC</b> ' + API.fmtNum(mAdd, 1) + ' t' : '') + (sto.rent > 0 ? ' · <b class="cyan">YARD RENT</b> ' + fmtPrice(sto.rent) : ''));
-        line.style.marginTop = '8px';
+        line.style.marginTop = '8px'; line.classList.add('inv-units');
         const tip = card.querySelector('.tip');
         if (tip) card.insertBefore(line, tip); else card.appendChild(line);
-      }
+      }, 0);
       checkTargets();   // the market module (loaded first) has already moved prices for this round
       API.renderBank();
       renderPanel();
@@ -556,7 +559,7 @@
       if (q.net < 0 && API.S.money < -q.net) { f = Math.max(0, API.S.money) / -q.net; if (f < 0.02) { API.log('Shipping the MISC out costs ' + API.fmtMoney(-q.net) + ': sell something first.', 'warn'); return null; } }
       if (f < 1) { q = { t: q.t * f, metal: q.metal * f, fee: q.fee * f, net: q.net * f }; q.net = -Math.min(-q.net, API.S.money); }   // rounding must not ask a cent more than the bank holds
       if (q.net < 0 && !API.spend(-q.net, 'shipping ' + q.t.toFixed(1) + ' t of MISC out')) return null;
-      if (q.net > 0) { API.S.money += q.net; API.S.lifetime = (API.S.lifetime || 0) + q.net; }
+      if (q.net > 0) { API.S.money += q.net; API.S.lifetime = (API.S.lifetime || 0) + q.net; API.emit('income', { amount: q.net, from: 'misc' }); }
       for (const m in misc) { if (f >= 1) delete misc[m]; else { misc[m].t *= 1 - f; if (misc[m].t <= 1e-6) delete misc[m]; } }
       API.log('Shipped ' + q.t.toFixed(1) + ' t of MISC out: the metal in it paid ' + API.fmtMoney(q.metal) + ', landfill took ' + API.fmtMoney(q.fee) + ' (net ' + (q.net >= 0 ? '+' : '') + API.fmtMoney(q.net) + '). The yard bays are free again.', q.net >= 0 ? 'ok' : 'warn');
       renderPanel(); API.save(); API.renderAll();

@@ -35,7 +35,11 @@
   function quoteBucket(mat, e, level, rawValue, power, factor, market) {
     const D = MATERIALS[mat], need = levelFor(mat);
     if (!D || !need || !e || !(e.t > 0)) return { ok: false, why: 'This material is not refined: sell it as it is.' };
-    const metalT = e.t * (e.purity || 0) * (1 - (D.drossK || 0));
+    // #301: fines and dust oxidise in the melt and merged dross holds little metal: recovery follows the bucket's size factor, as SELL
+    // does (its price grade is the purity premium, already counted in the metal tonnes); oversize pieces melt whole, so only fines lose
+    const fines = isFinite(+e.p80) && e.p80 > 0 && D.range && e.p80 < D.range[0];
+    const rec = fines || !(isFinite(+e.p80) && e.p80 > 0) ? Math.max(0, Math.min(1, isFinite(+e.sf) ? +e.sf : 1)) : 1;
+    const metalT = e.t * (e.purity || 0) * (1 - (D.drossK || 0)) * rec;
     const value = metalT * (D.ingot || D.sell) * (factor || 1) * (market || 1);
     const kwh = e.t * (D.meltKWh || 0) / ETA;
     const cost = kwh * (power || 0.12) + (need === 2 ? PREC_FEE * value + PREC_PER_T * e.t : CAST_PER_T * e.t);
@@ -77,7 +81,7 @@
       return quoteBucket(mat, e, level, I.quote ? I.quote(mat) : 0, power(), factor(mat), market());
     }
     function quoteMisc() { const I = Inv(); return I && I.misc ? quoteConcentrate(I.misc(), level, preciousPrices()) : null; }
-    function credit(x) { API.S.money += x; API.S.lifetime += Math.max(0, x); }
+    function credit(x) { API.S.money += x; API.S.lifetime += Math.max(0, x); if (x > 0) API.emit('income', { amount: x, from: 'refinery' }); }
     function refine(mat) {
       const q = quote(mat), I = Inv(); if (!q) return;
       if (!q.ok) { API.log(q.why, 'warn'); return; }

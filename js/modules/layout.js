@@ -486,14 +486,17 @@
       if (b0) return { title: 'SELL', label: 'SELL ' + MATERIALS[b0.m].name.toUpperCase() + ' ' + app.fmtMoney(b0.v), sub: 'The bank is in the red: sell before you run more.', go: () => { if (I.sellMat) I.sellMat(b0.m); } };
     }
     // a sorter at the wrong setting for this mix: fix it first (a sink-float at 2.9 g/cc floats wood and glass together)
-    const tuneFor = (comp, what) => {
-      const t = app.bestTune ? app.bestTune(comp) : null; if (!t) return null;
+    const tuneFor = (comp, what, opts) => {
+      const t = app.bestTune ? app.bestTune(comp, opts) : null; if (!t) return null;
       const k = Object.keys(t.set)[0], D = k && (MACHINES[t.m].settings || []).find((x) => x.id === k), val = k ? t.set[k] + (D && D.unit ? ' ' + D.unit : '') : '';
       const fromSt = t.src ? S.line.findIndex((x) => x.uid === t.src.uid) + 1 : 0;
       if (t.src) return { title: 'REWIRE', label: 'MOVE ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO STATION ' + fromSt, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' never sees what it could sort in ' + what + ': feed it the ' + (app.portName ? app.portName(t.src) : t.src.port) + ' of station ' + fromSt + (k ? ' at ' + val : '') + ' for about +' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
       return { title: 'TUNE', label: 'SET ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO ' + val, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' is set wrong for ' + what + ': ' + (D ? D.label.toLowerCase() : k) + ' ' + val + ' adds about ' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
     };
-    if (S.feedPrepaid && !S.run) { const tn = tuneFor(S.comp, 'what is loaded'); if (tn) return tn; }
+    const blk = S.feedPrepaid && !S.run && app.runBlock ? app.runBlock() : null;   // #299: RUN would refuse: say what fixes it instead
+    if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m) => app.buyMachine(m)); app.markDirty(true); } };
+    if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
+    if (S.feedPrepaid && !S.run) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
     if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
     // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};
@@ -507,19 +510,29 @@
       const price = app.pairPrice ? app.pairPrice(p) : 0;
       if (price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
-    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const tn = tuneFor(mp.comp, 'your MISC pile'); if (tn) return tn; } }
+    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const tn = tuneFor(mp.comp, 'your MISC pile', { sizes: mp.sizes, entry: defaultEntry(S.line, MACHINES) }); if (tn) return tn; } }
     if (mt >= 1 && lineSortsMisc()) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material: your line pulls something pure out of it.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
     const cap = app.plantValue ? app.plantValue('logistics') : 30, dq = I && I.dumpQuote ? I.dumpQuote() : null;
     // ship it out only when it pays, or costs a quarter of the bank at most
     if (mt >= cap && dq && (dq.net >= 0 || -dq.net <= S.money * 0.25)) return { title: 'CLEAR THE YARD', label: 'SHIP OUT MISC ' + (dq.net >= 0 ? '+' : '') + app.fmtMoney(dq.net), sub: fmtW(mt) + ' of MISC your line cannot sort is filling yard bays you pay rent on.', go: () => { if (I.dumpMisc) I.dumpMisc(); } };
     // a dead end: no money for the cheapest lot, nothing to sell, nothing to run: the yard advance (repaid from sales)
-    if (S.mode !== 'rivals' && board0.length && !S.feedPrepaid && !(A0 && A0.pending && A0.pending()) && !(A0 && A0.yard && A0.yard().length) && S.money < cheapest && !best && loan === 0)
-      return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(ADVANCE) + ' ADVANCE', sub: 'No money for a lot and nothing to sell. A scrap merchant advances you ' + app.fmtMoney(ADVANCE) + ', repaid from a quarter of each sale.', go: takeAdvance };
+    // #300: stuck whenever the bank and everything sellable cannot reach the cheapest lot; the advance covers that lot, topped up to a cap
+    let stockV = 0; for (const m in stock) { const v = I && I.quote ? I.quote(m) : 0; if (v > 0) stockV += v; }
+    const need = advanceFor(cheapest);
+    if (S.mode !== 'rivals' && board0.length && !S.feedPrepaid && !(A0 && A0.pending && A0.pending()) && !(A0 && A0.yard && A0.yard().length) && S.money + stockV < cheapest && need > 0)
+      return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(need) + ' ADVANCE', sub: 'No money for a lot and too little to sell. A scrap merchant advances you ' + app.fmtMoney(need) + (loan > 0 ? ' more' : '') + ', repaid from a quarter of everything the yard takes in.', go: () => takeAdvance(need) };
     return Object.assign({ title: 'BUY' }, nextAction());
   }
   /* the yard advance: interest-free, repaid from 25% of each sale; it counts against net worth until it is repaid */
-  const ADVANCE = 1000; let loan = 0;
-  function takeAdvance() { if (loan > 0) return; loan = ADVANCE; app.S.money += ADVANCE; app.log('A scrap merchant advanced you ' + app.fmtMoney(ADVANCE) + '. A quarter of each sale goes to repay it.', 'warn'); app.save(); app.renderAll(); }
+  const ADVANCE = 1000, ADVANCE_MAX = 5000; let loan = 0;
+  /* the advance that buys the cheapest lot: at least ADVANCE, in $100 steps, never past ADVANCE_MAX owed; 0 when the cap is reached */
+  function advanceFor(cheapest) {
+    if (!isFinite(cheapest)) return 0;
+    const amt = Math.max(ADVANCE, Math.ceil((cheapest - Math.max(0, app.S.money)) / 100) * 100);
+    return loan + amt <= ADVANCE_MAX ? amt : 0;
+  }
+  function takeAdvance(amt) { amt = amt > 0 ? amt : ADVANCE; if (loan + amt > ADVANCE_MAX) return; loan += amt; app.S.money += amt; app.log('A scrap merchant advanced you ' + app.fmtMoney(amt) + (loan > amt ? ' (' + app.fmtMoney(loan) + ' owed in all)' : '') + '. A quarter of everything the yard takes in goes to repay it.', 'warn'); app.save(); app.renderAll(); }
+  function repay(amount) { if (!(loan > 0 && amount > 0)) return; const pay = Math.min(loan, amount * 0.25); loan -= pay; app.S.money -= pay; if (loan < 0.5) { loan = 0; app.log('The yard advance is repaid.', 'ok'); } }
   /* the left column (#132): NEXT STEP and the LAST BATCH under the loaded lot */
   let lastBatch = null;
   function renderSideCards() {
@@ -636,6 +649,7 @@
         if (!st.enum && ((dir < 0 && v <= st.min) || (dir > 0 && v >= st.max))) b.disabled = true;
         b.addEventListener('click', (e) => {
           e.stopPropagation();   // the column itself opens the station
+          if (app.runLocked && app.runLocked()) return;   // #295
           const before = binSnapshot(app.S.ev);
           n.settings[st.id] = stepSetting(st, n.settings[st.id], dir);
           app.S.linePreset = 'custom'; const lp = document.getElementById('line-preset'); if (lp) lp.value = 'custom';
@@ -735,10 +749,11 @@
     const S = app.S, Inv = CS.Inventory, l = loaded; loaded = null;
     if (!sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
     if (p && p.run) p.run.src = l.src;   // #98: jobs do not count a batch of material already sold to stock
-    const tons = p && p.run && p.run.total ? p.run.total : S.tons, took = {};
+    const tons = p && p.run && p.run.total ? p.run.total : S.tons, took = {}, nw0 = app.netWorth();
     for (const m in l.comp) took[m] = l.src === 'misc' && Inv.withdrawMisc ? Inv.withdrawMisc(m, tons * l.comp[m]) : Inv.withdraw(m, tons * l.comp[m]);
     if (l.src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live) CS.Round.live.useMisc();
-    rerunActive = { prev: l.prev || true, took, tons, src: l.src };   // the sizes and entry station hold for this batch, then the feed is ordinary again
+    rerunActive = { prev: l.prev || true, took, tons, src: l.src, worth: 0 };
+    rerunActive.worth = Math.max(0, nw0 - app.netWorth());   // #297: what the bucket was worth stays in net worth until its product lands   // the sizes and entry station hold for this batch, then the feed is ordinary again
   }
   let rerunActive = false;
   function onBatchComplete(p) {
@@ -1035,8 +1050,10 @@
       document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#btn-run')) guardLoaded(); }, true);
     });
     app.on('batchStart', onBatchStart);
+    app.on('assetValue', (q) => { if (q && rerunActive && rerunActive.worth > 0) q.value += rerunActive.worth; });   // #297
+    app.on('income', (p) => { if (p) repay(p.amount); });   // #300: refining, job pay and a paying SHIP OUT repay the advance too
     app.on('sale', (p) => {
-      if (loan > 0 && p && p.proceeds > 0) { const pay = Math.min(loan, p.proceeds * 0.25); loan -= pay; app.S.money -= pay; if (loan < 0.5) { loan = 0; app.log('The yard advance is repaid.', 'ok'); } }
+      if (p) repay(p.proceeds);
       setTimeout(() => renderFlow(true), 0);   // the buckets and NEXT STEP follow a sale at once
     });
     app.on('liabilities', (q) => { if (q && loan > 0) q.value += loan; });   // the advance counts against worth (not against the plant's value)
@@ -1066,7 +1083,7 @@
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
     app.on('modechange', () => { offset = 0; closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
     app.on('newgame', () => { offset = 0; seenPanels = {}; lastBatch = null; loan = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
-    app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets };
+    app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets, nextStep, rerun, loan: () => loan };   // nextStep, rerun and loan for tests
   }
   if (CS.app) init();
   else document.addEventListener('DOMContentLoaded', init);

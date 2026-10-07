@@ -14,7 +14,15 @@ const al = { t: 10, purity: 0.94, grade: 0.98, sf: 0.95 };
 const qa = R.quoteBucket('aluminum', al, 1, raw('aluminum', al), 0.12, 1);
 console.log('  10 t of 94% aluminum: raw $' + f(raw('aluminum', al)) + ', ingots $' + f(qa.value) + ' less $' + f(qa.cost) + ' = $' + f(qa.net));
 check(qa.ok && qa.gain > 0.3 * raw('aluminum', al), 'aluminum ingots pay far more than aluminum scrap (+' + f(qa.gain) + ')');
-check(Math.abs(qa.metalT - 10 * 0.94 * (1 - MATERIALS.aluminum.drossK)) < 1e-9, 'paid on the metal in the bucket, less melt loss');
+check(Math.abs(qa.metalT - 10 * 0.94 * (1 - MATERIALS.aluminum.drossK) * 0.95) < 1e-9, 'paid on the metal in the bucket, less melt loss (size unknown: the size factor sets recovery)');
+{   // #301: fines oxidise in the melt; oversize pieces melt whole; the purity premium (grade) is not a recovery factor
+  const lo = MATERIALS.copper.range[0], hi = MATERIALS.copper.range[1];
+  const ok = R.quoteBucket('copper', { t: 10, purity: 0.95, grade: 1.1, sf: 0.6, p80: hi * 10 }, 1, 0, 0.12, 1);
+  const dust = R.quoteBucket('copper', { t: 10, purity: 0.95, grade: 1.1, sf: 0.15, p80: lo / 50 }, 1, 0, 0.12, 1);
+  const full = 10 * 0.95 * (1 - (MATERIALS.copper.drossK || 0));
+  check(Math.abs(ok.metalT - full) < 1e-9, '#301: oversize copper melts whole (' + ok.metalT.toFixed(2) + ' t)');
+  check(Math.abs(dust.metalT - full * 0.15) < 1e-9 && dust.value < 0.2 * ok.value, '#301: copper dust recovers only its size factor (' + dust.metalT.toFixed(2) + ' t)');
+}
 check(Math.abs(qa.kwh - 10 * MATERIALS.aluminum.meltKWh / R.ETA) < 1e-9, 'energy is the melt enthalpy over the furnace efficiency');
 check(!R.quoteBucket('aluminum', al, 0, 0, 0.12, 1).ok, 'without a furnace there is no REFINE');
 const st = { t: 10, purity: 0.99, grade: 1.25, sf: 0.99 };

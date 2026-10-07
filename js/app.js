@@ -67,6 +67,8 @@
 
   /* ---------------- game-layer helpers ---------------- */
   function plantValue(key) { const U = PLANT_UPGRADES[key]; const q = { key, value: U.levels[Math.min(S.plant[key], U.levels.length - 1)] }; API.emit('plantValue', q); return q.value; }   // modules may add to a value (facility: the weighbridge adds batch tonnes)
+  /* #304: the largest batch any plant can take: top feed logistics plus the top weighbridge (applyPlant clamps to this plant's own) */
+  function maxTonsEver() { const top = (L) => (L && L.levels ? L.levels[L.levels.length - 1] : 0); return top(PLANT_UPGRADES.logistics) + top(CS.FACILITY_UPGRADES && CS.FACILITY_UPGRADES.weighbridge); }
   function applyPlant() {
     Sim.prices.power = plantValue('power'); Sim.prices.ln2 = plantValue('nitrogen'); Sim.prices.market = plantValue('market');
     const max = plantValue('logistics'); const r = $('#feed-tons'); r.max = max; if (S.tons > max) { S.tons = max; r.value = max; $('#feed-tons-v').textContent = S.tons + ' t'; }
@@ -261,7 +263,7 @@
       Audio.ui('click'); log('Added ' + MACHINES[m].name + ' as node ' + S.line.length + '.'); markDirty(true);
     });
     $('#btn-remove').addEventListener('click', () => {
-      const n = node(S.sel); if (!n) return;
+      const n = node(S.sel); if (!n || runLocked()) return;
       const idx = S.line.indexOf(n);
       if (Eco()) Eco().shelve(S.shelf, n);   // #193: the unit keeps its wear while it is off the line
       S.line = S.line.filter((x) => x !== n);
@@ -269,12 +271,7 @@
       S.sel = S.line.length ? S.line[Math.min(idx, S.line.length - 1)].uid : null;
       S.linePreset = 'custom'; sel.value = 'custom'; Audio.ui('click'); log('Removed ' + MACHINES[n.m].name + ' from the line (you still own it).'); markDirty(true);
     });
-    $('#btn-service').addEventListener('click', () => {
-      const n = node(S.sel); if (!n) return; const M = MACHINES[n.m];
-      const cost = serviceCost(M, n.wear);
-      if (!spend(cost, 'service on ' + M.name)) return;
-      n.wear = 0; Audio.ui('ok'); log('Serviced ' + M.name + ': new ' + M.wearInfo + ' for ' + fmtMoney(cost) + '.', 'ok'); markDirty(true);
-    });
+    $('#btn-service').addEventListener('click', () => { const n = node(S.sel); if (n) serviceNode(n); });
     $('#btn-buy').addEventListener('click', () => { const n = node(S.sel); if (n && buyMachine(n.m)) markDirty(true); else renderBank(); });
     $('#btn-upgrade').addEventListener('click', () => { const n = node(S.sel); if (n && upgradeMachine(n.m)) markDirty(true); else renderBank(); });
     $('#m-autosvc').addEventListener('change', () => {
@@ -283,6 +280,7 @@
     });
     $('#m-src').addEventListener('change', () => {
       const n = node(S.sel); if (!n) return; const v = $('#m-src').value;
+      if (runLocked()) { $('#m-src').value = n.src === 'feed' ? 'feed' : n.src.uid + ':' + n.src.port; return; }
       n.src = v === 'feed' ? 'feed' : { uid: +v.split(':')[0], port: v.split(':')[1] };
       S.linePreset = 'custom'; sel.value = 'custom'; markDirty(true);
     });
@@ -317,6 +315,17 @@
     if (M.omni) { let best = 'rejects', bm = -1; MAT_ORDER.forEach((m) => { const p = S.ev && S.ev.ports[n.uid + ':' + m], k = p ? Sim.streamMass(p) : 0; if (k > bm) { bm = k; best = m; } }); return best; }   // #15: one port per material, the heaviest one
     return M.kind === 'separator' ? 'extract' : 'product';
   }
+  /* #295: what lands in stock is the line at the end of the batch, so the line is fixed while a batch runs: adding, removing,
+   * rewiring or retuning a station mid-batch would apply to every tonne already run */
+  const RUN_LOCK = 'Stop the batch before changing the line: a change now would apply to every tonne already run.';
+  let lockWarned = 0;
+  function runLocked(quiet) {
+    if (!S.run) return false;
+    if (!quiet || Date.now() - lockWarned > 3000) { lockWarned = Date.now(); Audio.ui('deny'); log(RUN_LOCK, 'warn'); }
+    return true;
+  }
+  API.on('veto:addMachine', () => (S.run ? RUN_LOCK : ''));
+  API.on('veto:applyLine', () => (S.run ? RUN_LOCK : ''));
   function applyLinePreset(id) {
     const L = LINES[id];
     const why = API.veto('applyLine', { id, nodes: L.nodes }); if (why) { Audio.ui('deny'); log(why, 'bad'); $('#line-preset').value = LINES[S.linePreset] ? S.linePreset : 'custom'; return; }
@@ -392,7 +401,7 @@
         st.enum.forEach((id) => sel.appendChild(new Option(MATERIALS[id] ? MATERIALS[id].name : id, id)));
         sel.value = v;
         const sw = el('span', 'v', swatch(v));
-        sel.addEventListener('change', () => { n.settings[st.id] = sel.value; sw.innerHTML = swatch(sel.value); S.linePreset = 'custom'; $('#line-preset').value = 'custom'; markDirty(); });
+        sel.addEventListener('change', () => { if (runLocked()) { sel.value = n.settings[st.id]; return; } n.settings[st.id] = sel.value; sw.innerHTML = swatch(sel.value); S.linePreset = 'custom'; $('#line-preset').value = 'custom'; markDirty(); });
         row.appendChild(lab); row.appendChild(sel); row.appendChild(sw); box.appendChild(row); return;
       }
       const r = document.createElement('input'); r.type = 'range'; r.id = 'set-' + st.id;
@@ -400,6 +409,7 @@
       else { r.min = st.min; r.max = st.max; r.step = st.step; r.value = v; }
       const val = el('span', 'v', fmtSetting(v, st));
       r.addEventListener('input', () => {
+        if (runLocked(true)) { const ov = n.settings[st.id]; r.value = st.log ? Math.round(1000 * Math.log(ov / st.min) / Math.log(st.max / st.min)) : ov; return; }
         let nv = st.log ? st.min * Math.pow(st.max / st.min, r.value / 1000) : +r.value;
         if (st.log) nv = +nv.toPrecision(3);
         n.settings[st.id] = nv; val.textContent = fmtSetting(nv, st); S.linePreset = 'custom'; $('#line-preset').value = 'custom'; markDirty();
@@ -439,13 +449,14 @@
    */
   const TRIAL_MACHINES = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen', 'cone', 'jaw'];
   let rankComp = null;   // the mix NEXT PURCHASE ranks against (null: the loaded feed)
+  let rankOpts = null, lastRev = 0;   // #296: the feed options (re-run sizes, entry station) to rank rankComp with; the revenue of the last evaluation
   function lineMarginNoFeed(line) {
-    const ev = rankComp ? Sim.evalLine(line, rankComp, null) : Sim.evalLine(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
-    if (!(R > 0)) return -Infinity;
+    const ev = rankComp ? Sim.evalLine(line, rankComp, rankOpts) : Sim.evalLine(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
+    lastRev = 0; if (!(R > 0)) return -Infinity;
     let P = 0, extra = 0, wearC = 0, rev = 0;
     ev.nodes.forEach((n) => { P += Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
     ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m, t.form); if (Sim.binMatters(st)) rev += st.value; });
-    return rev - P / R * Sim.prices.power - extra - wearC;
+    lastRev = rev; return rev - P / R * Sim.prices.power - extra - wearC;
   }
   /* null when the line cannot run on this feed; otherwise up to three {m, port, gain} sorted by gain */
   /* Everything must be sorted to be sold (#52), so a sorter often pays only together with a second one on its output (an
@@ -489,14 +500,15 @@
   /* the best single setting change on the line for a mix: a sink-float at the wrong density floats wood and glass together,
    * a drum's field drags splinters; returns { i, uid, m, set, gain } when it adds over $1/t and 3% of the margin, else null */
   let tuneMemo = { key: '', v: null };
-  function bestTune(comp) {
+  /* opts: the feed options the batch will use (a re-run's sizes and entry station), so the advice is scored on what will run (#296) */
+  function bestTune(comp, opts) {
     if (!comp || !S.line.length) return null;
-    const key = lineKey() + '|' + JSON.stringify(comp);
+    const key = lineKey() + '|' + JSON.stringify(comp) + '|' + JSON.stringify(opts || null);
     if (tuneMemo.key === key) return tuneMemo.v;
-    let best = null; const keep = rankComp;
+    let best = null; const keep = rankComp, keepO = rankOpts;
     try {
-      rankComp = comp;
-      const base = lineMarginNoFeed(S.line);
+      rankComp = comp; rankOpts = opts || null;
+      const base = lineMarginNoFeed(S.line), baseRev = lastRev;
       // a sorter can also be fed from another output: a water tank on the heavy side never sees the wood the air classifier
       // blew off. Only outputs of earlier stations that nothing else takes, and only a sorter that nothing downstream takes from.
       const free = freePorts(S.line), idx = (uid) => S.line.findIndex((x) => x.uid === uid);
@@ -507,11 +519,12 @@
           const k = Object.keys(set)[0];
           if (!src && (!k || n.settings[k] === set[k])) return;   // nothing would change
           const trial = S.line.map((x) => (x === n ? Object.assign({}, x, { settings: Object.assign({}, x.settings, set) }, src ? { src: { uid: src.uid, port: src.port } } : {}) : x));
-          const gain = lineMarginNoFeed(trial) - base;
-          if (gain > Math.max(1, 0.03 * Math.abs(base)) && (!best || gain > best.gain)) best = { i, uid: n.uid, m: n.m, set, src, gain };
+          const gain = lineMarginNoFeed(trial) - base, revGain = lastRev - baseRev;
+          // #296: the change must make more product value, not just save a starved sorter's power
+          if (revGain >= 1 && gain > Math.max(1, 0.03 * Math.abs(base)) && (!best || gain > best.gain)) best = { i, uid: n.uid, m: n.m, set, src, gain };
         }));
       });
-    } catch (e) { best = null; } finally { rankComp = keep; }
+    } catch (e) { best = null; } finally { rankComp = keep; rankOpts = keepO; }
     tuneMemo = { key, v: best }; return best;
   }
   function portName(src) { const n = S.line.find((x) => x.uid === src.uid), M = n && MACHINES[n.m]; return (M && M.outs && M.outs[src.port] ? M.outs[src.port] : src.port).toLowerCase() + ' output'; }
@@ -731,6 +744,21 @@
   }
 
   /* ---------------- run loop ---------------- */
+  function serviceNode(n) {
+    const M = MACHINES[n.m], cost = serviceCost(M, n.wear);
+    if (!spend(cost, 'service on ' + M.name)) return false;
+    n.wear = 0; Audio.ui('ok'); log('Serviced ' + M.name + ': new ' + M.wearInfo + ' for ' + fmtMoney(cost) + '.', 'ok'); markDirty(true); return true;
+  }
+  /* #299: what would make RUN refuse with the feed loaded: machines on the line the yard does not own, or a worn-out station
+   * that auto-service will not fix. null when the line can start (as far as the line goes). */
+  function runBlock() {
+    if (!S.line.length) return null;
+    const ms = Object.keys(unownedIn(S.line));
+    if (ms.length) return { kind: 'buy', ms, cost: unownedCost(S.line) };
+    const n = S.line.find((x) => !x.autoService && (x.wear || 0) >= 0.999);
+    if (n) return { kind: 'service', n, i: S.line.indexOf(n), cost: serviceCost(MACHINES[n.m], n.wear) };
+    return null;
+  }
   function startRun() {
     if (S.run) { stopRun('stopped'); return; }
     if (!S.line.length) { Audio.ui('deny'); log('Add at least one machine first.', 'bad'); return; }
@@ -770,9 +798,9 @@
     S.money += sold - powerC - r.extra; S.tonnes += r.done; S.kwh += r.kwh; S.batches++; S.lifetime += Math.max(0, sold - powerC - r.extra);
     log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + (r.held ? 'to ' + r.held + ' worth ' : '') + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + (r.serviceC > 0 ? ' · auto-service ' + fmtMoney(r.serviceC) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
     Audio.ui(why === 'complete' ? 'done' : 'click');
+    API.emit('batchComplete', { r, why, net, bins: binList(), powerC });   // #298: the products land in stock first, then the rank and the card read net worth
     const before = r.rankIdx; checkRank(); const after = rankOf(netWorth());
     showCard(r, why, dt, powerC, net, after.idx > before ? after.name : null);
-    API.emit('batchComplete', { r, why, net, bins: binList(), powerC });
     renderRunState(); save(); renderAll();
   }
   function stepRun(realDt) {
@@ -922,7 +950,7 @@
     try {
       const d = JSON.parse(readSave(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
       loadedRev = Math.max(0, Math.floor(+d.rev) || 0); staleWarned = false;
-      S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
+      S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, maxTonsEver());
       S.line = CS.SaveIO.cleanLine(d.line).map((n) => ({ uid: n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src || 'feed', autoService: !!n.autoService }));   // #262: cleanLine drops bad uids and ports
       const uids = new Set(S.line.map((n) => n.uid));
       let maxUid = 0; S.line.forEach((n) => { maxUid = Math.max(maxUid, n.uid); }); while (Sim.nextUid() < maxUid) { /* advance */ }
@@ -1027,7 +1055,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

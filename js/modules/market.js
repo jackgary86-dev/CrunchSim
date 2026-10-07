@@ -96,6 +96,7 @@
   const MIN_SHARE = 0.25, MIN_TONNES = 1;
   function countsAsRound(r, why) {
     if (!r || !(r.done > 0)) return false;
+    if (r.src === 'stock' || r.src === 'misc') return false;   // #294: a re-run of held stock or MISC is no new feed: it would re-roll the bulletin for the price of the power
     return r.done >= MIN_TONNES && (why === 'complete' || r.done >= MIN_SHARE * (r.total || 0));
   }
 

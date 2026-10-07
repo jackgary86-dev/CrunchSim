@@ -5,8 +5,8 @@
  * purity, a delivery window, and a price well above spot. Progress accumulates across batches from every product
  * bin whose purity meets the spec (payload.bins of 'batchComplete', per head-tonne, scaled by the tonnes run).
  * The bins also go to inventory (the inventory module keeps its live stock private), so the job pays its premium
- * over spot on delivery and the tonnes are still sold at spot from inventory: nothing is paid twice. If a later
- * inventory version exposes CS.Inventory.live.withdraw(mat, t), the job takes the tonnes and pays the full price.
+ * over spot on delivery and the tonnes are still sold at spot from inventory: nothing is paid twice (#304: the premium-only
+ * path is the design; the job never withdraws stock).
  *
  * Reputation rises with deliveries and completed jobs, falls with failures, and unlocks bigger job tiers.
  *
@@ -228,11 +228,10 @@
     const bins = function () { return typeof API.binList === 'function' ? API.binList() : []; };
     const headRate = function () { const s = S(); if (!s) return 0; return s.run ? s.run.rate : (s.mr ? s.mr.R : 0); };
     const spot = function (mat) { return MATERIALS[mat].sell * (CS.Sim && CS.Sim.prices ? CS.Sim.prices.market : 1); };
-    const withdraw = function () { const L = CS.Inventory && CS.Inventory.live; return L && typeof L.withdraw === 'function' ? L.withdraw : null; };
     const feeds = function () { return Object.keys(FEEDS); };
     const limit = function () { return typeof API.plantValue === 'function' ? API.plantValue('logistics') : 30; };
     const genOpts = function () { return { feeds: feeds(), limit: limit(), rep: st.rep }; };
-    function credit(amount) { const s = S(); if (!s || !(amount > 0)) return; s.money += amount; s.lifetime = (s.lifetime || 0) + amount; }
+    function credit(amount) { const s = S(); if (!s || !(amount > 0)) return; s.money += amount; s.lifetime = (s.lifetime || 0) + amount; if (API.emit) API.emit('income', { amount, from: 'job' }); }
     function rep(delta, why) { const before = st.rep; st.rep = repApply(st.rep, delta); if (st.rep !== before) log('Reputation ' + (delta > 0 ? '+' : '') + delta + ' (' + why + '): now ' + st.rep + ', ' + tierName(st.rep) + '.', delta > 0 ? 'ok' : 'warn'); }
 
     /* ---- persistence ---- */
@@ -354,7 +353,7 @@
     }
     API.on('batchComplete', function (p) {
       if (!p || !p.r) return;
-      const dl = p.r.src === 'stock' || p.r.src === 'misc' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());   // #98: re-running a held bucket does not deliver it a second time
+      const dl = p.r.src === 'stock' || p.r.src === 'misc' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, null);   // #98: re-running a held bucket does not deliver it a second time
       dl.forEach(function (d) {
         const j = d.job;
         credit(d.pay);

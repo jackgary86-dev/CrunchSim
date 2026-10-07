@@ -68,18 +68,23 @@
         layer.querySelector('.g-text').textContent = st.text;
       }
       const nb = layer.querySelector('.g-next'); nb.classList.toggle('hidden', !st.next); nb.textContent = st.last ? 'DONE' : 'GOT IT';
-      place(st);
+      place(st, fresh);
       if (fresh && k === 0) layer.querySelector('.g-box').focus({ preventScroll: true });   // #256: the first prompt takes focus once, so keyboard and screen-reader users land on it; later steps are announced, not forced
     }
-    function place(st) {
+    function place(st, fresh) {
       if (!layer) return;
       st = st || nextStep(g.done, snap()); if (!st) return;
       const t = [].concat(st.target).map((q) => document.querySelector(q)).find((x) => x && x.getClientRects().length), ring = layer.querySelector('.g-ring'), box = layer.querySelector('.g-box');
       if (!t || !t.getClientRects().length) { ring.style.display = 'none'; box.style.left = '50%'; box.style.top = '120px'; box.style.transform = 'translateX(-50%)'; return; }
-      const r = t.getBoundingClientRect(); ring.style.display = 'block';
+      let r = t.getBoundingClientRect();
+      // #302: a new step whose target is off screen brings it into view (no smooth scroll: the ring follows at once)
+      if (fresh && (r.top < 0 || r.bottom > window.innerHeight) && t.scrollIntoView) { t.scrollIntoView({ block: 'center' }); r = t.getBoundingClientRect(); }
+      ring.style.display = 'block';
       Object.assign(ring.style, { left: (r.left - 6) + 'px', top: (r.top - 6) + 'px', width: (r.width + 12) + 'px', height: (r.height + 12) + 'px' });
       const bw = 320, left = Math.max(12, Math.min(window.innerWidth - bw - 12, r.left + r.width / 2 - bw / 2));
-      const below = r.bottom + 14, top = below + 170 < window.innerHeight ? below : Math.max(12, r.top - 184);
+      const bh = box.offsetHeight || 184, below = r.bottom + 14, above = r.top - bh - 14;
+      let top = below + bh < window.innerHeight - 12 ? below : above >= 12 ? above : window.innerHeight - bh - 12;
+      top = Math.max(12, Math.min(top, window.innerHeight - bh - 12));   // #302: always on screen, over the target if it must be
       Object.assign(box.style, { left: left + 'px', top: top + 'px', transform: 'none', width: bw + 'px' });
     }
     app.on('sale', () => { sold++; if (g.on) show(); });
@@ -87,6 +92,8 @@
     app.on('batchComplete', () => { if (g.on) setTimeout(show, 50); });
     let acc = 0; app.on('tick', (p) => { if (!g.on) return; acc += (p && p.dt) || 0; if (acc > 0.4) { acc = 0; show(); } });
     window.addEventListener('resize', () => { if (g.on) place(); });
+    let scrollQueued = false;   // #302: the ring and box are fixed: they follow the page when it scrolls
+    window.addEventListener('scroll', () => { if (!g.on || scrollQueued) return; scrollQueued = true; requestAnimationFrame(() => { scrollQueued = false; place(); }); }, { passive: true, capture: true });
     document.addEventListener('keydown', (e) => {
       if (!g.on || !layer || layer.classList.contains('hidden')) return;
       const a = document.activeElement;

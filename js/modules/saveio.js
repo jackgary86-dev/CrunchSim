@@ -13,22 +13,7 @@
   function encode(saves) { return PREFIX + b64e(JSON.stringify({ v: 1, at: saves.at || null, mode: saves.mode || 'progress', progress: saves.progress || null, rivals: saves.rivals || null })); }
   const MAX_SAVE = 2000000, MAX_LINE = 200, MAX_NUM = 1e12;
   const num = (v) => (v !== v ? 0 : Math.min(Math.max(v, -MAX_NUM), MAX_NUM));   // JSON can hold 1e999, which reads back as Infinity; clamped everywhere (money may be negative)
-  /* the output ports a machine offers (the source dropdown in app.js lists the same set) */
-  function portsOf(M) { return M.omni ? Object.keys(M.outs) : M.kind === 'separator' ? ['extract', 'residue'] : M.kind === 'conditioner' ? ['product'] : M.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects']; }
-  /* #262: a saved line made safe to run. A node needs a known machine and a finite integer uid (1..MAX_UID), unused so far;
-   * others are dropped. A src must name an earlier kept node and one of its real ports, else the node reads the head feed.
-   * Without this a missing uid or port threw in the renderers on every boot, and only clearing site data got past it. */
-  const MAX_UID = 1e6;
-  function cleanLine(line) {
-    const M = CS.MACHINES, seen = new Map(), out = [];
-    for (const n of line) {
-      if (!n || typeof n !== 'object' || (M && !M[n.m]) || !Number.isInteger(n.uid) || n.uid < 1 || n.uid > MAX_UID || seen.has(n.uid)) continue;
-      const s = n.src, from = s && typeof s === 'object' ? seen.get(s.uid) : null;
-      const ok = from && (!M || (typeof s.port === 'string' && portsOf(M[from.m]).indexOf(s.port) >= 0));
-      seen.set(n.uid, n); out.push(s == null ? n : Object.assign({}, n, { src: ok ? { uid: s.uid, port: s.port } : 'feed' }));   // a node with no src is left as saved
-    }
-    return out;
-  }
+  const portsOf = CS.portsOf, cleanLine = CS.cleanLine;   // #279: shared with blueprints and the plant floor (data.js)
   /* one stored save as a string: parsed, checked and its numbers clamped; null when it is not a usable game */
   function clean(x) {
     let g; try { g = JSON.parse(x, (k, v) => (typeof v === 'number' ? num(v) : v)); } catch (e) { return null; }   // every number in the save, stock piles included
@@ -56,14 +41,14 @@
   }
   /* #194: true when the raw stored save holds a newer revision than the one a tab loaded (so that tab must not overwrite it) */
   function isNewer(raw, rev) { try { const d = raw ? JSON.parse(raw) : null; return !!d && (Math.floor(+d.rev) || 0) > rev; } catch (e) { return false; } }
-  CS.SaveIO = { PREFIX, encode, decode, isNewer, cleanLine };
+  CS.SaveIO = { PREFIX, encode, decode, isNewer, cleanLine, portsOf };
 
   if (typeof document === 'undefined') return;
   function start() {
     const app = CS.app; if (!app || app.saveioStarted) return; app.saveioStarted = true;
     let panel = null;
     const keys = () => app.saveKeys();
-    const read = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const read = (k) => { if (app.readSave) return app.readSave(k); try { return localStorage.getItem(k); } catch (e) { return null; } };   // #278: the in-memory copy when storage is blocked
     function exportCode() {
       app.save();
       const k = keys();

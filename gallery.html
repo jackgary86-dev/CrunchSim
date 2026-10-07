@@ -25,7 +25,7 @@
   <p class="lead">Every machine view running live on a representative feed. Developer page, not part of the game. <a href="index.html" style="color:var(--cyan)">Back to the game</a> &middot; <a href="plant3d.html" style="color:var(--cyan)">3D plant floor</a>.</p>
   <div id="root"></div>
 
-  <script src="js/data.js?v=f144e1b74a"></script>
+  <script src="js/data.js?v=b3987a4fc9"></script>
   <script src="js/sim.js?v=84cbec2861"></script>
   <script src="js/cam.js?v=31a0143aae"></script>
   <script src="js/scenes-a.js?v=c6fcdb1f5d"></script>
@@ -61,7 +61,8 @@
       }
       function fmt(mm) { return mm >= 1 ? (mm >= 100 ? mm.toFixed(0) : mm.toFixed(1)) + ' mm' : (mm * 1000).toFixed(0) + ' µm'; }
       let last = performance.now();
-      function tick(now) { const dt = Math.min(0.05, (now - last) / 1000); last = now; for (let i = 0; i < cams.length; i++) cams[i].frame(dt); requestAnimationFrame(tick); }
+      const still = CS.reduceMotion();   // #282: still frames, as in the game with Reduce motion on
+      function tick(now) { const dt = still ? 0 : Math.min(0.05, (now - last) / 1000); last = now; for (let i = 0; i < cams.length; i++) cams[i].frame(dt); requestAnimationFrame(tick); }
       requestAnimationFrame(tick);
       window.addEventListener('resize', function () { cams.forEach(function (c) { c.resize(); }); });
     })();

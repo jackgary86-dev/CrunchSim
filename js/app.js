@@ -378,7 +378,7 @@
     const src = $('#m-src'); src.innerHTML = ''; src.appendChild(new Option('Head feed', 'feed'));
     for (let i = 0; i < k; i++) {
       const o = S.line[i], OM = MACHINES[o.m];
-      const ports = OM.omni ? Object.keys(OM.outs) : OM.kind === 'separator' ? ['extract', 'residue'] : (OM.kind === 'conditioner' ? ['product'] : (OM.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects']));
+      const ports = CS.portsOf(OM);   // #279: the shared list in data.js
       ports.forEach((p) => src.appendChild(new Option((i + 1) + '. ' + OM.name + ' → ' + (OM.outs ? OM.outs[p] : p), o.uid + ':' + p)));
     }
     src.value = n.src === 'feed' ? 'feed' : n.src.uid + ':' + n.src.port;
@@ -892,10 +892,13 @@
   let loadedRev = 0, staleWarned = false;
   /* #254: when localStorage throws (private window, blocked site data) each mode's latest save is kept in memory, so a mode switch
    * keeps the game; the player is told once that nothing reaches the disk. */
-  const memSaves = {}; let storageDown = false;
+  /* #283: only a read that throws (storage blocked outright) latches storageDown; a write that throws (quota, a transient error)
+   * sets writeFailing, keeps the game in memory and is tried again on the next save, so one bad write does not end saving. */
+  const memSaves = {}; let storageDown = false, writeFailing = false;
   function warnStorage() { log('Progress is not being saved: this browser is blocking storage. Switching modes keeps your games for now, but closing or reloading the page loses them.', 'warn'); }
   function storageFailed() { if (storageDown) return; storageDown = true; warnStorage(); }
   function readSave(key) {
+    if ((storageDown || writeFailing) && memSaves[key]) return memSaves[key];   // memory holds the newer copy
     if (!storageDown) { try { return localStorage.getItem(key); } catch (e) { storageFailed(); } }
     return memSaves[key] || null;
   }
@@ -903,11 +906,16 @@
   function save() {
     try {
       const key = saveKey();
-      if (!storageDown && CS.SaveIO.isNewer(localStorage.getItem(key), loadedRev)) { warnStale(); return; }
+      let held = null;
+      if (!storageDown) { try { held = localStorage.getItem(key); } catch (e) { storageFailed(); } }
+      if (!storageDown && !writeFailing && CS.SaveIO.isNewer(held, loadedRev)) { warnStale(); return; }
       loadedRev++;
       const json = JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, shelf: S.shelf, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() });
       memSaves[key] = json;
-      if (!storageDown) localStorage.setItem(key, json);
+      if (!storageDown) {
+        try { localStorage.setItem(key, json); if (writeFailing) { writeFailing = false; log('Saving works again.', 'ok'); } }
+        catch (e) { if (!writeFailing) { writeFailing = true; log('This save did not reach the disk (the browser refused it). The game is kept in memory and saving is tried again after each batch.', 'warn'); } }
+      }
     } catch (e) { storageFailed(); }
   }
   function load() {
@@ -1019,7 +1027,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

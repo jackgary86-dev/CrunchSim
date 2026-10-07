@@ -22,6 +22,7 @@
     #view-status { position: absolute; top: 8px; right: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; padding: 2px 8px; border: 1px solid var(--green); color: var(--green); border-radius: 2px; pointer-events: none; }
     #view-status.idle { border-color: var(--muted); color: var(--muted); }
     #view-status.on { animation: blink 1.2s steps(2) infinite; }
+    @media (prefers-reduced-motion: reduce) { #view-status.on { animation: none; } }
     #view-hint { position: absolute; bottom: 6px; left: 10px; pointer-events: none; letter-spacing: 1px; }
     #view-msg-line { position: absolute; bottom: 6px; right: 10px; font-family: var(--mono); font-size: 11px; color: var(--red); pointer-events: none; }
     .view-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 30px; text-align: center; color: var(--amber); font-family: var(--mono); font-size: 12px; line-height: 1.6; }
@@ -108,10 +109,10 @@
   </aside>
 </div>
 
-<script src="js/data.js?v=f144e1b74a"></script>
+<script src="js/data.js?v=b3987a4fc9"></script>
 <script src="js/sim.js?v=84cbec2861"></script>
 <script src="js/score.js?v=4bbc069f77"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="js/plant3d.js?v=d18e1616cd"></script>
+<script src="js/plant3d.js?v=0da6015a97"></script>
 </body>
 </html>

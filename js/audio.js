@@ -24,8 +24,10 @@
   let lastCrunch = 0, crunchBudget = 0;
   const rnd = (a, b) => a + Math.random() * (b - a);
 
+  /* #280: iOS reports 'interrupted' after a call, the lock screen or Siri, not 'suspended'; anything but running is resumed */
+  function wake() { if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && ctx.resume && !duckHidden) { try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* not allowed yet */ } } }
   function init() {
-    if (ctx) { if (ctx.state === 'suspended' && ctx.resume && !duckHidden) ctx.resume(); return true; }
+    if (ctx) { wake(); return true; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     try {
       ctx = new AC(); master = ctx.createGain(); master.gain.value = masterLevel();
@@ -37,7 +39,7 @@
     } catch (e) { ctx = null; return false; }
     return true;
   }
-  function ready() { if (!init() || muted || duckHidden) return false; if (ctx.state === 'suspended') ctx.resume(); return true; }
+  function ready() { if (!init() || muted || duckHidden) return false; wake(); return ctx.state === 'running'; }   // #280: nothing is queued on a frozen clock to play all at once on resume
   function noise() {
     if (noiseBuf) return noiseBuf;
     const n = ctx.sampleRate; noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -95,7 +97,8 @@
     ball: { f: 28, type: 'triangle', lp: 160, n: 0.3 }, colloid: { f: 220, type: 'sawtooth', lp: 1800, n: 0.08 }, homog: { f: 75, type: 'square', lp: 400, n: 0.1 }, atomizer: { f: 0, type: 'sine', lp: 3000, n: 0.35 },
     freezer: { f: 0, type: 'sine', lp: 1200, n: 0.3 }, magnet: { f: 50, type: 'sine', lp: 120, n: 0.03 }, eddy: { f: 180, type: 'triangle', lp: 500, n: 0.05 }, air: { f: 0, type: 'sine', lp: 1500, n: 0.3 }, screen: { f: 16, type: 'square', lp: 120, n: 0.1 }, sinkfloat: { f: 0, type: 'sine', lp: 500, n: 0.12 },
     sensor: { f: 0, type: 'sine', lp: 2500, n: 0.18 },  // belt whine and compressed-air hiss
-    omni: { f: 66, type: 'triangle', lp: 900, n: 0.16 }   // #15: a deep rotor drone under the air-jet hiss
+    omni: { f: 66, type: 'triangle', lp: 900, n: 0.16 },   // #15: a deep rotor drone under the air-jet hiss
+    furnace: { f: 36, type: 'triangle', lp: 420, n: 0.45 }   // #281: induction furnace, EAF and kiln: a low rumble under a filtered burner roar
   };
   /* #200: hum and belt never create the context (that waits for a gesture: init() from the pointer and key handlers). Once a
    * source has sat at level 0 for IDLE_STOP seconds it is stopped and dropped, and rebuilt when the level comes back. */
@@ -108,7 +111,7 @@
   }
   function killHum() { try { hum.osc.stop(); hum.nz.stop(); hum.out.disconnect(); } catch (e) { /* already stopped */ } hum = null; }
   function setHum(scene, level) {
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;   // #280
     if (muted || duckHidden) level = 0;
     if (!hum && !(level > 0.001)) return;   // nothing playing and nothing to play: do not build the graph
     const cfg = HUM[scene] || HUM.jaw;
@@ -154,7 +157,7 @@
     if (what === 'hidden') {
       duckHidden = !!on; if (suspendTimer) { clearTimeout(suspendTimer); suspendTimer = null; }
       if (duckHidden) suspendTimer = setTimeout(() => { suspendTimer = null; if (duckHidden && ctx && ctx.state === 'running' && ctx.suspend) ctx.suspend(); }, 400);
-      else if (ctx && ctx.state === 'suspended' && ctx.resume) ctx.resume();
+      else wake();
     } else if (what === 'plant') duckPlant = !!on;
     applyLevels(0.2); if (CS.Music) CS.Music.level(vol.music);
   }
@@ -199,7 +202,7 @@
     belt.g.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * 0.18, ctx.currentTime, 0.3);
     idle(belt, level, ctx.currentTime, killBelt);
   }
-  CS.Audio = { init, crunch, setHum, setBelt, ui, fx, sfx, cash: () => fx('cash'), setMuted, isMuted: () => muted, isHidden: () => duckHidden, setVolume, volumes: () => Object.assign({}, vol), duck, ctx: () => ctx, bus: (k) => (buses ? buses[k] : null) };
+  CS.Audio = { HUM, init, crunch, setHum, setBelt, ui, fx, sfx, cash: () => fx('cash'), setMuted, isMuted: () => muted, isHidden: () => duckHidden, setVolume, volumes: () => Object.assign({}, vol), duck, ctx: () => ctx, bus: (k) => (buses ? buses[k] : null) };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 /* #119: optional music, synthesized (no files) on the music bus: a calm open loop for Progress, a tenser faster one for a

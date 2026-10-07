@@ -38,4 +38,9 @@ check(lvl() === 2, 'both saves, Rivals played last: Rivals');
 store['crunchsim.v2.rivals'] = 'garbage';
 check(lvl() === 4, 'unreadable Rivals save falls back to Progress');
 
+{   // #283: the plant floor drops bad uids and ports the way the game does
+  const r = Plant3D.parseSave(JSON.stringify({ line: [{ uid: 1, m: 'jaw' }, { uid: 'x', m: 'magnet' }, { uid: 1, m: 'magnet' }, { uid: 3, m: 'magnet', src: { uid: 1, port: 'nope' } }, { uid: 4, m: 'sinkfloat', src: { uid: 3, port: 'extract' } }] }));
+  check(r && r.line.map((n) => n.uid).join() === '1,3,4', 'a missing or repeated uid is dropped (' + (r && r.line.map((n) => n.uid).join()) + ')');
+  check(r && r.line[1].src === 'feed' && r.line[2].src.uid === 3 && r.line[2].src.port === 'extract', 'a port the machine lacks reads the feed; a real one is kept');
+}
 process.exit(fails ? 1 : 0);

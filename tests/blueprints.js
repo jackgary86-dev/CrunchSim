@@ -79,5 +79,22 @@ check(st.saved.length === 1 && st.saved[0].name === 'keep me' && st.saved[0].sig
 check(!('best' in st), 'the old per-contract bests are dropped');
 check(same(BP.sanitiseState(null), { saved: [] }) && same(BP.sanitiseState('x'), { saved: [] }), 'missing state gives an empty shelf');
 
+console.log('=== #279: every output port of every machine survives a round trip');
+{
+  const bad = [];
+  Object.keys(MACHINES).forEach((m) => {
+    if (m === 'jaw') return;
+    CS.portsOf(MACHINES[m]).forEach((port) => {
+      const d = BP.sanitise({ nodes: [{ m, s: {}, src: 'feed' }, { m: 'jaw', s: {}, src: '1:' + port }] });
+      if (!d || d.nodes[1].src !== '1:' + port) bad.push(m + ':' + port);
+      const line = [{ uid: 1, m, src: 'feed' }, { uid: 2, m: 'jaw', src: { uid: 1, port } }];
+      if (CS.cleanLine(line)[1].src.port !== port) bad.push('save ' + m + ':' + port);
+    });
+  });
+  check(!bad.length, 'blueprints and saves keep every port' + (bad.length ? ' (lost ' + bad.join(', ') + ')' : ''));
+  const f = Object.keys(MACHINES).find((m) => MACHINES[m].kind === 'furnace');
+  check(!f || (CS.portsOf(MACHINES[f]).indexOf('dross') >= 0 && CS.portsOf(MACHINES[f]).indexOf('rejects') < 0), 'a furnace offers product and dross, not rejects');
+}
+
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nblueprints round-trip');
 process.exit(fails ? 1 : 0);

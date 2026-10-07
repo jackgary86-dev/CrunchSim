@@ -746,4 +746,32 @@
   Object.assign(G.CS, { hotkeyOk: hotkeyOk });
   Object.assign(G.CS, { PRICE_SCALE: PRICE_SCALE, STARTER_MACHINES: STARTER_MACHINES, START_BANK: START_BANK, LEVEL_MAX: LEVEL_MAX, LEVEL_FX: LEVEL_FX, levelCost: levelCost, PLANT_UPGRADES: PLANT_UPGRADES, RANKS: RANKS, MECH: MECH, MECH_LABEL: MECH_LABEL, MATERIALS: MATERIALS, MAT_ORDER: MAT_ORDER, MACHINES: MACHINES, MACHINE_GROUPS: MACHINE_GROUPS, FEEDS: FEEDS, LINES: LINES, SOURCES: SOURCES });
   Object.assign(G.CS, { OFFICE_UPGRADES: OFFICE_UPGRADES, FACILITY_UPGRADES: FACILITY_UPGRADES });
+
+  /* #279: the output ports a machine offers, one list for the game, the save checks, blueprints and the plant floor
+   * (a sorter has one port per material plus rejects; a furnace pours product and dross) */
+  function portsOf(M) { return M.omni && M.outs ? Object.keys(M.outs) : M.kind === 'separator' ? ['extract', 'residue'] : M.kind === 'conditioner' ? ['product'] : M.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects']; }
+  /* #262: a saved line made safe to run. A node needs a known machine and a finite integer uid (1..MAX_UID), unused so far;
+   * others are dropped. A src must name an earlier kept node and one of its real ports, else the node reads the head feed.
+   * Without this a missing uid or port threw in the renderers on every boot, and only clearing site data got past it. */
+  const MAX_UID = 1e6;
+  function cleanLine(line) {
+    const M = G.CS.MACHINES, seen = new Map(), out = [];
+    for (const n of line) {
+      if (!n || typeof n !== 'object' || (M && !M[n.m]) || !Number.isInteger(n.uid) || n.uid < 1 || n.uid > MAX_UID || seen.has(n.uid)) continue;
+      const s = n.src, from = s && typeof s === 'object' ? seen.get(s.uid) : null;
+      const ok = from && (!M || (typeof s.port === 'string' && portsOf(M[from.m]).indexOf(s.port) >= 0));
+      seen.set(n.uid, n); out.push(s == null ? n : Object.assign({}, n, { src: ok ? { uid: s.uid, port: s.port } : 'feed' }));   // a node with no src is left as saved
+    }
+    return out;
+  }
+  Object.assign(G.CS, { portsOf: portsOf, cleanLine: cleanLine });
+
+  /* #282: the Reduce motion choice for the pages without the game (plant floor, gallery): the in-game toggle when it was set
+   * ('1' on, '0' off), else the OS setting. Same rule as modes.js motionPref. */
+  function reduceMotion() {
+    let v = null; try { v = G.localStorage && G.localStorage.getItem('crunchsim.reduceMotion'); } catch (e) { /* storage blocked */ }
+    if (v === '1') return true; if (v === '0') return false;
+    try { return typeof G.matchMedia === 'function' && G.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+  }
+  G.CS.reduceMotion = reduceMotion;
 })(typeof window !== 'undefined' ? window : globalThis);

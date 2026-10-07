@@ -266,7 +266,7 @@
     app.on('save', () => ({ auction: { rngState: rng.getState(), board: st.board, market: st.market, nextId: st.nextId, pending: st.pending, yard: st.yard, sellers: st.sellers, open: st.settle ? { tons: st.settle.tons, lot: st.settle.lot } : null } }));   // open: a batch in flight (#148)
     /* #253: lots paid for but not yet run count toward net worth at the cost paid for the tonnes still unprocessed (the loaded lot
      * and the yard), so buying a lot does not lower net worth or flip the rank-gated panels; a batch moves its tonnes on into stock. */
-    app.on('assetValue', (q) => { if (q) [st.pending].concat(st.yard).forEach((L) => { if (L && L.tons > 0) q.value += L.ask * L.tons; }); });
+    app.on('assetValue', (q) => { if (!q) return; [st.pending].concat(st.yard).forEach((L) => { if (L && L.tons > 0) q.value += L.ask * L.tons; }); if (st.settle && st.settle.tons > 0) q.value += st.settle.lot.ask * st.settle.tons; });   // #277: the batch on the line counts at cost until its stock lands
     app.on('feedCost', (q) => { if (st.market[q.id] > 0) q.cost *= st.market[q.id]; });   // scales the preset price the app charges (feed market)
     const feedCost = (id) => FEEDS[id].cost * (st.market[id] > 0 ? st.market[id] : 1);
 

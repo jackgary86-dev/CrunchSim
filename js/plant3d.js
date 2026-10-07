@@ -28,7 +28,7 @@
   const MAX_W = SIZE.comminution[0];
 
   function primaryPort(M) { return M.kind === 'separator' ? 'extract' : 'product'; }
-  function portsOf(M) { return M.kind === 'separator' ? ['extract', 'residue'] : (M.kind === 'conditioner' ? ['product'] : (M.kind === 'furnace' ? ['product', 'dross'] : ['product', 'rejects'])); }
+  function portsOf(M) { return CS.portsOf(M); }   // #279: the shared list in data.js
   function srcKey(src) { return !src || src === 'feed' ? 'feed' : src.uid + ':' + src.port; }
 
   function layout(line) {
@@ -171,7 +171,7 @@
       const d = JSON.parse(text || 'null');
       if (!d || !Array.isArray(d.line) || !d.line.length) return null;
       const lv = {}; for (const k in (d.levels || {})) if (MACHINES[k]) lv[k] = clamp(Math.floor(+d.levels[k] || 0), 0, CS.LEVEL_MAX);
-      const line = d.line.filter(function (n) { return n && MACHINES[n.m]; }).map(function (n) {
+      const line = CS.cleanLine(d.line).map(function (n) {   // #283: bad uids and ports are dropped the way the game drops them
         return { uid: +n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: lv[n.m] || 0, src: n.src && n.src !== 'feed' ? { uid: +n.src.uid, port: n.src.port } : 'feed' };
       });
       const uids = new Set(line.map(function (n) { return n.uid; }));
@@ -355,7 +355,9 @@
     }
 
     /* ---- batch progress and the frame loop ---- */
-    let last = performance.now(), fpsN = 0, fpsT = 0, fps = 0;
+    let last = performance.now(), fpsN = 0, fpsT = 0, fps = 0, still = CS.reduceMotion();
+    if (typeof matchMedia === 'function') { try { matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', function () { still = CS.reduceMotion(); }); } catch (e) { /* old browser */ } }
+    window.addEventListener('storage', function (e) { if (e.key === 'crunchsim.reduceMotion') still = CS.reduceMotion(); });   // the toggle changed in the game tab
     function tick(now) {
       const dtReal = Math.min(0.1, (now - last) / 1000); last = now;
       fpsN++; fpsT += dtReal; if (fpsT >= 0.5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; $('#t-frag').textContent = (R3 ? R3.fragCount() : 0) + ' · ' + fps + ' fps'; }
@@ -368,7 +370,7 @@
         $('#prog').style.width = (100 * clamp(V.done / V.tons, 0, 1)) + '%';
         $('#plant-readouts .ro:last-child .v').textContent = fmtNum(V.done, 1) + ' / ' + V.tons;
       }
-      if (R3) { R3.step(dt, dtReal); R3.frame(); }
+      if (R3) { R3.step(still ? 0 : dt, dtReal, still); R3.frame(); }   // #282: with reduce motion the batch still counts, nothing moves
       requestAnimationFrame(tick);
     }
 
@@ -741,7 +743,7 @@
     }
 
     let spinT = 0;
-    function step(dt, dtReal) {
+    function step(dt, dtReal, still) {
       if (dt > 0) {
         beltTravel += BELT_SPEED * dt; beltMat.uniforms.t.value = beltTravel;
         spawnAcc += 14 * dt; while (spawnAcc >= 1) { spawnAcc -= 1; spawnFragment(); }   // fragment rate is visual, not mass-true
@@ -752,7 +754,7 @@
       }
       stepDrops(dt);
       drawFragments(); drawBins(dtReal);
-      if (cam.goal) { cam.target.lerp(cam.goal, Math.min(1, dtReal * 4)); if (cam.target.distanceTo(cam.goal) < 0.05) cam.goal = null; }
+      if (cam.goal) { cam.target.lerp(cam.goal, still ? 1 : Math.min(1, dtReal * 4)); if (cam.target.distanceTo(cam.goal) < 0.05) cam.goal = null; }   // #282: a jump, not a glide
     }
     function frame() { if (ctxLost) return; applyCam(); renderer.render(scene, camera); }
     function focus(x, z) { cam.goal = new THREE.Vector3(x, 0.8, z); if (cam.r > 30) cam.r = 24; }

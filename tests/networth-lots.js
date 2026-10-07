@@ -33,7 +33,8 @@ console.log('== a batch moves the lot into stock without a drop ==');
   const { env, CS, app, S, A } = game();
   const lot = A.dealTier(0, 'elv'); A.deliver(lot, lot.ask, 'Bought');
   S.speed = 10; const nw0 = app.netWorth(), tons0 = A.pending().tons;
-  app.startRun(); let k = 0; while (S.run && k++ < 5000) env.tick(0.1);
+  app.startRun(); let k = 0, low = Infinity; while (S.run && k++ < 5000) { env.tick(0.1); low = Math.min(low, app.netWorth()); }
+  check(low > nw0 - 0.02 * lot.ask * tons0, 'net worth never dips while the batch runs (#277: ' + nw0.toFixed(0) + ', lowest ' + low.toFixed(0) + ')');
   check(A.pending() == null || A.pending().tons < tons0, 'the batch used tonnes from the lot');
   const left = (A.pending() ? A.pending().ask * A.pending().tons : 0);
   check(left < lot.ask * tons0, 'the unprocessed part of the lot is valued at cost for what remains (' + left.toFixed(0) + ')');

@@ -36,7 +36,7 @@
     const app = CS.app; if (!app || app.modesStarted) return; app.modesStarted = true;
     const $ = (s) => document.querySelector(s), esc = (s) => app.esc(s), money = (x) => app.fmtMoney(x);
     let title = null, bar = null, lastPlace = 0;
-    const read = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const read = (k) => { if (app.readSave) return app.readSave(k); try { return localStorage.getItem(k); } catch (e) { return null; } };   // #278: the in-memory copy when storage is blocked
 
     /* ---- the title screen's yard (#128): a crane drops scrap into a shredder, a belt carries the sorted pieces to their piles ---- */
     let yard = null;

@@ -20,11 +20,7 @@
     if (CS.Score && CS.Score.signature) return CS.Score.signature(nodes);
     return nodes.map(function (n) { return MACHINES[n.m].short; }).join('>');
   }
-  function portsOf(m) {
-    const M = MACHINES[m];
-    if (M.omni && M.outs) return Object.keys(M.outs);   // #15: one port per material plus rejects
-    return M.kind === 'separator' ? ['extract', 'residue'] : (M.kind === 'conditioner' ? ['product'] : ['product', 'rejects']);
-  }
+  function portsOf(m) { return CS.portsOf(MACHINES[m]); }   // #279: the shared list (a furnace pours dross, not rejects)
 
   /* live line [{uid, m, settings, src}] -> preset-shaped definition { nodes: [{m, s, src}] } */
   function serialise(line) {

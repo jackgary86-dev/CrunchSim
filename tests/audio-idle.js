@@ -42,5 +42,10 @@ check(resumes === 1 && ctx.state === 'running', 'returning to the tab resumes it
 check(timers.length === 2, 'and restarts the music scheduler');
 A.setMuted(true); check(cleared === 2, 'muting clears the music interval');
 A.setMuted(false); check(timers.length === 3, 'unmuting restarts it');
+ctx.state = 'interrupted'; const r0 = resumes; A.ui('click');
+check(resumes === r0 + 1, '#280: an interrupted context (iOS after a call) is resumed');
+ctx.state = 'interrupted'; ctx.resume = () => { resumes++; };   // a resume that has not landed yet
+const m1 = made; A.ui('click'); A.setHum('jaw', 1); check(made === m1, '#280: nothing is scheduled while the context is not running');
+check(A.HUM.furnace && A.HUM.furnace !== A.HUM.jaw && A.HUM.furnace.f < 45, '#281: the furnace scene has its own low rumble');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' audio checks pass');
 process.exit(fails ? 1 : 0);

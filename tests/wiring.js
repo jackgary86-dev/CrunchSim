@@ -33,7 +33,7 @@ console.log('== a playbook load carries wear (#247) ==');
 {
   const env = load(), { CS, app, S } = env, made = spy(env), pb = CS.Playbooks.PLAYBOOKS[0], m = pb.def.nodes[0].m;
   S.line = CS.Sim.buildLine({ nodes: [{ m, s: {}, src: 'feed' }] }); S.line[0].wear = 0.7;
-  app.emit('render');
+  app.emit('render'); app.emit('drawerOpen', { key: 'plant' });   // the Plant drawer is open (a stashed panel skips renders, #337)
   const row = made.find((r) => r.click && typeof r.e.innerHTML === 'string' && r.e.innerHTML.indexOf(pb.short) > 0 && /urow/.test(r.e.className));   // the first card's row: clicking it opens the card, and its LOAD button
   if (row) row.click();
   const btn = labelled(made, /^LOAD THIS SETUP/).pop();

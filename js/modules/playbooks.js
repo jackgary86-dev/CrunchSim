@@ -413,9 +413,11 @@
       if (!loaded && app.S && app.S.ext) readExt(app.S.ext);
       buildPanel(); mountHelpLink(); render();
     });
-    app.on('render', render);
+    const shown = function (fn) { return app.whenShown ? app.whenShown(function () { return document.getElementById('playbook-panel'); }, fn) : fn; };   // #337: not while its drawer is closed
+    app.on('render', shown(render));
     // settings sliders recompute without a full render: follow S.ev so the fit readout stays current
-    app.on('tick', function () { if (els && app.S && app.S.ev && app.S.ev !== lastEv) { renderFit(); renderRank(); } });
+    const follow = shown(function () { renderFit(); renderRank(); });
+    app.on('tick', function () { if (els && app.S && app.S.ev && app.S.ev !== lastEv) follow(); });
 
     function buildPanel() {
       if (els) return;

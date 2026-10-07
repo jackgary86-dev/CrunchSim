@@ -22,16 +22,17 @@
   /* Money for the header slots and logs: whole dollars with thousands separators under a million, then M, B and T with two
    * decimals. Non-finite input prints '--'. A value that rounds to zero prints $0, never -$0. */
   const MONEY_UNITS = [['M', 1e6], ['B', 1e9], ['T', 1e12]];
+  const INT_FMT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }), DEC2_FMT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });   // cached (#335)
   function fmtMoney(x) {
     if (typeof x !== 'number' || !isFinite(x)) return '--';
     const a = Math.abs(x), r = Math.round(a);
     let s;
-    if (r < 1e6) s = r.toLocaleString('en-US');
+    if (r < 1e6) s = INT_FMT.format(r);
     else {
       let i = 0;
       while (i < MONEY_UNITS.length - 1 && a >= MONEY_UNITS[i + 1][1]) i++;
       if (i < MONEY_UNITS.length - 1 && (a / MONEY_UNITS[i][1]).toFixed(2) === '1000.00') i++;   // 999.999M reads $1.00B, not $1000.00M
-      s = (a / MONEY_UNITS[i][1]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + MONEY_UNITS[i][0];
+      s = DEC2_FMT.format(a / MONEY_UNITS[i][1]) + MONEY_UNITS[i][0];
     }
     return (x < 0 && r > 0 ? '-$' : '$') + s;
   }

@@ -456,8 +456,12 @@
       panel.appendChild(css);
       els = { ro, lg, roster, held, wire, tog, tag: panel.querySelector('h2 .tag') };
     }
+    let rivStale = false;   // #337: rebuilt when the Records drawer opens, not every five sim minutes while it is closed
+    app.on('drawerOpen', () => { if (rivStale) render(); });
     function render() {
       if (!els) return;
+      if (panel && app.panelHidden && app.panelHidden(panel)) { rivStale = true; return; }
+      rivStale = false;
       const RL = CS.Round && CS.Round.live;
       if (app.S && app.S.mode === 'rivals' && RL && RL.table) { renderMatch(RL); return; }   // #111: in Rivals the panel is the match, not the old yards
       els.tog.classList.remove('hidden');

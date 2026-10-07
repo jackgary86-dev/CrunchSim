@@ -16,7 +16,9 @@
   const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
   /* ---------------- formatting ---------------- */
-  function fmtNum(x, d) { if (x == null || !isFinite(x)) return '--'; const f = Math.abs(x) >= 1000 ? 0 : (d == null ? (Math.abs(x) >= 100 ? 0 : Math.abs(x) >= 10 ? 1 : 2) : d); return x.toLocaleString('en-US', { minimumFractionDigits: f, maximumFractionDigits: f }); }
+  function fmtNum(x, d) { if (x == null || !isFinite(x)) return '--'; const f = Math.abs(x) >= 1000 ? 0 : (d == null ? (Math.abs(x) >= 100 ? 0 : Math.abs(x) >= 10 ? 1 : 2) : d); return numFmt(f).format(x); }
+  /* #335: one cached formatter per decimal count: toLocaleString builds a new one on every call, which was 15% of a batch's CPU */
+  const NUM_FMT = {}; function numFmt(f) { return NUM_FMT[f] || (NUM_FMT[f] = new Intl.NumberFormat('en-US', { minimumFractionDigits: f, maximumFractionDigits: f })); }
   function fmtSize(mm) {
     if (mm == null || !isFinite(mm) || mm <= 0) return '--';
     if (mm >= 1000) return fmtNum(mm / 1000, 2) + ' m';
@@ -80,6 +82,15 @@
     booted: false
   };
   CS.app = API;   // exposed before boot so modules loaded after this file can register hooks; boot() fills in the rest of the API
+  /* #337: a panel parked in the hidden #stash (its drawer is closed) is not rebuilt on every render: whenShown(getEl, fn) wraps a
+   * render function so it only marks the panel stale while hidden, and runs it once when a drawer opens */
+  function panelHidden(el) { return !!(el && typeof el.closest === 'function' && el.closest('#stash')); }
+  function whenShown(getEl, fn) {
+    let stale = false;
+    API.on('drawerOpen', () => { if (stale) { stale = false; fn(); } });
+    return function () { if (panelHidden(getEl())) { stale = true; return; } stale = false; return fn.apply(this, arguments); };
+  }
+  API.panelHidden = panelHidden; API.whenShown = whenShown;
 
   /* ---------------- game-layer helpers ---------------- */
   function plantValue(key) { const U = PLANT_UPGRADES[key]; const q = { key, value: U.levels[Math.min(S.plant[key], U.levels.length - 1)] }; API.emit('plantValue', q); return q.value; }   // modules may add to a value (facility: the weighbridge adds batch tonnes)
@@ -165,6 +176,7 @@
   /* what would have earned (#22): the single best next machine from the NEXT PURCHASE ranking, and its margin on this batch */
   function earnHint(r) {
     const E = Eco(); if (!E || !S.line.length || Object.keys(unownedIn(S.line)).length) return '';
+    if (CS.Autorun && CS.Autorun.live && CS.Autorun.live.active()) return '';   // #336: mid-lot the card goes in 0.25 s: no NEXT PURCHASE ranking for it
     const picks = nextPurchases(); if (!picks || !picks.length) return '';
     const b = E.betterLine(picks[0], marginPerT().margin, r.done); if (!b) return '';
     const at = b.src ? S.line.findIndex((n) => n.uid === b.src.uid) : S.line.length - 1, from = S.line[at];
@@ -507,7 +519,7 @@
   function lineKey() {
     const P = Sim.prices, pm = P.perMat || {};
     return S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src) + 'L' + levelOf(n.m) + (n.wear >= 0.999 ? 'w' : '')).join() +
-      '|' + P.power + '|' + P.market + '|' + Object.keys(pm).map((m) => m + (+pm[m]).toFixed(3)).join();
+      '|' + P.power + '|' + P.market + '|' + Object.keys(pm).map((m) => m + (+pm[m]).toFixed(1)).join();   // #336: the advice caches (estimates, NEXT PURCHASE, TUNE) follow market moves in 0.1 steps, not every batch's drift
   }
   function lotEstimate(comp) {
     if (!S.line.length || !comp) return null;
@@ -567,7 +579,7 @@
       const can = A.board().filter((L) => L.ask * L.tons <= S.money).sort((a, b) => b.ask * b.tons - a.ask * a.tons)[0];
       if (can) rankComp = can.declared;
     }
-    const key = lineKey() + '|' + JSON.stringify(rankComp || S.comp) + '|' + (S.feedPrepaid ? JSON.stringify(S.feedOpts) : '') + '|' + Math.floor(S.money / 500) + '|' + Object.keys(S.units).map((m) => m + S.units[m]).join() + '|' + JSON.stringify(S.plant) + '|' + (CS.Slots && CS.Slots.live && CS.Slots.live.owned ? CS.Slots.live.owned() : '');   // slots and the hall decide what may be added
+    const key = lineKey() + '|' + JSON.stringify(rankComp || S.comp) + '|' + (S.feedPrepaid ? JSON.stringify(S.feedOpts) : '') + '|' + Object.keys(S.units).map((m) => m + S.units[m]).join() + '|' + JSON.stringify(S.plant) + '|' + (CS.Slots && CS.Slots.live && CS.Slots.live.owned ? CS.Slots.live.owned() : '');   // slots and the hall decide what may be added
     if (npMemo.key === key) { rankComp = null; return npMemo.v; }
     try { const v = rankPurchases(); npMemo = { key, v }; return v; } finally { rankComp = null; }
   }
@@ -604,7 +616,8 @@
     const cost = (p) => pairPrice(p) || 1;
     return pairs.sort((x, y) => cost(x) / x.gain - cost(y) / y.gain).slice(0, 3);   // pairs ranked by payback
   }
-  function renderNextPurchase() {
+  const renderNextPurchase = whenShown(() => $('#next-buy'), renderNextPurchaseNow);   // #337
+  function renderNextPurchaseNow() {
     const box = $('#next-buy'); if (!box) return; box.innerHTML = '';
     const note = (t) => box.appendChild(el('div', 'small', t));
     if (!S.line.length) { note('Build a line first. This block ranks the sorters that would add the most margin.'); return; }
@@ -835,7 +848,8 @@
     S.money += sold - powerC - r.extra; S.tonnes += r.done; S.kwh += r.kwh; S.batches++; S.lifetime += Math.max(0, sold - powerC - r.extra);
     log('Batch ' + why + ': ' + fmtNum(r.done, 1) + ' t in ' + fmtClock(dt).slice(2) + ' · ' + fmtNum(r.kwh, 0) + ' kWh (' + fmtNum(r.done > 0 ? r.kwh / r.done : 0, 1) + ' kWh/t) · products ' + (r.held ? 'to ' + r.held + ' worth ' : '') + fmtMoney(r.rev) + ' · power ' + fmtMoney(powerC) + (r.extra > 0 ? ' · consumables ' + fmtMoney(r.extra) : '') + (r.serviceC > 0 ? ' · auto-service ' + fmtMoney(r.serviceC) : '') + ' · net ' + fmtMoney(net) + ' to bank.', net >= 0 ? 'ok' : 'warn');
     Audio.ui(why === 'complete' ? 'done' : 'click');
-    API.emit('batchComplete', { r, why, net, bins: binList(), powerC });   // #298: the products land in stock first, then the rank and the card read net worth
+    renderHold++;   // #335: the batchComplete hooks (the next lot loading, the buckets filling) ask for full renders: one at the end does
+    try { API.emit('batchComplete', { r, why, net, bins: binList(), powerC }); } finally { renderHold--; }   // #298: the products land in stock first, then the rank and the card read net worth
     const before = r.rankIdx; checkRank(); const after = rankOf(netWorth());
     showCard(r, why, dt, powerC, net, after.idx > before && S.mode !== 'rivals' ? after.name : null);   // #320: Rivals has no ranks
     renderRunState(); save(); renderAll();
@@ -844,7 +858,7 @@
     const r = S.run; if (!r) return;
     const dh = realDt * S.speed / 60;             // 1 real second = 1 sim minute at 1x
     S.clock += dh * 3600;
-    if (performance.now() - lastEval > 400 || dirty) { recompute(); r.rate = effRate(); lastEval = performance.now(); }
+    if (performance.now() - lastEval > 1000 || dirty) { recompute(); r.rate = effRate(); lastEval = performance.now(); }   // #338: once a second for wear drift; a change sets dirty
     if (!(r.rate > 0)) { log('Line halted: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no flow') + '.', 'bad'); Audio.ui('alarm'); stopRun('halted'); return; }
     let tons = r.rate * dh; if (r.done + tons > r.total) tons = r.total - r.done;
     r.done += tons;
@@ -880,13 +894,15 @@
     $('#btn-stop').disabled = !on;
     const cs = $('#cam-status'); cs.classList.remove('hidden'); cs.textContent = on ? 'RUNNING' : 'STANDBY'; cs.classList.toggle('on', on); cs.classList.toggle('idle', !on);
   }
+  /* #338: the header runs every frame: write a readout only when its text changed (each write re-lays out the bar) */
+  function setTxt(el, t) { if (el && el.textContent !== t) el.textContent = t; }
   function renderHeader() {
-    $('#clock').textContent = fmtClock(S.clock);
-    $('#money').textContent = fmtMoney(S.money); $('#money').classList.toggle('bad', S.money < 0);
+    setTxt($('#clock'), fmtClock(S.clock));
+    setTxt($('#money'), fmtMoney(S.money)); $('#money').classList.toggle('bad', S.money < 0);
     const owe = advanceOwed(), bl = $('#money').previousElementSibling; if (bl) { const t = owe > 0 ? 'BANK · OWE ' + fmtMoney(owe) : 'BANK'; if (bl.textContent !== t) { bl.textContent = t; bl.classList.toggle('bad', owe > 0); bl.title = owe > 0 ? 'Yard advance owed: 25% of every sale repays it, and net worth counts it as a debt' : ''; } }   // #312
-    const nw = netWorth(); $('#worth').textContent = fmtMoney(nw); if (S.mode !== 'rivals') $('#rank').textContent = rankOf(nw).name;   // Rivals shows the match place there (modes.js)
-    $('#tonnes').textContent = fmtNum(S.tonnes + (S.run ? S.run.done : 0), S.tonnes > 100 ? 0 : 1) + ' t';
-    $('#prog').style.width = S.run ? (100 * S.run.done / S.run.total) + '%' : '0%';
+    const nw = netWorth(); setTxt($('#worth'), fmtMoney(nw)); if (S.mode !== 'rivals') setTxt($('#rank'), rankOf(nw).name);   // Rivals shows the match place there (modes.js)
+    setTxt($('#tonnes'), fmtNum(S.tonnes + (S.run ? S.run.done : 0), S.tonnes > 100 ? 0 : 1) + ' t');
+    { const w = S.run ? (Math.round(1000 * S.run.done / S.run.total) / 10) + '%' : '0%', pg = $('#prog'); if (pg.style.width !== w) pg.style.width = w; }
     const rn = $('#run-net');
     if (S.run) { const r = S.run, net = r.rev - r.kwh * Sim.prices.power - r.extra - r.feedC - (r.serviceC || 0); rn.textContent = (net >= 0 ? '+' : '') + fmtMoney(net); rn.className = 'num small ' + (net >= 0 ? 'ok' : 'bad'); }
     /* idle: renderRunProjection owns the field (the projection's reason, or nothing) */
@@ -943,7 +959,9 @@
 
   /* ---------------- render all ---------------- */
   function markDirty(structural) { dirty = true; if (structural) renderAll(); else { recompute(); renderLine(); renderTelemetry(); renderPlant(); updateFeedInfo(); renderHeader(); } }
+  let renderHold = 0;
   function renderAll() {
+    if (renderHold) { dirty = true; return; }   // #335: inside a batch end; stopRun renders once when its hooks are done
     if (dirty || !S.ev) recompute();
     renderLineSelects(); renderLine(); renderMachine(); renderTelemetry(); renderPlant(); renderBank(); updateFeedInfo(); renderHeader();
     const n = node(S.sel);

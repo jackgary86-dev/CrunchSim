@@ -628,7 +628,7 @@
     const up = () => { if (!down) return; down = false; setTimeout(onIdle, 0); };
     panel.addEventListener('pointerdown', () => { down = true; });
     doc.addEventListener('pointerup', up); doc.addEventListener('pointercancel', up);
-    return { busy: () => down || panel.getClientRects().length === 0 };
+    return { busy: () => down || (typeof panel.closest === 'function' && !!panel.closest('#stash')) || panel.getClientRects().length === 0 };   // #337: a stashed panel is known hidden without a layout read
   }
 
   G.CS.Sim = {

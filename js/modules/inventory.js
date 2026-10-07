@@ -464,7 +464,8 @@
       ctx.fillStyle = cur >= base ? '#5cffb1' : '#ff5c6c'; ctx.beginPath(); ctx.arc(xs(prices.length - 1), ys(cur), 2.2, 0, 2 * Math.PI); ctx.fill();
     }
 
-    function renderPanel() { if (body) { if (API.keepFocus) API.keepFocus(body, renderPanelNow); else renderPanelNow(); } }   // #314: a typed TARGET price survives the next batch
+    let invStale = false;   // #337: the panel is rebuilt when the Sell drawer opens, not on every change while it is closed
+    function renderPanel() { if (body && API.panelHidden && API.panelHidden(body)) { invStale = true; return; } invStale = false; if (body) { if (API.keepFocus) API.keepFocus(body, renderPanelNow); else renderPanelNow(); } }   // #314: a typed TARGET price survives the next batch
     function renderPanelNow() {
       if (!body) return;
       const mu = marketMul(), market = mv(), tot = stockTotals(stock, market, mu), M = Market();
@@ -600,6 +601,7 @@
       renderPanel();
     });
     API.on('render', renderPanel);
+    API.on('drawerOpen', function () { if (invStale) renderPanel(); });
     API.on('batchComplete', onBatchComplete);
     API.on('tick', function (p) { if (p && p.dh > 0 && syncMarket()) { checkTargets(); renderPanel(); } });
     API.on('save', function () { return { inventory: serialize(stock, mkt, targets, misc) }; });

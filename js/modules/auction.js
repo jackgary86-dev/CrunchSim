@@ -290,7 +290,10 @@
       panel.appendChild(css);
       gate = CS.Sim.panelGate(panel, document, () => { if (stale) refresh(false); });
     }
+    let aucStale = false;   // #337: rebuilt when the Auction drawer opens, not on every change while it is closed
     function render() {
+      if (panel && app.panelHidden && app.panelHidden(panel)) { aucStale = true; return; }
+      aucStale = false;
       if (!panel) return;
       stale = false;
       const box = panel.querySelector('#auction-lots'); box.innerHTML = '';
@@ -444,6 +447,7 @@
       build(); render();
     });
     app.on('render', render);
+    app.on('drawerOpen', () => { if (aucStale) render(); });
     app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; st.sellers = {}; st.settle = null; tiers(); render(); });
     /* #95: restoreSave clears the prepaid flag; load the lot in the yard again (unless a re-run bucket is the loaded feed) */
     function reassert() {

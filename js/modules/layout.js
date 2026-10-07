@@ -363,6 +363,7 @@
     d[2].forEach((id) => { const s = document.getElementById(id); if (s && panelShown(id)) { body.appendChild(s); seenPanels[id] = true; } });
     $('#drawer-title').textContent = drawerLabel(key, d[1]).toUpperCase();
     $('#drawer').classList.remove('hidden'); openDrawer = key;
+    app.emit('drawerOpen', { key });   // #337: panels that skipped renders while stashed catch up
     document.querySelectorAll('#toolbar .tool').forEach((b) => b.classList.toggle('on', b.dataset.key === key));
     app.renderAll();
   }
@@ -436,15 +437,21 @@
     } else heap.falls = [];
   }
   let lastT = 0;
+  let miniAcc = 0, sizeAcc = 1;
   function miniLoop(now) {
-    let dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016; lastT = now;
+    const real = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016; lastT = now;
+    // #338: the small station views draw at 30 fps while a batch runs and 4 fps in standby, and check their size once a second
+    miniAcc += real; sizeAcc += real;
+    const period = app && app.S && app.S.run ? 1 / 30 : 0.25;
+    if (miniAcc < period) { requestAnimationFrame(miniLoop); return; }
+    let dt = Math.min(0.1, miniAcc); miniAcc = 0;
+    const sizeCheck = sizeAcc >= 1; if (sizeCheck) sizeAcc = 0;
     if (document.body.classList.contains('reduce-motion') === true) dt = 0;   // #258: still frames, no falling shred or moving cams
     if (!stationOpen && !openDrawer && !document.hidden && app && app.S) {
       if (app.S.run) drawHeap(dt);
       minis.forEach((m, uid) => {
         if (!m.cv.isConnected) return;
-        const r = m.cv.getBoundingClientRect();
-        if (Math.abs(r.width - m.cam.W) > 1 || Math.abs(r.height - m.cam.H) > 1) m.cam.resize();
+        if (sizeCheck) { const r = m.cv.getBoundingClientRect(); if (Math.abs(r.width - m.cam.W) > 1 || Math.abs(r.height - m.cam.H) > 1) m.cam.resize(); }
         const st = app.camState(uid); if (!st) return;
         m.cam.view = VIEWS[st.M.scene] || null;
         m.cam.setState(st); m.cam.frame(dt);
@@ -578,7 +585,8 @@
     const blk = S.feedPrepaid && !S.run && app.runBlock ? app.runBlock() : null;   // #299: RUN would refuse: say what fixes it instead
     if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
-    if (S.feedPrepaid && !S.run) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
+    const lotRunning = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();   // #336: between a lot's own batches the next one starts by itself: no TUNE search there
+    if (S.feedPrepaid && !S.run && !lotRunning) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
     if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
     // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};

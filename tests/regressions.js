@@ -90,5 +90,16 @@ console.log('== #323: BUY buys every missing unit; the advance covers a red bank
   check(S.money >= cheapest, 'one advance reaches the cheapest lot (bank ' + Math.round(S.money) + ', lot ' + Math.round(cheapest) + ')');
 }
 
+console.log('== a worn-out station the bank cannot service: SELL or the advance, never an unpayable SERVICE ==');
+for (const withStock of [false, true]) {
+  const env = mk(), { CS, app, S } = env, A = CS.Auction.live;
+  A.dealTier(0, 'elv'); const lot = A.dealTier(0, 'elv'); A.deliver(lot, lot.ask, 'Bought');
+  const mg = S.line.find((x) => x.m === 'magnet'); mg.wear = 1; mg.autoService = false; app.markDirty(true);
+  if (withStock) CS.Inventory.addLot(CS.Inventory.stock(), 'steel', 10, 0.97, 1, 1, 30, 0);
+  S.money = 50;
+  const ns = app.layout.nextStep();
+  check(withStock ? ns.title === 'SELL' : ns.title === 'STUCK', (withStock ? 'with a bucket: SELL first' : 'nothing to sell: the advance') + ' (' + ns.title + ' ' + ns.label + ')');
+  if (!withStock) { ns.go(); const n2 = app.layout.nextStep(); check(n2.title === 'SERVICE' && S.money >= 1300, 'then the service is affordable (' + n2.label + ')'); }
+}
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' regression checks pass'));
 process.exit(fails ? 1 : 0);

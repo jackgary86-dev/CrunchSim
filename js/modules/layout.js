@@ -597,6 +597,13 @@
     };
     const blk = S.feedPrepaid && !S.run && app.runBlock ? app.runBlock() : null;   // #299: RUN would refuse: say what fixes it instead
     if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
+    if (blk && blk.cost > S.money && S.mode !== 'rivals') {   // the service is more than the bank holds: sell first, else the advance covers it
+      let sv = 0; const st0 = I && I.stock ? I.stock() : {}; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (v > 0) sv += v; }
+      const need = Math.max(ADVANCE, Math.ceil((blk.cost - S.money) / 100) * 100);
+      if (sv + S.money < blk.cost && loan + need <= ADVANCE_MAX) return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(need) + ' ADVANCE', sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and its service (' + app.fmtMoney(blk.cost) + ') is more than the bank and the buckets hold. A scrap merchant advances the money, repaid from a quarter of everything the yard takes in.', go: () => takeAdvance(need) };
+      let bm = null; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (st0[m].t > 0.05 && v > 0 && (!bm || v > bm.v)) bm = { m, v }; }
+      if (bm) return { title: 'SELL', label: 'SELL ' + MATERIALS[bm.m].name.toUpperCase() + ' ' + app.fmtMoney(bm.v), sub: 'Station ' + (blk.i + 1) + ' needs a ' + app.fmtMoney(blk.cost) + ' service the bank cannot pay yet: sell a bucket first.', go: () => { if (I.sellMat) I.sellMat(bm.m); } };
+    }
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
     const lotRunning = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();   // #336: between a lot's own batches the next one starts by itself: no TUNE search there
     if (S.feedPrepaid && !S.run && !lotRunning) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }

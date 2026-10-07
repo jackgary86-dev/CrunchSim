@@ -1137,11 +1137,12 @@
     renderAll(); renderRunState();
     API.booted = true; API.emit('boot');
     lastRealT = performance.now();
-    let acc = 0;
+    let acc = 0, idleAcc = 0;
     function tick(now) {
       const dt = Math.min(hidden() ? 1 : 0.1, (now - lastRealT) / 1000); lastRealT = now;
       const clockBefore = S.clock;
       if (S.run) { stepRun(dt); acc += dt; if (acc > 0.25) { acc = 0; renderTelemetry(); renderPlant(); renderLine(); } renderHeader(); }
+      else { idleAcc += dt; if (idleAcc > 0.5) { idleAcc = 0; const rb = $('#btn-run'), why = runWhy(); if (rb && rb.disabled !== !!why) { rb.disabled = !!why; if (why) rb.title = why; else if (S.ev) renderRunProjection(marginPerT()); } } }   // a lot a module loads (the yard after a reload) enables RUN
       API.emit('tick', { dt, dh: (S.clock - clockBefore) / 3600 });
       if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0) hideCard(); }
       const st = camState(); cam.setState(st);

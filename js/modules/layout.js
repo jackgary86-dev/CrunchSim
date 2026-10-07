@@ -653,6 +653,9 @@
     } else if (S.feedPrepaid) {
       const src = feedSource();
       h = '<div class="lc-h"><b>LOADED</b><span>' + esc(src ? src.name : 'material') + '</span></div>' + binPic(S.comp) + compBars(S.comp, 4);
+    } else if (S.run) {   // the last of a lot (or a bucket) is on the belt: show it, not "nothing is loaded"
+      const src = feedSource();
+      h = '<div class="lc-h"><b>ON THE BELT</b><span>' + esc(src ? src.name : 'this batch') + '</span></div>' + binPic(S.comp) + '<div class="lc-t"><b>' + fmtW(Math.max(0, S.run.total - S.run.done)) + '</b> to go of ' + fmtW(S.run.total) + '<span>' + (P && P.tons > 0.05 ? fmtW(P.tons) + ' of lot #' + P.id + ' next' : yard.length ? yard.length + ' lot' + (yard.length > 1 ? 's' : '') + ' in the yard' : 'nothing waits after it') + '</span></div>' + compBars(S.comp, 4);
     } else {
       const a = nextAction();
       h = '<div class="lc-empty"><div class="small">Nothing is loaded.</div><button type="button" class="primary lc-go">' + esc(a.label) + '</button><div class="small">' + esc(a.sub) + '</div></div>';

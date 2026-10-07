@@ -92,13 +92,14 @@
       const rLine = !R.has || !R.round ? 'No match in progress.' : R.over ? 'Last match finished after ' + R.round + ' rounds.' : 'Round ' + R.round + ' of ' + R.length + ' · bank ' + money(R.money);
       title.innerHTML = '<div class="tt-box"><div class="tt-logo">CRUNCH<b>SIM</b></div><div class="tt-sub">BUY THE JUNK · GRIND IT · SORT IT · SELL IT PURE</div><div class="tt-cards">' +
         '<div class="tt-card tt-progress"><svg class="tt-ic" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 30 H46" stroke="#7fe3ff" stroke-width="2"/><rect x="6" y="14" width="12" height="16" fill="#7fe3ff" opacity=".35"/><rect x="20" y="8" width="10" height="22" fill="#7fe3ff" opacity=".55"/><rect x="32" y="18" width="12" height="12" fill="#7fe3ff" opacity=".8"/><path d="M25 8 V3 H29" stroke="#7fe3ff" stroke-width="2" fill="none"/></svg><b>PROGRESS</b><p>The long game. Earn money, keep building out your plant: more sorters, bigger lots, a refinery. Nobody to beat, no end.</p><div class="tt-save">' + esc(pLine) + '</div>' +
-          '<button type="button" class="primary" data-go="progress">' + (P.has ? 'CONTINUE' : 'START') + '</button></div>' +
+          '<button type="button" class="primary" data-go="progress">' + (P.has ? 'CONTINUE' : 'START') + '</button>' + (P.has ? '<button type="button" data-go="progress-new">NEW YARD</button>' : '') + '</div>' +
         '<div class="tt-card tt-rivals"><svg class="tt-ic" viewBox="0 0 48 32" aria-hidden="true"><rect x="8" y="4" width="16" height="9" rx="2" fill="#ff8a5c" transform="rotate(-30 16 8)"/><path d="M18 12 L30 28" stroke="#ff8a5c" stroke-width="3" stroke-linecap="round"/><rect x="28" y="24" width="16" height="5" rx="1" fill="#ff8a5c" opacity=".6"/><circle cx="40" cy="9" r="3" fill="#ffb25c"/><circle cx="33" cy="6" r="3" fill="#5cffb1"/><circle cx="44" cy="15" r="3" fill="#7fe3ff"/></svg><b>RIVALS</b><p>A match of auction rounds against three yards. Three bins a round, four bidders. The highest worth after the last round wins.</p><div class="tt-save">' + esc(rLine) + '</div>' +
           (liveMatch(R) ? '<button type="button" class="primary" data-go="rivals">CONTINUE MATCH</button><button type="button" data-go="rivals-new">NEW MATCH</button>' : '<button type="button" class="primary" data-go="rivals-new">' + (R.has && R.over ? 'NEW MATCH' : 'START A MATCH') + '</button>') + '</div>' +
         '</div><div class="small tt-foot">Each game keeps its own save in this browser. MENU in the toolbar comes back here. <a href="#" id="tt-settings">Settings</a></div></div>';
       title.querySelectorAll('[data-go]').forEach((b) => {
         let armed = false;   // #195: NEW MATCH over a live match needs a second click, like RESTART RIVALS
         b.addEventListener('click', () => {
+          if (b.dataset.go === 'progress-new') { if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'CLICK AGAIN: WIPE THIS YARD'; b.classList.add('danger'); return; } go('progress'); if (app.S.mode === 'progress') newYard(); return; }
           if (b.dataset.go === 'rivals-new' && liveMatch(R) && !armed) { armed = true; b.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; b.classList.add('danger'); setTimeout(() => { if (armed && b.isConnected) { armed = false; b.textContent = 'NEW MATCH'; b.classList.remove('danger'); } }, 3000); return; }
           go(b.dataset.go);
         });
@@ -134,6 +135,7 @@
         slider('master', 'Volume', 'Everything') + slider('plant', 'Plant', 'Machines, crunches, belts') + slider('fx', 'Effects', 'Sales, the auction, alerts') + slider('music', 'Music', 'Off at 0: a calm loop in Progress, a tense one in Rivals') +
         '<div class="set-row"><span><b>Reduce motion</b><span class="small">No flashes, bounces or sliding panels</span></span><button type="button" id="set-motion">' + (reduceMotion() ? 'ON' : 'OFF') + '</button></div>' +
         (S.mode === 'progress' ? '<div class="set-row"><span><b>Guided first lot</b><span class="small">A fresh $1k lot and the steps on the real screen</span></span><button type="button" id="set-guide">PLAY IT AGAIN</button></div>' : '') +
+        (S.mode === 'progress' ? '<div class="set-row"><span><b>Start a new yard</b><span class="small">Wipes this Progress yard and starts again with $2,800, a hammermill and a magnet. Your Rivals match is not touched.</span></span><button type="button" class="danger" id="set-newyard">NEW YARD</button></div>' : '') +
         (S.mode === 'rivals' ? '<div class="set-row"><span><b>Restart the match</b><span class="small">Wipes this Rivals match. Your Progress yard is never wiped.</span></span><button type="button" class="danger" id="set-restart">RESTART RIVALS</button></div>' : '') +
         '<div class="set-row"><span><b>Game</b><span class="small">Back to the title screen</span></span><button type="button" id="set-menu">MENU</button></div>' +
         '<div id="set-save"></div>';
@@ -142,6 +144,7 @@
       b.querySelector('#set-motion').addEventListener('click', () => { rmMem = reduceMotion() ? '0' : '1'; try { localStorage.setItem(RM_KEY, rmMem); } catch (e) { /* ignore */ } applyMotion(); showSettings(); });
       const g = b.querySelector('#set-guide'); if (g) g.addEventListener('click', () => { closeSettings(); if (CS.Guide && CS.Guide.live) CS.Guide.live.begin(); });
       const r = b.querySelector('#set-restart'); if (r) { let armed = false; r.addEventListener('click', () => { if (!armed) { armed = true; r.textContent = 'CLICK AGAIN: WIPE THIS MATCH'; return; } closeSettings(); const ng = document.getElementById('btn-newgame'); if (ng) { ng.click(); ng.click(); } }); }
+      const ny = b.querySelector('#set-newyard'); if (ny) { let armed = false; ny.addEventListener('click', () => { if (app.S.run) { app.log('Stop the running batch first.', 'warn'); return; } if (!armed) { armed = true; ny.textContent = 'CLICK AGAIN: WIPE THIS YARD'; return; } closeSettings(); newYard(); }); }
       b.querySelector('#set-menu').addEventListener('click', () => { closeSettings(); showTitle(); });
       if (svPanel) b.querySelector('#set-save').appendChild(svPanel);
       sets.classList.remove('hidden');
@@ -150,6 +153,13 @@
       if (!sets) return;
       const stash = document.getElementById('stash'); if (svPanel && stash) stash.appendChild(svPanel);
       sets.classList.add('hidden');
+    }
+    /* a new Progress yard (the player's choice, from SETTINGS or the title): the Rivals save is untouched */
+    function newYard() {
+      if (app.S.mode !== 'progress' || app.S.run) return;
+      app.softReset(); const h = $('#help'); if (h) h.classList.add('hidden');
+      app.log('A new yard: $2,800, a hammermill shredder and a magnetic drum. The guided first lot starts now.', 'ok');
+      render();
     }
     function hideTitle() { if (title) title.classList.add('hidden'); document.body.classList.remove('at-title'); if (CS.Audio && CS.Audio.duck) CS.Audio.duck('plant', false); if (CS.Music) CS.Music.setTheme(app.S.mode === 'rivals' ? 'rivals' : 'progress'); }
     function go(what) {

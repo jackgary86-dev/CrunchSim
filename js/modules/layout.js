@@ -485,6 +485,15 @@
       let b0 = null; for (const m in stock0) { const v = I.quote ? I.quote(m) : 0; if (stock0[m].t > 0.05 && v > 0 && (!b0 || v > b0.v)) b0 = { m, v }; }
       if (b0) return { title: 'SELL', label: 'SELL ' + MATERIALS[b0.m].name.toUpperCase() + ' ' + app.fmtMoney(b0.v), sub: 'The bank is in the red: sell before you run more.', go: () => { if (I.sellMat) I.sellMat(b0.m); } };
     }
+    // a sorter at the wrong setting for this mix: fix it first (a sink-float at 2.9 g/cc floats wood and glass together)
+    const tuneFor = (comp, what) => {
+      const t = app.bestTune ? app.bestTune(comp) : null; if (!t) return null;
+      const k = Object.keys(t.set)[0], D = k && (MACHINES[t.m].settings || []).find((x) => x.id === k), val = k ? t.set[k] + (D && D.unit ? ' ' + D.unit : '') : '';
+      const fromSt = t.src ? S.line.findIndex((x) => x.uid === t.src.uid) + 1 : 0;
+      if (t.src) return { title: 'REWIRE', label: 'MOVE ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO STATION ' + fromSt, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' never sees what it could sort in ' + what + ': feed it the ' + (app.portName ? app.portName(t.src) : t.src.port) + ' of station ' + fromSt + (k ? ' at ' + val : '') + ' for about +' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
+      return { title: 'TUNE', label: 'SET ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO ' + val, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' is set wrong for ' + what + ': ' + (D ? D.label.toLowerCase() : k) + ' ' + val + ' adds about ' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
+    };
+    if (S.feedPrepaid && !S.run) { const tn = tuneFor(S.comp, 'what is loaded'); if (tn) return tn; }
     if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
     // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};
@@ -498,6 +507,7 @@
       const price = app.pairPrice ? app.pairPrice(p) : 0;
       if (price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
+    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const tn = tuneFor(mp.comp, 'your MISC pile'); if (tn) return tn; } }
     if (mt >= 1 && lineSortsMisc()) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material: your line pulls something pure out of it.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
     const cap = app.plantValue ? app.plantValue('logistics') : 30, dq = I && I.dumpQuote ? I.dumpQuote() : null;
     // ship it out only when it pays, or costs a quarter of the bank at most

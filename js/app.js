@@ -462,8 +462,8 @@
   /* #170: a sorter is only as good as its setting: the density of a sink-float medium decides what floats (wood 0.6, plastic
    * 0.9-1.4, glass 2.5, stone 2.65-2.7, aluminum 2.7, steel 7.8 g/cc); a drum's field what it lifts. The ranking tries these
    * and BUY & PLACE sets the winner. Pairs try a shorter list. */
-  const SETTING_TRIALS = { sinkfloat: { sg: [1.1, 1.5, 2.0, 2.45, 2.6, 2.8, 2.9, 3.2] }, magnet: { field: [100, 250, 400] } };
-  const SETTING_TRIALS_PAIR = { sinkfloat: { sg: [1.5, 2.45, 2.9] } };
+  const SETTING_TRIALS = { sinkfloat: { sg: [1.0, 1.2, 1.5, 2.0, 2.45, 2.6, 2.8, 2.9, 3.2] }, magnet: { field: [100, 250, 400] } };
+  const SETTING_TRIALS_PAIR = { sinkfloat: { sg: [1.0, 1.5, 2.45, 2.9] } };
   function trialSettings(m, pair) {
     const T = (pair ? SETTING_TRIALS_PAIR : SETTING_TRIALS)[m]; if (!T) return [{}];
     const k = Object.keys(T)[0]; return T[k].map((v) => ({ [k]: v }));
@@ -485,6 +485,44 @@
     try { rankComp = comp; const m = lineMarginNoFeed(S.line); v = isFinite(m) ? m : null; } catch (e) { v = null; } finally { rankComp = keep; }
     if (estCache.size > 200) estCache.clear();
     estCache.set(key, v); return v;
+  }
+  /* the best single setting change on the line for a mix: a sink-float at the wrong density floats wood and glass together,
+   * a drum's field drags splinters; returns { i, uid, m, set, gain } when it adds over $1/t and 3% of the margin, else null */
+  let tuneMemo = { key: '', v: null };
+  function bestTune(comp) {
+    if (!comp || !S.line.length) return null;
+    const key = lineKey() + '|' + JSON.stringify(comp);
+    if (tuneMemo.key === key) return tuneMemo.v;
+    let best = null; const keep = rankComp;
+    try {
+      rankComp = comp;
+      const base = lineMarginNoFeed(S.line);
+      // a sorter can also be fed from another output: a water tank on the heavy side never sees the wood the air classifier
+      // blew off. Only outputs of earlier stations that nothing else takes, and only a sorter that nothing downstream takes from.
+      const free = freePorts(S.line), idx = (uid) => S.line.findIndex((x) => x.uid === uid);
+      if (isFinite(base)) S.line.forEach((n, i) => {
+        const sep = MACHINES[n.m].kind === 'separator', fed = S.line.some((x) => x.src && x.src !== 'feed' && x.src.uid === n.uid);
+        const srcs = [null].concat(sep && !fed ? free.filter((p) => idx(p.uid) < i && p.uid !== n.uid) : []);
+        srcs.forEach((src) => trialSettings(n.m).forEach((set) => {
+          const k = Object.keys(set)[0];
+          if (!src && (!k || n.settings[k] === set[k])) return;   // nothing would change
+          const trial = S.line.map((x) => (x === n ? Object.assign({}, x, { settings: Object.assign({}, x.settings, set) }, src ? { src: { uid: src.uid, port: src.port } } : {}) : x));
+          const gain = lineMarginNoFeed(trial) - base;
+          if (gain > Math.max(1, 0.03 * Math.abs(base)) && (!best || gain > best.gain)) best = { i, uid: n.uid, m: n.m, set, src, gain };
+        }));
+      });
+    } catch (e) { best = null; } finally { rankComp = keep; }
+    tuneMemo = { key, v: best }; return best;
+  }
+  function portName(src) { const n = S.line.find((x) => x.uid === src.uid), M = n && MACHINES[n.m]; return (M && M.outs && M.outs[src.port] ? M.outs[src.port] : src.port).toLowerCase() + ' output'; }
+  function applyTune(t) {
+    const n = S.line.find((x) => x.uid === t.uid); if (!n || S.run) return;
+    Object.assign(n.settings, t.set); S.linePreset = 'custom';
+    if (t.src) n.src = { uid: t.src.uid, port: t.src.port };
+    const k = Object.keys(t.set)[0], D = k && (MACHINES[n.m].settings || []).find((x) => x.id === k);
+    const from = t.src ? ' now takes the ' + portName(t.src) + ' of station ' + (S.line.findIndex((x) => x.uid === t.src.uid) + 1) : '';
+    log('Station ' + (t.i + 1) + ' ' + MACHINES[n.m].name + from + (k ? (from ? ', ' : ': ') + (D ? D.label.toLowerCase() : k) + ' ' + t.set[k] + (D && D.unit ? ' ' + D.unit : '') : '') + ' (+' + fmtMoney(t.gain) + '/t on this mix).', 'ok');
+    Audio.ui('ok'); markDirty(true);
   }
   function nextPurchases() {
     if (!S.line.length) return [];
@@ -981,7 +1019,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

@@ -380,7 +380,9 @@
       name: 'Sink-float tank', short: 'SINK', cat: 'Separation', kind: 'separator', scene: 'sinkfloat',
       // price: a small skid-mounted float-sink tank with drag-out conveyors (plastics-washing-line class) is about $18k new; the heavy medium is bought per tonne as mediaCost.
       eSpec: 2.0, cap: 15, capRef: 1, capExp: 0, pidle: 10, prated: 40, life: 1e9, price: 18000, service: 3900, wearInfo: 'n/a', mediaCost: 1.2,
-      settings: [S('sg', 'Medium density', 'g/cc', 1.0, 4.0, 0.05, 2.9)],
+      // it comes filled with plain water (1.0 g/cc): wood and most plastics float, glass, stone and metal sink. Heavier media
+      // (magnetite or ferrosilicon slurry, up to ~3.5) are what split aluminum (2.7) from zinc, brass and copper.
+      settings: [S('sg', 'Medium density', 'g/cc', 1.0, 4.0, 0.05, 1.0)],
       outs: { extract: 'Floats (lighter)', residue: 'Sinks (heavier)' },
       how: 'Pieces are dropped into a liquid whose density is tuned between the materials you want to split. Anything lighter floats, anything heavier sinks. A medium at about 2.9 g/cc floats aluminum at 2.7 and sinks zinc, brass and copper: it is how mixed "zorba" is split into valuable fractions.',
       best: 'Splitting non-ferrous mixes by density.', avoid: 'Very fine material and anything porous that soaks the medium.'

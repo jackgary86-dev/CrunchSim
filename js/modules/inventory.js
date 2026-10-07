@@ -517,7 +517,9 @@
       // a round in the yard: rent on every bay in use, owned ones cheap, hired ones dear
       const sto = chargeStorage(stock, ownedBays(storageLevel()), miscTotal(misc));
       if (sto.rent > 0) {
-        API.S.money -= sto.rent;
+        const due = Math.min(sto.rent, Math.max(0, API.S.money));   // a yard that cannot pay its rent is carried until it sells: rent never digs the bank into the red
+        if (due < sto.rent) API.log('Yard rent of ' + fmtPrice(sto.rent - due) + ' waived this batch: the bank is empty. Sell stock or ship MISC out to free the bays.', 'warn');
+        API.S.money -= due;
         API.log('Yard storage: ' + sto.bays + ' bay' + (sto.bays === 1 ? '' : 's') + ' in use (' + sto.own + ' owned, ' + sto.hired + ' hired), rent ' + fmtPrice(sto.rent) + ' this batch.' + (sto.hired > 0 ? ' Sell stock or buy Yard storage in the Plant drawer.' : ''), sto.hired > 0 ? 'warn' : '');
       }
       const card = document.querySelector('#scorecard .card');

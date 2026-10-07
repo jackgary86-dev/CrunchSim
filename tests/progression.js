@@ -49,18 +49,20 @@ for (let i = 1; i < seps.length; i++) check(MACHINES[seps[i - 1]].price < MACHIN
 
 console.log('== next purchase from the starter line ==');
 const SORT = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen'];
+// the settings NEXT PURCHASE tries (app.js trialSettings): a sink-float comes filled with water and is set to the density the mix needs
+const TRY = { sinkfloat: [{ sg: 1.0 }, { sg: 1.5 }, { sg: 2.45 }, { sg: 2.9 }] }, tries = (m) => TRY[m] || [{}];
 function bestSingle(l) {
   const b0 = economics(l, comp, feedCost).margin; let best = null;
-  SORT.concat(['cone', 'jaw']).forEach(function (m) { freePorts(l).forEach(function (src) { const g = economics(l.concat([Sim.makeNode(m, {}, src)]), comp, feedCost).margin - b0; if (!best || g > best.gain) best = { ms: [m], src, gain: g }; }); });
+  SORT.concat(['cone', 'jaw']).forEach(function (m) { freePorts(l).forEach(function (src) { tries(m).forEach(function (set) { const g = economics(l.concat([Sim.makeNode(m, set, src)]), comp, feedCost).margin - b0; if (!best || g > best.gain) best = { ms: [m], src, gain: g, sets: [set] }; }); }); });
   return best;
 }
 function bestPair(l) {
   const b0 = economics(l, comp, feedCost).margin; let best = null;
-  SORT.forEach(function (a) { SORT.forEach(function (b) { freePorts(l).forEach(function (src) { const na = Sim.makeNode(a, {}, src); ['extract', 'residue'].forEach(function (p2) {
-    const g = economics(l.concat([na, Sim.makeNode(b, {}, { uid: na.uid, port: p2 })]), comp, feedCost).margin - b0;
+  SORT.forEach(function (a) { SORT.forEach(function (b) { freePorts(l).forEach(function (src) { tries(a).forEach(function (sa) { const na = Sim.makeNode(a, sa, src); ['extract', 'residue'].forEach(function (p2) { tries(b).forEach(function (sb) {
+    const g = economics(l.concat([na, Sim.makeNode(b, sb, { uid: na.uid, port: p2 })]), comp, feedCost).margin - b0;
     const cost = MACHINES[a].price + MACHINES[b].price;
-    if (g > 0.5 && (!best || cost / g < best.cost / best.gain)) best = { ms: [a, b], src, port2: p2, gain: g, cost };
-  }); }); }); });
+    if (g > 0.5 && (!best || cost / g < best.cost / best.gain)) best = { ms: [a, b], src, port2: p2, gain: g, cost, sets: [sa, sb] };
+  }); }); }); }); }); });
   return best;
 }
 const s1 = bestSingle(line);
@@ -78,7 +80,7 @@ console.log('== following the block does not dead-end ==');
 let cur = line; const path = ['hammer > magnet'];
 for (let step = 0; step < 3; step++) {
   const s = bestSingle(cur), p = s && s.gain > 0.5 ? s : bestPair(cur); if (!p || !(p.gain > 0.5)) break;
-  const na = Sim.makeNode(p.ms[0], {}, p.src); cur = cur.concat([na]); if (p.ms[1]) cur = cur.concat([Sim.makeNode(p.ms[1], {}, { uid: na.uid, port: p.port2 })]);
+  const na = Sim.makeNode(p.ms[0], (p.sets || [])[0] || {}, p.src); cur = cur.concat([na]); if (p.ms[1]) cur = cur.concat([Sim.makeNode(p.ms[1], (p.sets || [])[1] || {}, { uid: na.uid, port: p.port2 })]);
   path.push(p.ms.join(' + ') + ' +$' + f(p.gain, 0));
 }
 const eEnd = economics(cur, comp, feedCost);

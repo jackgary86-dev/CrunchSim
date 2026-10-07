@@ -119,7 +119,7 @@
   let lastRankIdx = null;
   function checkRank() {
     const r = rankOf(netWorth());
-    if (lastRankIdx != null && r.idx > lastRankIdx) { log('RANK UP: ' + r.name + '.', 'ok'); Audio.ui('done'); }
+    if (lastRankIdx != null && r.idx > lastRankIdx && S.mode !== 'rivals') { log('RANK UP: ' + r.name + '.', 'ok'); Audio.ui('done'); }   // #308: Rivals has no ranks
     lastRankIdx = Math.max(lastRankIdx == null ? r.idx : lastRankIdx, r.idx);   // high-water mark: a dip in net worth must not make the next climb a second RANK UP (#264)
   }
 
@@ -908,7 +908,7 @@
       const key = saveKey();
       let held = null;
       if (!storageDown) { try { held = localStorage.getItem(key); } catch (e) { storageFailed(); } }
-      if (!storageDown && !writeFailing && CS.SaveIO.isNewer(held, loadedRev)) { warnStale(); return; }
+      if (!storageDown && !writeFailing && CS.SaveIO && CS.SaveIO.isNewer(held, loadedRev)) { warnStale(); return; }   // #309: saveio.js may load after the first save
       loadedRev++;
       const json = JSON.stringify({ rev: loadedRev, comp: S.comp, tons: S.tons, line: S.line, sel: S.sel, money: S.money, tonnes: S.tonnes, kwh: S.kwh, batches: S.batches, lifetime: S.lifetime, owned: Array.from(S.owned), units: S.units, shelf: S.shelf, levels: S.levels, plant: S.plant, speed: S.speed, muted: S.muted, clock: S.clock, feedPreset: S.feedPreset, linePreset: S.linePreset, ext: collectExt() });
       memSaves[key] = json;
@@ -923,7 +923,7 @@
       const d = JSON.parse(readSave(saveKey()) || 'null'); if (!d || !Array.isArray(d.line)) return false;
       loadedRev = Math.max(0, Math.floor(+d.rev) || 0); staleWarned = false;
       S.comp = d.comp || {}; S.tons = clamp(+d.tons || 15, 1, PLANT_UPGRADES.logistics.levels[PLANT_UPGRADES.logistics.levels.length - 1]);
-      S.line = CS.SaveIO.cleanLine(d.line).map((n) => ({ uid: n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src || 'feed', autoService: !!n.autoService }));   // #262: cleanLine drops bad uids and ports
+      S.line = CS.cleanLine(d.line).map((n) => ({ uid: n.uid, m: n.m, settings: Sim.cleanSettings(n.m, n.settings), wear: clamp(+n.wear || 0, 0, 1), level: 0, src: n.src || 'feed', autoService: !!n.autoService }));   // #262: cleanLine drops bad uids and ports
       const uids = new Set(S.line.map((n) => n.uid));
       let maxUid = 0; S.line.forEach((n) => { maxUid = Math.max(maxUid, n.uid); }); while (Sim.nextUid() < maxUid) { /* advance */ }
       S.sel = uids.has(d.sel) ? d.sel : (S.line[0] ? S.line[0].uid : null);
@@ -1094,7 +1094,7 @@
     next();
     setInterval(save, 15000);
     // another tab saved this mode's game: say so at once, not at the next timer
-    window.addEventListener('storage', (e) => { if (e.key === saveKey() && CS.SaveIO.isNewer(e.newValue, loadedRev)) warnStale(); });
+    window.addEventListener('storage', (e) => { if (e.key === saveKey() && CS.SaveIO && CS.SaveIO.isNewer(e.newValue, loadedRev)) warnStale(); });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })(typeof window !== 'undefined' ? window : globalThis);

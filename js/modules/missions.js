@@ -338,8 +338,9 @@
     });
     API.on('render', function () { render(); });
     API.on('batchStart', function () { render(); });
+    const rivals = function () { return !!(S() && S().mode === 'rivals'); };   // #307: the job board is hidden and frozen in Rivals
     API.on('tick', function (p) {
-      if (!p || !(p.dh > 0)) return;
+      if (!p || !(p.dh > 0) || rivals()) return;
       const changed = advance(p.dh);
       const key = Math.floor(clockH() * 12);   // every five sim minutes the countdowns move
       if (changed || key !== lastKey) { lastKey = key; stale = true; }
@@ -353,7 +354,7 @@
       render(); if (bank && typeof API.renderBank === 'function') API.renderBank();
     }
     API.on('batchComplete', function (p) {
-      if (!p || !p.r) return;
+      if (!p || !p.r || rivals()) return;
       const dl = p.r.src === 'stock' || p.r.src === 'misc' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, withdraw());   // #98: re-running a held bucket does not deliver it a second time
       dl.forEach(function (d) {
         const j = d.job;

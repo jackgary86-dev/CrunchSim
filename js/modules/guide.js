@@ -82,7 +82,7 @@
       const below = r.bottom + 14, top = below + 170 < window.innerHeight ? below : Math.max(12, r.top - 184);
       Object.assign(box.style, { left: left + 'px', top: top + 'px', transform: 'none', width: bw + 'px' });
     }
-    app.on('sale', () => { sold++; if (g.on) show(); });
+    app.on('sale', () => { if (app.S.mode !== 'progress') return; sold++; if (g.on) show(); });   // #309: a Rivals sale does not finish a paused Progress guide's SELL step
     app.on('render', () => { if (g.on) show(); });
     app.on('batchComplete', () => { if (g.on) setTimeout(show, 50); });
     let acc = 0; app.on('tick', (p) => { if (!g.on) return; acc += (p && p.dt) || 0; if (acc > 0.4) { acc = 0; show(); } });

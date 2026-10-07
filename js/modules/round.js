@@ -125,9 +125,12 @@
     const blank = () => ({ worth: app.netWorth(), bins: 0, t: 0, best: null });   // #112: before round 1 every yard starts where you do
     const recOf = (id) => (st.n === 0 ? blank() : rivalRec(id));
     /* #108: the match ends once the last round's bin is processed (yard empty, line idle); the standings are then frozen */
-    function checkEnd() {
-      const m = M_(); if (!m.ending || m.over || app.S.run || !yardEmpty()) return false;
-      m.over = true; m.ending = false;
+    const miscT = () => { const I = CS.Inventory; return I && I.misc ? I.miscTotal(I.misc()) : 0; };
+    /* #305: a last round with no bin for you waits for your one MISC batch (or END THE MATCH) before the standings freeze */
+    const waitMisc = () => st.misc && miscT() >= 1;
+    function checkEnd(force) {
+      const m = M_(); if (!m.ending || m.over || app.S.run || !yardEmpty() || (waitMisc() && !force)) return false;
+      m.over = true; m.ending = false; st.misc = false;
       setTimeout(() => { const top = standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, worth: m.final ? m.final[id] : 0 })))[0]; snd(top && top.id === 'you' ? 'matchwin' : 'matchlose'); }, 400);   // #118
       m.final = {}; ['you'].concat(PLAYERS.filter((id) => rival(id))).forEach((id) => { m.final[id] = id === 'you' ? app.netWorth() : rivalRec(id).worth; });
       app.log('The match is over after ' + st.n + ' rounds. Final standings are on the auction screen.', 'ok');
@@ -222,13 +225,14 @@
     function finish() {
       const r = R(); r.done = true;
       const empty = ['you'].concat(PLAYERS).filter((id) => (id === 'you' || rival(id)) && !r.won[id]);
+      const last = st.n >= M_().length;
       if (!r.won.you) {
         st.misc = true;
-        const I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0;
-        app.log('Round ' + r.n + ': no bin for you. ' + (mt >= 1 ? 'Run your MISC bin: one batch of the ' + fmtT(mt) + ' of mixed material waiting (RE-RUN on the MISC bucket).' : 'Your MISC bin is empty; open the next round when you are ready.'), 'warn');
+        const mt = miscT();
+        app.log('Round ' + r.n + ': no bin for you. ' + (mt >= 1 ? 'Run your MISC bin: one batch of the ' + fmtT(mt) + ' of mixed material waiting (RE-RUN on the MISC bucket).' + (last ? ' The match ends when that batch is done (or END THE MATCH on the auction screen).' : '') : last ? 'Your MISC bin is empty.' : 'Your MISC bin is empty; open the next round when you are ready.'), 'warn');
       }
       empty.filter((id) => id !== 'you').forEach((id) => { rivalRec(id).worth += MISC_RUN * r.size; app.log(nameOf(id) + ' left round ' + r.n + ' without a bin and re-ran its MISC.'); });
-      if (st.n >= M_().length) { M_().ending = true; if (!checkEnd()) app.log('Last round done: the match ends when your yard is empty and the plant has finished.', 'ok'); }
+      if (last) { M_().ending = true; if (!checkEnd() && !waitMisc()) app.log('Last round done: the match ends when your yard is empty and the plant has finished.', 'ok'); }
       st.last = { n: r.n, won: Object.assign({}, r.won), cards: r.cards.map((L) => ({ cat: L.catName, headline: L.headline, tons: L.tons })) };
       app.save(); app.markDirty(true); render();
     }
@@ -334,6 +338,14 @@
         if (r && r.done) h += '<div class="rcards">' + r.cards.map(cardHtml).join('') + '</div>';
         if (st.n === 0) h += '<div class="match-len"><span>Match length</span>' + MATCH_LENGTHS.map((n) => '<button type="button" class="ml' + (n === M_().length ? ' on' : '') + '" data-len="' + n + '">' + n + ' rounds</button>').join('') + '<span class="small">Most net worth after the last round wins.</span></div>';
         const can = canStart();
+        if (M_().ending && waitMisc()) {   // #305: the last round left you without a bin: your MISC batch counts before the match ends
+          const idle = !app.S.run && yardEmpty();
+          h += '<div class="round-next"><p class="warn">Last round and no bin for you: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket) and the match ends when it is done, or end it now.</p>' + (idle ? '' : '<p class="small">A batch is running: the match ends when it is done.</p>') +
+            '<button type="button" id="round-end"' + (idle ? '' : ' disabled') + '>END THE MATCH</button></div>';
+          main.innerHTML = h;
+          const eb = main.querySelector('#round-end'); if (eb) eb.addEventListener('click', () => { if (checkEnd(true)) render(); });
+          return;
+        }
         h += '<div class="round-next">' + (r && r.done && !r.won.you ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '') +
           (can ? '' : '<p class="small">' + (app.S.run ? 'A batch is running.' : M_().ending ? 'The last bin is in your yard: run it through the plant to end the match.' : 'Your yard still holds a bin: run it through the plant first.') + ' The next round opens when the yard is empty.</p>') +
           '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (M_().ending ? 'RUN THE LAST BIN TO FINISH' : st.n > 0 ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
@@ -354,9 +366,16 @@
     }
 
     /* ---- hooks ---- */
-    app.on('load', (ext) => { const d = ext && ext.round; st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() }; busy = false; setTimeout(checkEnd, 0); });   // #264: a match left in 'ending' by a tab closed before the batchComplete timer ends on load. #107: an open round survives a reload or a mode switch
-    if (app.S && app.S.ext && app.S.ext.round) { const d = app.S.ext.round; st.n = d.n || 0; st.misc = !!d.misc; }
-    app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? st.open : null } }));
+    function restore(ext) {
+      const d = ext && ext.round;
+      st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() };
+      if (st.open) st.open.settling = false;   // #306: a settle timer never outlives the page that started it
+      if (st.match.over) st.misc = false;   // #305: an older save that ended with st.misc still set
+      busy = false; setTimeout(() => checkEnd(), 0);
+    }
+    app.on('load', restore);   // #264: a match left in 'ending' by a tab closed before the batchComplete timer ends on load. #107: an open round survives a reload or a mode switch
+    if (app.S && app.S.ext && app.S.ext.round) restore(app.S.ext);   // #309: registered after boot: the 'load' event has already fired
+    app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? Object.assign({}, st.open, { settling: false }) : null } }));   // #306: never persist settling
     app.on('batchComplete', () => { setTimeout(checkEnd, 0); });
     app.on('newgame', () => { st = { n: 0, misc: false, open: null, last: null, seed: newSeed(), match: newMatch() }; busy = false; render(); setTimeout(matchPlant, 0); });
     /* A Rivals yard starts on a par with the yards it bids against (#171): established shredder yards run the classic car

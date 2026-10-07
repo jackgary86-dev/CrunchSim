@@ -388,6 +388,29 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .fcol.flash { animation: colflash 1.2s ease-out; }
 @keyframes colflash { 0% { box-shadow: inset 0 0 0 2px var(--cyan); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
 @media (max-width: 900px) { .loop-step span { display: none; } }
+/* #328: the whole process in one line: lot > shred > every station > buckets > refine > money */
+.loop.process { display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: thin; }
+.p-node { flex: 1 1 0; min-width: 104px; position: relative; align-items: flex-start !important; text-align: left; gap: 2px !important; padding: 7px 10px !important; border-right: 0 !important; }
+.p-node::after { display: none; }
+.p-node small { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; color: var(--muted); }
+.p-node b { font-family: var(--sans); font-weight: 600 !important; font-size: 12.5px !important; line-height: 1.25; letter-spacing: 0 !important; color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 100%; }
+.p-node span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.p-node.sorter { background: #0d1d27; }
+.p-node.money b { color: var(--green); }
+.p-node.off b, .p-node.off span { opacity: .55; }
+.p-node.on b { color: var(--cyan); }
+.p-chips { display: flex; gap: 3px; }
+.p-chip { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,.4); }
+.p-bar { display: block; width: 100%; height: 3px; background: var(--line-2); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+.p-bar i { display: block; height: 100%; background: var(--green); transition: width .3s linear; }
+.p-link { flex: 0 0 16px; position: relative; background: var(--panel-2); }
+.p-link::after { content: "\25B6"; position: absolute; right: 2px; top: 50%; transform: translateY(-50%); font-size: 9px; color: var(--line-2); }
+.p-link i { position: absolute; left: 0; right: 6px; top: 50%; height: 2px; transform: translateY(-50%); background: var(--line-2); }
+.p-link.run i { height: 4px; background: repeating-linear-gradient(90deg, var(--amber) 0 4px, transparent 4px 9px); animation: pflow .6s linear infinite; }
+.p-link.run::after { color: var(--amber); }
+@keyframes pflow { from { background-position: 0 0; } to { background-position: 9px 0; } }
+@media (prefers-reduced-motion: reduce) { .p-link.run i { animation: none; } }
+@media (max-width: 900px) { .p-node { min-width: 84px; } .p-node span:not(.p-chips) { display: none; } }
 
 /* game modes */
 .modesw { margin-left: auto; display: flex; gap: 0; border: 1px solid var(--line-2); border-radius: 3px; overflow: hidden; flex: none; }

@@ -224,11 +224,7 @@
       '<div class="small flow-hint">Machines run left to right in the order you placed them. Click one to sit at its station and tune it.</div>';
     const center = $('#center');
     center.insertBefore(plant, center.firstChild);
-    LOOP.forEach(([key, label, hint]) => {
-      const b = el('button', 'loop-step', '<b>' + label + '</b><span>' + hint + '</span>'); b.type = 'button'; b.dataset.key = key;
-      b.addEventListener('click', () => goStep(key));
-      $('#loop').appendChild(b);
-    });
+    $('#loop').classList.add('process');   // #328: the whole process, drawn by renderProcess
     $('#flow-prev').addEventListener('click', () => { offset = Math.max(0, offset - 1); renderFlow(true); });
     $('#flow-next').addEventListener('click', () => { offset += 1; renderFlow(true); });
     const drawer = el('div', 'overlay hidden'); drawer.id = 'drawer';
@@ -290,6 +286,66 @@
     const lvl = RF ? RF.level() : 0, refine = lvl >= 2 ? 'furnace + precious' : lvl === 1 ? 'smelting furnace' : 'no refinery yet';
     const sell = mats.length ? mats.length + ' bucket' + (mats.length === 1 ? '' : 's') + ' · ' + app.fmtMoney(value) : 'pure buckets only';
     return { auction, shred, sort, refine, sell };
+  }
+  /* #328: the whole process in one line across the top of the plant: the lot, the shredding, every station in order, the
+   * buckets, the refinery and the money, with live tonnes and dollars; material runs along the links while a batch runs.
+   * Each step opens its part of the game, as the loop bar did. */
+  function processNodes() {
+    const S = app.S, I = CS.Inventory, RF = CS.Refinery && CS.Refinery.live, hints = loopHints(), idle = isIdle(), nodes = [];
+    const src = feedSource(), mode = S.mode === 'rivals';
+    nodes.push({ key: 'auction', k: mode ? 'BIN' : 'LOT', main: src ? src.name.replace(/^Auction lot /, '') : S.feedPrepaid ? 'loaded' : 'nothing loaded', sub: idle ? hints.auction : fmtW(S.run ? S.run.total : S.tons) + ' a batch' });
+    const shred = S.line.filter((n) => MACHINES[n.m] && MACHINES[n.m].kind === 'comminution');
+    const prog = S.run && S.run.total > 0 ? Math.min(1, S.run.done / S.run.total) : -1;
+    nodes.push({ key: 'shred', k: 'SHRED', main: shred.length ? shred.map((n) => MACHINES[n.m].name).join(' + ') : 'no shredder', sub: hints.shred, prog });
+    S.line.forEach((n, i) => {
+      const M = MACHINES[n.m]; if (!M || M.kind === 'comminution') return;
+      let sub = M.cat ? M.cat.toLowerCase() : '';
+      if (!idle && S.ev) {
+        const inf = app.info(n.uid);
+        if (M.kind === 'separator' && inf) {
+          const ex = S.ev.ports[n.uid + ':extract'], pct = Math.round(100 * Sim.streamMass(ex) / Math.max(inf.inKg, 1e-9));
+          const st = ex ? Sim.binStats(ex.m, ex.form) : null;
+          sub = pct + '% out' + (st && st.main && st.total > 0 ? ' · ' + MATERIALS[st.main].name.toLowerCase() + ' ' + Math.round(st.share * 100) + '%' : '');
+        } else if (M.kind === 'furnace') sub = 'melts to ingots';
+      }
+      nodes.push({ key: 'sort', uid: n.uid, k: 'STATION ' + (i + 1), main: M.name, sub, sorter: M.kind === 'separator' });
+    });
+    if (!nodes.some((x) => x.key === 'sort')) nodes.push({ key: 'sort', k: 'SORT', main: 'no sorter yet', sub: hints.sort });
+    // what this batch makes: the pure buckets and the MISC share
+    let pure = [], miscKg = 0, totKg = 0;
+    if (!idle && S.ev) S.ev.terminals.forEach((t) => {
+      const st = Sim.binStats(t.stream.m, t.form); if (!(st.total > 0)) return;
+      const solid = st.total - (st.liquid || 0); totKg += solid;
+      if (st.sellable && Sim.binMatters(st) && st.main) pure.push({ m: st.main, share: st.share, kg: solid }); else miscKg += solid;
+    });
+    pure.sort((a, b) => b.kg - a.kg);
+    const chips = pure.slice(0, 4).map((x) => '<i class="p-chip" style="background:' + (MATERIALS[x.m].color || '#888') + '" title="' + esc(MATERIALS[x.m].name) + ' ' + Math.round(x.share * 100) + '% pure"></i>').join('');
+    nodes.push({ key: 'sell', k: 'BUCKETS', main: idle ? hints.sell : pure.length ? pure.length + ' pure' + (totKg > 0 && miscKg > 0 ? ' · ' + Math.round(100 * miscKg / totKg) + '% MISC' : '') : 'all MISC', sub: idle ? '' : pure.slice(0, 3).map((x) => MATERIALS[x.m].name.toLowerCase()).join(', '), chips });
+    const lvl = RF ? RF.level() : 0;
+    nodes.push({ key: 'refine', k: 'REFINE', main: lvl >= 2 ? 'furnace + precious' : lvl === 1 ? 'smelting furnace' : 'no refinery', sub: lvl ? 'ingots and bars' : 'Plant drawer', off: !lvl });
+    const stock = I ? I.stock() : {}; let value = 0; for (const m in stock) if (stock[m].t > 0.05) value += I.quote ? I.quote(m) : 0;
+    nodes.push({ key: 'sell', k: 'MONEY', main: value > 0 ? app.fmtMoney(value) + ' to sell' : 'bank ' + app.fmtMoney(S.money), sub: value > 0 ? 'bank ' + app.fmtMoney(S.money) : 'sell pure buckets', money: true });
+    return nodes;
+  }
+  let procSig = '';
+  function renderProcess() {
+    const box = $('#loop'); if (!box) return;
+    const nodes = processNodes(), lit = loopState(), run = !!app.S.run;
+    const sig = JSON.stringify([nodes.map((x) => [x.k, x.main, x.sub, x.prog == null ? null : Math.round(x.prog * 50), x.chips]), lit, run]);
+    if (sig === procSig) return; procSig = sig;
+    const focus = document.activeElement && box.contains(document.activeElement) ? document.activeElement.dataset.i : null;
+    box.innerHTML = '';
+    nodes.forEach((x, i) => {
+      if (i) box.appendChild(el('span', 'p-link' + (run ? ' run' : ''), '<i></i>'));
+      const b = el('button', 'loop-step p-node' + (x.sorter ? ' sorter' : '') + (x.money ? ' money' : '') + (x.off ? ' off' : ''));
+      b.type = 'button'; b.dataset.key = x.key; b.dataset.i = String(i);
+      b.innerHTML = '<small>' + esc(x.k) + '</small><b>' + esc(x.main) + '</b>' + (x.chips ? '<span class="p-chips">' + x.chips + '</span>' : '') + (x.sub ? '<span>' + esc(x.sub) + '</span>' : '') + (x.prog >= 0 ? '<i class="p-bar"><i style="width:' + Math.round(x.prog * 100) + '%"></i></i>' : '');
+      b.title = x.k + ': ' + x.main + (x.sub ? ' · ' + x.sub : '');
+      b.classList.toggle('on', lit.indexOf(x.key) >= 0 && !(x.key === 'sort' && !run) && !(x.money && x.key === 'sell' && lit.indexOf('sell') < 0));
+      b.addEventListener('click', () => (x.uid ? showStation(x.uid) : goStep(x.key)));
+      box.appendChild(b);
+    });
+    if (focus != null) { const f = box.querySelector('[data-i="' + focus + '"]'); if (f) f.focus({ preventScroll: true }); }
   }
   function loopState() {
     const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 0.05);
@@ -1033,7 +1089,7 @@
       cta.classList.remove('hidden');
     } else cta.classList.add('hidden');
     seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : x.bin ? binCol(x.from) : machineCol(x.n, x.i)));
-    const lit = loopState(), hints = loopHints(); document.querySelectorAll('#loop .loop-step').forEach((b) => { b.classList.toggle('on', lit.indexOf(b.dataset.key) >= 0); const sp = b.querySelector('span'); if (sp && hints[b.dataset.key]) sp.textContent = hints[b.dataset.key]; });
+    renderProcess();
     for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
     box.appendChild(bucketsCol());
     $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + MACHINE_COLS >= seq.length;

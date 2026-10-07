@@ -31,8 +31,8 @@ check(hotkeyOk(key(target('BODY')), withNodes([drawer({})])), 'an open non-modal
 check(!hotkeyOk(key(target('BODY')), withNodes([drawer({ 'aria-modal': 'true' })])), 'an open modal drawer (narrow width) swallows the hotkeys');
 check(hotkeyOk(key(target('BODY')), withNodes([drawer({ 'aria-modal': 'true' }, ['hidden'])])), 'a closed drawer does not');
 check(!hotkeyOk(key(target('BODY')), withNodes([drawer({}), { id: 'settings', classes: ['overlay'], attrs: {} }])), 'another open overlay still swallows them beside the drawer');
-// #310: '?' behind an open station opened help under it; an open station is modal for the hotkeys
-check(!hotkeyOk(key(target('BODY')), withNodes([{ id: 'station', classes: ['overlay'], attrs: {} }])), 'an open station swallows the hotkeys (#310)');
+// #329: the station makes #app (header RUN/STOP) inert, so Space / 1 2 3 / M / ? must still act there; help draws above it (z 80)
+check(hotkeyOk(key(target('BODY')), withNodes([{ id: 'station', classes: ['overlay'], attrs: { 'aria-modal': 'true' } }])), 'an open station leaves the hotkeys alone (#329)');
 check(hotkeyOk(key(target('BODY')), withNodes([{ id: 'station', classes: ['overlay', 'hidden'], attrs: {} }])), 'a closed station does not');
 console.log(fails ? '\n' + fails + ' PROBLEM(S)' : '\nall ' + n + ' hotkey checks pass');
 process.exit(fails ? 1 : 0);

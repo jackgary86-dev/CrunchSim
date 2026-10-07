@@ -294,12 +294,12 @@
     const S = app.S, I = CS.Inventory, RF = CS.Refinery && CS.Refinery.live, hints = loopHints(), idle = isIdle(), nodes = [];
     const src = feedSource(), mode = S.mode === 'rivals';
     nodes.push({ key: 'auction', k: mode ? 'BIN' : 'LOT', main: src ? src.name.replace(/^Auction lot /, '') : S.feedPrepaid ? 'loaded' : 'nothing loaded', sub: idle ? hints.auction : fmtW(S.run ? S.run.total : S.tons) + ' a batch' });
-    const shred = S.line.filter((n) => MACHINES[n.m] && MACHINES[n.m].kind === 'comminution');
+    const shred = S.line.filter((n) => MACHINES[n.m] && MACHINES[n.m].kind === 'comminution' && !MACHINES[n.m].omni);   // #333: the Omniprocessor sorts, it gets a station node
     const prog = S.run && S.run.total > 0 ? Math.min(1, S.run.done / S.run.total) : -1;
     nodes.push({ key: 'shred', k: 'SHRED', main: shred.length ? shred.map((n) => MACHINES[n.m].name).join(' + ') : 'no shredder', sub: hints.shred, prog });
     S.line.forEach((n, i) => {
-      const M = MACHINES[n.m]; if (!M || M.kind === 'comminution') return;
-      let sub = M.cat ? M.cat.toLowerCase() : '';
+      const M = MACHINES[n.m]; if (!M || (M.kind === 'comminution' && !M.omni)) return;
+      let sub = M.omni ? 'sorts every material' : M.cat ? M.cat.toLowerCase() : '';
       if (!idle && S.ev) {
         const inf = app.info(n.uid);
         if (M.kind === 'separator' && inf) {
@@ -308,7 +308,7 @@
           sub = pct + '% out' + (st && st.main && st.total > 0 ? ' · ' + MATERIALS[st.main].name.toLowerCase() + ' ' + Math.round(st.share * 100) + '%' : '');
         } else if (M.kind === 'furnace') sub = 'melts to ingots';
       }
-      nodes.push({ key: 'sort', uid: n.uid, k: 'STATION ' + (i + 1), main: M.name, sub, sorter: M.kind === 'separator' });
+      nodes.push({ key: 'sort', uid: n.uid, k: 'STATION ' + (i + 1), main: M.name, sub, sorter: M.kind === 'separator' || !!M.omni });
     });
     if (!nodes.some((x) => x.key === 'sort')) nodes.push({ key: 'sort', k: 'SORT', main: 'no sorter yet', sub: hints.sort });
     // what this batch makes: the pure buckets and the MISC share
@@ -521,18 +521,31 @@
   /* #169: does the line, as it stands, pull anything pure out of the MISC bucket? (cached on the line and the pile) */
   let sortCache = { key: '', v: false };
   /* #326: the upgrade that lets the next sorter in, when floor space or sorter slots are what block it */
+  // #331: the floor and slot rules are asked directly (the slot veto says 'sorting hall' too), and an upgrade is offered only when
+  // NEXT PURCHASE, re-ranked as if it were bought (a room level up, one more slot), finds a sorter that adds margin
+  let buCache = { at: 0, key: '', v: null };
+  function upgradeLetsIn(dRoom, dSlot) {
+    const S = app.S, SL = CS.Slots && CS.Slots.live, room0 = S.plant.room || 0;
+    try { S.plant.room = room0 + dRoom; if (SL && SL.trial) SL.trial(dSlot); const ps = app.nextPurchases(); return !!(ps && ps.length); }
+    finally { S.plant.room = room0; if (SL && SL.trial) SL.trial(0); }
+  }
   function blockedUpgrade() {
-    const S = app.S, U = CS.PLANT_UPGRADES, SL = CS.Slots && CS.Slots.live;
-    const why = ['sinkfloat', 'eddy', 'air', 'screen'].map((m) => app.veto('addMachine', { m })).find((w) => w) || '';
-    if (/floor|hall/i.test(why) && U && U.room && S.plant.room < U.room.costs.length) {
-      const lvl = S.plant.room, cost = U.room.costs[lvl];
-      return { title: 'GROW', label: 'BUY A BIGGER PLANT HALL ' + app.fmtMoney(cost), sub: 'The next machine has no floor space: the Plant hall goes from ' + U.room.levels[lvl] + ' to ' + U.room.levels[lvl + 1] + ' m².', cost, go: () => app.buyPlant('room') };
-    }
-    if (/slot/i.test(why) && SL && SL.next()) {
-      const cost = SL.next();
-      return { title: 'GROW', label: 'BUY A SORTER SLOT ' + app.fmtMoney(cost), sub: 'Every sorter slot is in use: a new one lets the plant hold ' + (SL.owned() + 1) + ' sorters.', cost, go: () => SL.buy() };
-    }
-    return null;
+    const S = app.S, U = CS.PLANT_UPGRADES, SL = CS.Slots && CS.Slots.live, F = CS.Floor, SM = CS.Slots;
+    if (!app.nextPurchases || !F || !SM || S.run) return null;
+    const room = S.plant.room || 0, own = SL ? SL.owned() : SM.MAX, cand = ['sinkfloat', 'eddy', 'air', 'screen'];
+    const floorNo = cand.some((m) => F.addVeto(S.line, m, room)), slotNo = cand.some((m) => SM.addVeto(S.line, m, own));
+    const canHall = floorNo && U && U.room && room < U.room.costs.length, canSlot = slotNo && SL && SL.trial && !!SL.next();
+    if (!canHall && !canSlot) return null;
+    const key = S.line.map((n) => n.m + n.uid).join() + '|' + room + '|' + own + '|' + Math.floor(S.money / 500) + '|' + JSON.stringify(S.comp);
+    if (buCache.key === key && Date.now() - buCache.at < 5000) return buCache.v;
+    const hall = () => { const lvl = room, cost = U.room.costs[lvl]; return { title: 'GROW', label: 'BUY A BIGGER PLANT HALL ' + app.fmtMoney(cost), sub: 'The next sorter has no floor space: the Plant hall goes from ' + U.room.levels[lvl] + ' to ' + U.room.levels[lvl + 1] + ' m².', cost, go: () => app.buyPlant('room') }; };
+    const slot = () => { const cost = SL.next(); return { title: 'GROW', label: 'BUY A SORTER SLOT ' + app.fmtMoney(cost), sub: 'Every sorter slot is in use: a new one lets the plant hold ' + (SL.owned() + 1) + ' sorters.', cost, go: () => SL.buy() }; };
+    let v = null;
+    if (canHall && upgradeLetsIn(1, 0)) v = hall();
+    else if (canSlot && upgradeLetsIn(0, 1)) v = slot();
+    else if (canHall && canSlot && upgradeLetsIn(1, 1)) v = U.room.costs[room] <= SL.next() ? hall() : slot();   // both block: the cheaper of the two first
+    buCache = { at: Date.now(), key, v };
+    return v;
   }
   /* #326: bigger batches once the lots on the board are more than one and a half batches */
   function logisticsStep(board, spare) {
@@ -1097,7 +1110,7 @@
     const seq = flowSeq();
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
-    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0, CS.Round && CS.Round.live && CS.Round.live.miscAllowed ? CS.Round.live.miscAllowed() : 0]);   // miscAllowed: the MISC RE-RUN button (#313)
+    const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings, n.src]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0, CS.Round && CS.Round.live && CS.Round.live.miscAllowed ? CS.Round.live.miscAllowed() : 0]);   // miscAllowed: the MISC RE-RUN button (#313); #332: n.src, so a rewire (Input select, REWIRE) redraws the process line
     if (!force && sig === lastSig) return; lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';

@@ -489,16 +489,17 @@
           '<div class="cur">cost <b class="' + (cost > 0 && price < cost ? 'bad' : '') + '">' + fmtPrice(cost) + '</b>/t · ' + (sto.perMat[mat] ? sto.perMat[mat] + ' bay' + (sto.perMat[mat] === 1 ? '' : 's') : 'shared bay') + '</div>' +
           '<canvas class="spark" title="Price over the last 30 batches: list (grey), your cost (amber), target (green)"></canvas>' +
           '<div class="tgt"><label>TARGET $<input type="number" min="0" step="1" placeholder="—" value="' + (tg && tg.price > 0 ? Math.round(tg.price) : '') + '">/t</label><label><input type="checkbox"' + (tg && tg.auto ? ' checked' : '') + '>AUTO-SELL</label></div></span>');
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'buy'; b.textContent = 'SELL ' + fmtPrice(lotValue(stock, mat, market, mu)); b.title = owedNote();
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'buy'; b.textContent = 'SELL ' + fmtPrice(lotValue(stock, mat, market, mu)); b.title = owedNote(); b.dataset.focusKey = 'sell:' + mat;   // #330: keepFocus finds this row's SELL again
         b.addEventListener('click', function () { sellMat(mat); });
         row.appendChild(b); body.appendChild(row);
         drawSpark(row.querySelector('canvas.spark'), mat);
         const pe = row.querySelector('.tgt input[type=number]'), ae = row.querySelector('.tgt input[type=checkbox]');
+        pe.dataset.focusKey = 'target:' + mat; ae.dataset.focusKey = 'auto:' + mat;   // #330
         pe.addEventListener('change', function () { onTargetInput(mat, pe, ae); });
         ae.addEventListener('change', function () { onTargetInput(mat, pe, ae); });
       });
       const all = document.createElement('button'); all.type = 'button'; all.className = 'buy' + (rows.length ? '' : ' poor'); all.disabled = !rows.length;
-      all.textContent = 'SELL ALL · ' + fmtPrice(tot.value); all.title = owedNote(); all.style.width = '100%'; all.style.marginTop = '6px';
+      all.textContent = 'SELL ALL · ' + fmtPrice(tot.value); all.title = owedNote(); all.style.width = '100%'; all.style.marginTop = '6px'; all.dataset.focusKey = 'sell-all';
       all.addEventListener('click', sellEverything);
       body.appendChild(all);
       const mt = miscTotal(misc);

@@ -46,7 +46,7 @@
       // a feed fits the round when its budget buys at least 0.1 t at the fair price (gold pins wait for the big rounds)
       let feeds = cat.feeds.filter((f) => FEEDS[f] && A.worthOf(FEEDS[f].comp) > 1 && budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) >= 0.1);
       if (!feeds.length) feeds = cat.feeds.filter((f) => FEEDS[f]).sort((a, b) => A.worthOf(FEEDS[a].comp) - A.worthOf(FEEDS[b].comp)).slice(0, 1);
-      { const fit = feeds.filter((f) => budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) <= BIN_BATCHES * Math.max(1, opts.limit || 30)); if (fit.length) feeds = fit; }   // #327: the richer scrap of the category when the cheap kind would fill hundreds of batches
+      { const fit = feeds.filter((f) => budget / Math.max(1, A.worthOf(FEEDS[f].comp) * A.fairRatio(f)) <= BIN_BATCHES * Math.max(1, opts.limit || 30)); feeds = fit.length ? fit : feeds.slice().sort((a, b) => A.worthOf(FEEDS[b].comp) - A.worthOf(FEEDS[a].comp)).slice(0, 1); }   // #327: the richer scrap of the category when the cheap kind would fill hundreds of batches; #334: none fits, the richest feed (fewest tonnes for the budget)
       const L = A.genLot(rng, { feeds: [feeds[Math.floor(rng() * feeds.length)]], budget, market: opts.market || {}, limit: opts.limit || 30, clockH: opts.clockH || 0, id: (opts.id0 || 1) + k });
       const x = budget / L.ask;   // the bin is sized to the round at its asking price, down to 0.1 t for rich scrap
       const cap = BIN_BATCHES * Math.max(1, opts.limit || 30);   // #327: rounds keep pace: a bin runs in a few batches, not hundreds

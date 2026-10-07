@@ -41,11 +41,15 @@
   }
   /* #194: true when the raw stored save holds a newer revision than the one a tab loaded (so that tab must not overwrite it) */
   function isNewer(raw, rev) { try { const d = raw ? JSON.parse(raw) : null; return !!d && (Math.floor(+d.rev) || 0) > rev; } catch (e) { return false; } }
-  CS.SaveIO = { PREFIX, encode, decode, isNewer, cleanLine, portsOf };
+  /* #341: the game refuses a machine past MAX_LINE, so every line it lets you build exports and imports */
+  const lineFull = (len, more) => (len + (more == null ? 1 : more) > MAX_LINE ? 'A line holds at most ' + MAX_LINE + ' machines (a save code could not carry more). Remove one first.' : '');
+  CS.SaveIO = { PREFIX, MAX_LINE, encode, decode, isNewer, cleanLine, portsOf, lineFull };
 
   if (typeof document === 'undefined') return;
   function start() {
     const app = CS.app; if (!app || app.saveioStarted) return; app.saveioStarted = true;
+    app.on('veto:addMachine', (p) => lineFull(app.S.line.length + ((p && p.pending) || 0)));   // #341: pending = sorters of the same pair not on the line yet
+    app.on('veto:applyLine', (p) => (p && Array.isArray(p.nodes) ? lineFull(p.nodes.length, 0) : ''));
     let panel = null;
     const keys = () => app.saveKeys();
     const read = (k) => { if (app.readSave) return app.readSave(k); try { return localStorage.getItem(k); } catch (e) { return null; } };   // #278: the in-memory copy when storage is blocked

@@ -195,7 +195,7 @@
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   /* tonnes, kilograms or grams: a batch's gold is a few hundred grams (#53) */
-  function fmtW(t) { return t >= 0.95 ? t.toFixed(1) + ' t' : t >= 0.001 ? Math.round(t * 1000) + ' kg' : Math.max(0, Math.round(t * 1e6)) + ' g'; }
+  function fmtW(t) { return t >= 0.95 ? t.toLocaleString('en-US', { minimumFractionDigits: t >= 1000 ? 0 : 1, maximumFractionDigits: t >= 1000 ? 0 : 1 }) + ' t' : t >= 0.001 ? Math.round(t * 1000) + ' kg' : Math.max(0, Math.round(t * 1e6)) + ' g'; }   // #345: thousands separators, whole tonnes from 1,000 t
   function fmtSz(mm) { return mm >= 1 ? mm.toFixed(mm >= 100 ? 0 : 1) + ' mm' : Math.round(mm * 1000) + ' µm'; }
 
   /* ---------------- frame ---------------- */
@@ -539,7 +539,7 @@
     const S = app.S, U = CS.PLANT_UPGRADES && CS.PLANT_UPGRADES.logistics; if (!U || S.run || S.plant.logistics >= U.costs.length) return null;
     const lvl = S.plant.logistics, cost = U.costs[lvl], now = app.plantValue ? app.plantValue('logistics') : U.levels[lvl];
     const big = (board || []).filter((L) => L.tons > 1.5 * now).length;
-    if (big < 2 || cost > spare) return null;
+    if ((big < 2 && !(board || []).some((L) => L.tons > 2.5 * now)) || cost > spare) return null;   // #343: one trainload of the $1M or $10M tier is reason enough
     return { title: 'GROW', label: 'BIGGER BATCHES ' + app.fmtMoney(cost), sub: big + ' lots on the board are well over your ' + fmtW(now) + ' batch: Feed logistics takes ' + fmtW(now + U.levels[lvl + 1] - U.levels[lvl]) + ' a batch.', cost, go: () => app.buyPlant('logistics') };
   }
   function lineSortsMisc() {
@@ -590,7 +590,8 @@
     const cheapest = board0.length ? Math.min.apply(null, board0.map(lotPrice)) : Infinity;
     if (p) {
       const price = app.pairPrice ? app.pairPrice(p) : 0;
-      if (price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
+      const pays = price <= 0 || p.gain * Math.max(S.tons || 0, app.plantValue ? app.plantValue('logistics') : 30) * 10 >= price;   // #345: only a machine whose gain pays its price back within ten full batches
+      if (pays && price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
     // #326: the plant upgrades that unblock growth: a bigger hall or a sorter slot when the next machine has nowhere to go, and
     // feed logistics once the lots on the board are well over a batch. They keep their cost in net worth; the next lot stays affordable.

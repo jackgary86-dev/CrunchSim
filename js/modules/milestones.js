@@ -6,7 +6,7 @@
   'use strict';
   const CS = G.CS; if (!CS) return;
   /* each check reads a snapshot: { sold, soldValue, batchBest, refined: {mat: n}, goldBars, sorters, slots, lotBest, miscMax,
-   * misc, lotsRun, rank } */
+   * misc, lotsRun, rank, omniRuns } */
   const LIST = [
     { id: 'firstSale', name: 'First pure bucket sold', hint: 'Sell a bucket that is 90% or more one material.', ok: (s) => s.sold >= 1 },
     { id: 'batch10k', name: 'A $10k batch', hint: 'Run one batch whose products are worth $10,000 more than it cost to run.', ok: (s) => s.batchBest >= 10000 },
@@ -18,9 +18,13 @@
     { id: 'bigLot', name: 'A $100k lot', hint: 'Buy a lot worth $100,000 or more.', ok: (s) => s.lotBest >= 100000 },
     { id: 'clean', name: 'MISC back to zero', hint: 'Let MISC grow past 10 t, then re-run it until nothing is left.', ok: (s) => s.miscMax >= 10 && s.misc < 0.05 },
     { id: 'recycler', name: 'Recycler rank', hint: 'Reach a net worth of $120,000.', ok: (s) => s.rank >= 1 },
-    { id: 'operator', name: 'Plant operator rank', hint: 'Reach a net worth of $2.5 million.', ok: (s) => s.rank >= 3 }
+    { id: 'operator', name: 'Plant operator rank', hint: 'Reach a net worth of $2.5 million.', ok: (s) => s.rank >= 3 },
+    // #345: the late game has goals too: the last two ranks and the end game (the first batch through the Omniprocessor, js/modules/endgame.js)
+    { id: 'industrial', name: 'Industrial group rank', hint: 'Reach a net worth of $12 million.', ok: (s) => s.rank >= 4 },
+    { id: 'mega', name: 'Mega-plant rank', hint: 'Reach a net worth of $60 million.', ok: (s) => s.rank >= 5 },
+    { id: 'endgame', name: 'The end game', hint: 'At Mega-plant, build the Omniprocessor and run a batch through it.', ok: (s) => s.omniRuns >= 1 }
   ];
-  function newState() { return { done: {}, sold: 0, soldValue: 0, batchBest: 0, refined: {}, goldBars: 0, lotBest: 0, miscMax: 0, lotsRun: 0, rankSeen: 0 }; }
+  function newState() { return { done: {}, sold: 0, soldValue: 0, batchBest: 0, refined: {}, goldBars: 0, lotBest: 0, miscMax: 0, lotsRun: 0, rankSeen: 0, omniRuns: 0 }; }
   /* the milestones newly reached in snapshot s, given what is already done */
   function reached(done, s) { return LIST.filter((m) => !done[m.id] && m.ok(s)).map((m) => m.id); }
   CS.Milestones = { LIST, newState, reached };
@@ -31,7 +35,7 @@
     let st = newState(), panel = null, ready = false;   // no checks until the game has booted: a loaded save must not fanfare its old rank
     function snapshot() {
       const S = app.S, I = CS.Inventory, SL = CS.Slots;
-      return { sold: st.sold, soldValue: st.soldValue, batchBest: st.batchBest, refined: st.refined, goldBars: st.goldBars, lotBest: st.lotBest, lotsRun: st.lotsRun,
+      return { sold: st.sold, soldValue: st.soldValue, batchBest: st.batchBest, refined: st.refined, goldBars: st.goldBars, lotBest: st.lotBest, lotsRun: st.lotsRun, omniRuns: st.omniRuns || 0,
         sorters: SL ? SL.sortersIn(S.line) : 0, slots: SL && SL.live ? SL.live.owned() : 5,
         misc: I && I.misc ? I.miscTotal(I.misc()) : 0, miscMax: st.miscMax, rank: app.rankOf ? app.rankOf(app.netWorth()).idx : 0 };
     }
@@ -61,10 +65,10 @@
     app.on('sale', (p) => { st.sold++; st.soldValue += (p && p.proceeds) || 0; check(); });
     app.on('refined', (p) => { if (!p) return; st.refined[p.mat] = (st.refined[p.mat] || 0) + 1; if (p.mat === 'gold' || (p.metal && p.metal.gold > 0)) st.goldBars++; check(); });
     app.on('lotBought', (p) => { if (p && p.total > st.lotBest) st.lotBest = p.total; check(); });
-    app.on('batchComplete', (p) => { if (p && p.r) { const v = (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0); if (v > st.batchBest) st.batchBest = v; } setTimeout(check, 0); });
+    app.on('batchComplete', (p) => { if (p && p.r) { const v = (p.net || 0) + (p.r.held ? (p.r.rev || 0) : 0); if (v > st.batchBest) st.batchBest = v; } if (p && p.why === 'complete' && CS.Endgame && CS.Endgame.lineHasOmni(app.S.line)) st.omniRuns = (st.omniRuns || 0) + 1; setTimeout(check, 0); });
     app.on('render', () => { const I = CS.Inventory; if (I && I.misc) st.miscMax = Math.max(st.miscMax, I.miscTotal(I.misc())); check(); });
     app.on('save', () => ({ milestones: st }));
-    app.on('load', (ext) => { const d = ext && ext.milestones; st = Object.assign(newState(), d && typeof d === 'object' ? d : {}); render(); });
+    app.on('load', (ext) => { const d = ext && ext.milestones; st = Object.assign(newState(), d && typeof d === 'object' ? d : {}); if (ext && ext.endgame && ext.endgame.shown) st.omniRuns = Math.max(+st.omniRuns || 0, 1); render(); });   // #345: a save past the end card has run the Omniprocessor
     app.on('newgame', () => { st = newState(); render(); });
     app.on('boot', () => {
       panel = app.addPanel('left', 'milestones-panel', 'Milestones', 'bank-panel');

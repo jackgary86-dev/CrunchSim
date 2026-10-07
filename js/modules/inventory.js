@@ -124,7 +124,7 @@
   /* A finished batch: each sellable (pure) bin becomes one lot of its main material, at the bin's purity, grade and
    * a size factor that keeps the bin's value exactly; each mixed bin goes to MISC material by material. The batch cost
    * is shared over the sellable lots by value (MISC carries none: it has no sale value yet). */
-  function absorbBins(stock, bins, tonnes, batchCost, misc) {
+  function absorbBins(stock, bins, tonnes, batchCost, misc, pfAt) {
     const produced = {};
     if (!(tonnes > 0)) return produced;
     const lots = []; let valTot = 0, massTot = 0;
@@ -142,7 +142,7 @@
       // value of the bin before the market, per tonne of feed: binStats' own per-material value with the market and the
       // round's price factor divided out, so form (ingot premium, dross discount), grade and size all carry into the lot (#211)
       let vb = 0;
-      const P = CS.Sim && CS.Sim.prices, mk = P && P.market != null ? +P.market : 1, pf = (P && P.perMat) || {};
+      const P = CS.Sim && CS.Sim.prices, mk = P && P.market != null ? +P.market : 1, pf = pfAt || (P && P.perMat) || {};   // #339: pfAt = the factors the bins were valued at (market.js steps the round before this runs)
       for (const mat in st.perMat) {
         const pm = st.perMat[mat]; if (!(pm.mass > 0) || !MATERIALS[mat]) continue;
         const div = mk * (pf[mat] || 1);
@@ -514,7 +514,7 @@
       const r = p && p.r; if (!r || r.held !== 'inventory' || !(r.done > 0)) return;
       const batchCost = Math.max(0, (r.feedC || 0)) + Math.max(0, (p.powerC || 0)) + Math.max(0, (r.extra || 0));
       const m0 = miscTotal(misc);
-      const produced = absorbBins(stock, p.bins, r.done, batchCost, misc);
+      const produced = absorbBins(stock, p.bins, r.done, batchCost, misc, p.perMat);
       API.emit('landed', { r });   // #321: the product is in stock now: what counted in its place (a re-run bucket) stops counting
       const mAdd = miscTotal(misc) - m0;
       const txt = producedText(produced);

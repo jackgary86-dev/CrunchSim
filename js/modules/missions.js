@@ -65,19 +65,36 @@
   };
   const CLIENTS = ['Harbour Secondary Smelter', 'Northgate Brass Foundry', 'Two Rivers Die-casting', 'Westfield Rolling Mill', 'Kestrel Alloys', 'Lakeside Wire & Cable', 'Bayside Ingot Works', 'Delta Refiners'];
 
-  /* tonnes of `mat` a batch of the richest available feed yields into a clean bin */
-  function yieldPerBatch(mat, feeds, limit) {
-    let best = 0;
-    (feeds || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const f = F.comp[mat] || 0; if (f >= JOB.minFrac && f > best) best = f; });
-    return best * (limit > 0 ? limit : 30) * JOB.recovery;
+  /* tonnes of `mat` a batch of the richest available feed yields into a clean bin. #342: lotT { feed: t } is the most a lot of that
+   * feed weighs at the auction's open tiers (lotSizes): a batch is never bigger than the lot it runs, whatever the logistics limit */
+  function yieldPerBatch(mat, feeds, limit, lotT) { return bestBatch(mat, feeds, limit, lotT).y; }
+  /* { y: t of mat into a clean bin, t: feed tonnes of that batch } for the richest feed */
+  function bestBatch(mat, feeds, limit, lotT) {
+    let best = 0, bt = 0; const lim = limit > 0 ? limit : 30;
+    (feeds || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const f = F.comp[mat] || 0; if (!(f >= JOB.minFrac)) return; const t = lotT && lotT[id] > 0 ? Math.min(lim, lotT[id]) : lim; if (f * t > best) { best = f * t; bt = t; } });
+    return { y: best * JOB.recovery, t: bt };
   }
-  function windowFor(batches) { return Math.ceil(batches * JOB.hoursPerBatch * 2 + JOB.windowSlack); }
-  /* Generate one job. opts: { feeds: [ids the player can buy], limit: t per batch, rep, clockH, id } */
+  /* #342: the feeds the auction deals at tiers 0..open-1 and the most a lot of each weighs: the tier's money at a fair price, capped at
+   * the tier's tonnage (CS.Auction). maxBudget leaves out the tiers the yard cannot pay for yet, except the first one up that deals a
+   * job metal (a yard with no metal in reach is offered jobs from the next lots it can buy). null without the auction. */
+  function lotSizes(open, maxBudget) {
+    const A = CS.Auction; if (!A || !A.TIERS || !A.TIER_FEEDS) return null;
+    const lotT = {}; let any = false, metal = false;
+    for (let k = 0; k < Math.min(open || A.TIERS.length, A.TIERS.length); k++) {
+      if (k > 0 && maxBudget != null && A.TIERS[k] > maxBudget && metal) break;
+      (A.TIER_FEEDS[k] || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const fa = A.worthOf(F.comp) * A.fairRatio(id); if (!(fa > 0.5)) return; if (JOB.mats.some(function (m) { return (F.comp[m] || 0) >= JOB.minFrac; })) metal = true; const t = Math.min(A.TIER_MAX_T[k] || Infinity, A.TIERS[k] / fa * 1.1); if (!(t > (lotT[id] || 0))) return; lotT[id] = t; any = true; });
+    }
+    return any ? { feeds: Object.keys(lotT), lotT: lotT } : null;
+  }
+  /* #342: hpb, the plant hours a batch takes (its tonnes at the head rate, plus an hour to source and load), when longer than JOB.hoursPerBatch */
+  function windowFor(batches, hpb) { return Math.ceil(batches * Math.max(JOB.hoursPerBatch, hpb > 0 ? hpb : 0) * 2 + JOB.windowSlack); }
+  /* Generate one job. opts: { feeds: [ids the player can buy], limit: t per batch, lotT: { feed: most t in a lot }, rate: head t/h, rep, clockH, id } */
   function genJob(rng, opts) {
     opts = opts || {};
     const feeds = opts.feeds && opts.feeds.length ? opts.feeds : ['elv'];
-    const cands = JOB.mats.map(function (m) { return { m: m, y: yieldPerBatch(m, feeds, opts.limit) }; }).filter(function (c) { return c.y > 0; });
-    const c = cands.length ? pick(rng, cands) : { m: 'aluminum', y: yieldPerBatch('aluminum', ['elv'], opts.limit) };
+    const cands = JOB.mats.map(function (m) { const b = bestBatch(m, feeds, opts.limit, opts.lotT); return { m: m, y: b.y, t: b.t }; }).filter(function (c) { return c.y > 0; });
+    const c = cands.length ? pick(rng, cands) : Object.assign({ m: 'aluminum' }, bestBatch('aluminum', ['elv'], opts.limit, opts.lotT));
+    const hpb = opts.rate > 0 && c.t > 0 ? c.t / opts.rate + 1 : 0;
     const tier = Math.floor(rng() * (tierOf(opts.rep || 0) + 1));
     const br = JOB.batches[tier], batches = Math.round(uni(rng, br[0], br[1]));
     const tons = Math.max(JOB.minTons, Math.round(c.y * batches * 10) / 10);
@@ -85,7 +102,7 @@
     const purity = Math.round(Math.max(PURE_MIN, uni(rng, pr[0], pr[1])) * 100) / 100;   // a bin under PURE_MIN is MISC and never ships (#216), so no job asks for less
     const mult = Math.round(uni(rng, JOB.mult[0], JOB.mult[1]) * 100) / 100;
     const clockH = opts.clockH || 0;
-    return { id: opts.id || 0, mat: c.m, tier: tier, batches: batches, tons: tons, purity: purity, mult: mult, windowH: windowFor(batches),
+    return { id: opts.id || 0, mat: c.m, tier: tier, batches: batches, tons: tons, purity: purity, mult: mult, windowH: windowFor(batches, hpb),
       offerExpiresH: clockH + Math.round(uni(rng, JOB.offerH[0], JOB.offerH[1])), client: pick(rng, CLIENTS), state: 'offered', t: 0, paid: 0, acceptedH: null, deadlineH: null };
   }
   function validJob(j) { return !!(j && typeof j === 'object' && MATERIALS[j.mat] && isFinite(+j.tons) && +j.tons > 0 && isFinite(+j.purity) && isFinite(+j.mult) && isFinite(+j.windowH)); }
@@ -209,7 +226,7 @@
     mulberry32, REP, TIERS, JOB, CLIENTS, DONE_KEEP,
     hoursNeeded,
     tierOf, tierName, repApply,
-    yieldPerBatch, windowFor, genJob, validJob, newJobs, tickBoard, acceptJob, dropJob, expireJobs, qualifying, qualifyingKg, applyBins, jobHours, jobPrice,
+    yieldPerBatch, lotSizes, windowFor, genJob, validJob, newJobs, tickBoard, acceptJob, dropJob, expireJobs, qualifying, qualifyingKg, applyBins, jobHours, jobPrice,
     newState, serialize, deserialize, fmtH
   };
 
@@ -230,7 +247,17 @@
     const spot = function (mat) { return MATERIALS[mat].sell * (CS.Sim && CS.Sim.prices ? CS.Sim.prices.market : 1); };
     const feeds = function () { return Object.keys(FEEDS); };
     const limit = function () { return typeof API.plantValue === 'function' ? API.plantValue('logistics') : 30; };
-    const genOpts = function () { return { feeds: feeds(), limit: limit(), rep: st.rep }; };
+    /* #342: jobs are sized from the lots the auction deals at the tiers open to this yard (by rank) and within reach of its bank (lotSizes) */
+    let optMemo = { key: null, v: null };   // net worth is read once per sim hour, batch, bank or limit change, not on every tick
+    const genOpts = function () {
+      const s = S(), key = Math.floor(clockH()) + ':' + (s ? s.batches + ':' + Math.round(Math.log(Math.max(1, s.money)) * 20) : '') + ':' + limit() + ':' + Math.round(headRate()) + ':' + st.rep; if (optMemo.key === key) return optMemo.v;
+      optMemo = { key, v: genOptsNow() }; return optMemo.v;
+    };
+    const genOptsNow = function () {
+      let open = 0; try { open = CS.Auction.tiersOpen(API.rankOf(API.netWorth()).idx); } catch (e) { open = 0; }
+      const s = S(), L = lotSizes(open, s ? Math.max(0, s.money) : null);
+      return L ? { feeds: L.feeds, lotT: L.lotT, limit: limit(), rate: headRate(), rep: st.rep } : { feeds: feeds(), limit: limit(), rate: headRate(), rep: st.rep };
+    };
     function credit(amount) { const s = S(); if (!s || !(amount > 0)) return; s.money += amount; s.lifetime = (s.lifetime || 0) + amount; if (API.emit) API.emit('income', { amount, from: 'job' }); }
     function rep(delta, why) { const before = st.rep; st.rep = repApply(st.rep, delta); if (st.rep !== before) log('Reputation ' + (delta > 0 ? '+' : '') + delta + ' (' + why + '): now ' + st.rep + ', ' + tierName(st.rep) + '.', delta > 0 ? 'ok' : 'warn'); }
 
@@ -243,7 +270,7 @@
     if (API.S && API.S.ext) restore(API.S.ext);   // registered after boot: the 'load' event has already fired
     API.on('save', function () { return { missions: serialize(st, rng.getState()) }; });
     /* rival yards (ticket #32, js/modules/rivals.js) read the live reputation and job board, and may take an offered job off the board */
-    CS.Missions.live = { rep: function () { return st.rep; }, jobs: function () { return st.jobs; }, render: function () { render(); } };
+    CS.Missions.live = { rep: function () { return st.rep; }, jobs: function () { return st.jobs; }, genOpts: function () { return genOptsNow(); }, render: function () { render(); } };
 
     /* the clock moved: deadlines, grace periods, job windows and the job board */
     function advance(dh) {

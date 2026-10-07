@@ -101,7 +101,7 @@
       credit(q.net);
       if (CS.Audio && CS.Audio.fx) CS.Audio.fx('roar');
       API.emit('refined', { mat: 'misc', form: 'concentrate', metal: q.metal, net: q.net });
-      API.log('Sold ' + API.fmtNum(q.t, 1) + ' t of MISC concentrate to the precious refinery by assay: ' + Object.keys(q.metal).map((m) => Math.round(q.metal[m] * 1e6) + ' g ' + m).join(', ') + ' paid at ' + Math.round(CONC_PAY * 100) + '% (' + API.fmtMoney(q.value) + ') less ' + API.fmtMoney(q.cost) + ' treatment = ' + API.fmtMoney(q.net) + '. The copper, plastic and glass around it went with it.', 'ok');
+      API.log('Sold ' + API.fmtNum(q.t, 1) + ' t of MISC concentrate to the precious refinery by assay: ' + Object.keys(q.metal).map((m) => { const t = q.metal[m]; return (t >= 1 ? API.fmtNum(t, 1) + ' t' : t >= 0.001 ? API.fmtNum(t * 1000, 1) + ' kg' : Math.round(t * 1e6) + ' g') + ' ' + m; }).join(', ') + ' paid at ' + Math.round(CONC_PAY * 100) + '% (' + API.fmtMoney(q.value) + ') less ' + API.fmtMoney(q.cost) + ' treatment = ' + API.fmtMoney(q.net) + '. The copper, plastic and glass around it went with it.', 'ok');
       after();
     }
     function after() { API.renderBank(); API.save(); API.markDirty(true); }

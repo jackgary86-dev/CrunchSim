@@ -694,6 +694,7 @@
     const S = app.S, stock = srcMap(src);
     if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log('In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.', 'warn'); return; }
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
+    if (src !== 'misc' && mats.some((m) => stock[m] && stock[m].alloy)) { app.log('The ' + label + ' bucket holds alloy ingots: a cast alloy cannot be sorted back into its metals. Sell it.', 'warn'); return; }   // #291
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
     if (plan.error) { app.log('The ' + label + ' bucket holds under 1 t: too little to run a batch. Sell it, or let it fill up.', 'warn'); return; }
     const comp = plan.comp, tot = plan.tot, tons = plan.tons, entry = defaultEntry(S.line, MACHINES);

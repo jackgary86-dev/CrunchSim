@@ -27,8 +27,8 @@ function binsOf(preset, feed) {
 function binsValuePerT(bins) { return bins.reduce((v, b) => v + b.st.value, 0); }
 function binsMassPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.perMat[mat] ? b.st.perMat[mat].mass : 0), 0); }
 // #52: a sellable (pure) bin is held whole as its main material; a mixed bin goes to MISC
-function heldPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.sellable && b.st.main === mat ? b.st.total : 0), 0); }
-const waterIn = (b) => (b.st.perMat && b.st.perMat.water ? b.st.perMat.water.mass : 0);   // free water drains off; it is never kept as MISC
+const waterIn = (b) => (b.st.perMat && b.st.perMat.water ? b.st.perMat.water.mass : 0);   // free water drains off; it is never kept as MISC or sold (#288)
+function heldPerT(bins, mat) { return bins.reduce((m, b) => m + (b.st.sellable && b.st.main === mat ? b.st.total - waterIn(b) : 0), 0); }
 function miscPerT(bins) { return bins.reduce((m, b) => m + (b.st.sellable ? 0 : b.st.total - waterIn(b)), 0); }
 
 Sim.prices.market = 1;
@@ -41,7 +41,7 @@ for (const mat in stock) if (!near(stock[mat].t, heldPerT(carBins, mat) / 1000 *
 check(massOk && Object.keys(stock).length >= 2, 'absorbBins holds each pure bin whole as its main material (bins are per head-tonne, scaled by the batch)');
 check(near(Inv.miscTotal(misc0), miscPerT(carBins) / 1000 * 15) && Inv.miscTotal(misc0) > 0, 'every mixed bin goes to MISC, tonne for tonne (' + f(Inv.miscTotal(misc0), 1) + ' t)');
 check(MAT_ORDER.every((m) => !stock[m] || stock[m].purity >= 0.9), 'nothing under 90% purity is held as sellable stock');
-check(near(Object.keys(stock).reduce((t, m) => t + stock[m].t, 0) + Inv.miscTotal(misc0), carBins.reduce((t, b) => t + b.st.total - (b.st.sellable ? 0 : waterIn(b)), 0) / 1000 * 15), 'stock plus MISC is the whole batch, less the water that drains off');
+check(near(Object.keys(stock).reduce((t, m) => t + stock[m].t, 0) + Inv.miscTotal(misc0), carBins.reduce((t, b) => t + b.st.total - waterIn(b), 0) / 1000 * 15), 'stock plus MISC is the whole batch, less the water that drains off');
 const baseAfterOne = MAT_ORDER.reduce((v, m) => v + Inv.baseValue(stock, m), 0);
 check(near(baseAfterOne, binsValuePerT(carBins) * 15, 1e-9), 'value is preserved on absorption: stock base value = sum of bin values x tonnes (' + f(baseAfterOne, 0) + ')');
 check(MAT_ORDER.every((m) => !stock[m] || (stock[m].purity > 0 && stock[m].purity <= 1 && stock[m].grade > 0 && stock[m].grade <= 1.25 && stock[m].sf > 0 && stock[m].sf <= 1 && stock[m].p80 > 0)), 'purity, grade, size factor and p80 are in range');
@@ -92,7 +92,7 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   check(Inv.sell(s, 'steel', mk, mul) === null, 'selling an empty lot returns null');
   const all = Inv.sellAll(s, mk, mul);
   check(near(all.proceeds + r.proceeds, before.value) && Object.keys(s).length === 0, 'SELL ALL pays exactly the stock value and empties the stock');
-  check(before.units > 0 && near(before.t, carBins.reduce((t, b) => t + (b.st.sellable ? b.st.total : 0), 0) / 1000 * 15), 'stock totals report units and the sorted tonnage of the batch');
+  check(before.units > 0 && near(before.t, carBins.reduce((t, b) => t + (b.st.sellable ? b.st.total - waterIn(b) : 0), 0) / 1000 * 15), 'stock totals report units and the sorted tonnage of the batch');
 }
 
 /* ---- persistence ---- */
@@ -227,6 +227,28 @@ check(Inv.marketAdvance(Inv.newMarket(), -5).hour === 0 && Inv.marketAdvance(Inv
   check(near(Inv.lotValue(s, hot, view, 1), MATERIALS[hot].sell * st.hot.mul), 'a lot of the hot material is worth the hot multiple');
   check(['▲', '▼', '►'].includes(Inv.trendArrow(view, 'steel')) && Inv.trendOf(view, hot) === 1, 'the trend arrow reads the per-round change (hot material points up)');
   check(Market.history(hot).length === 1 && Market.historyOf(st, hot).length === 3, 'sparkline history: one point live (no rounds yet), three after two rounds');
+}
+
+/* ---- #291: an alloy ingot is held under its main metal at the ingot grade, never split into MISC ---- */
+{
+  const L = [Sim.makeNode('induction', { tap: 1200 })], ev = Sim.evalLine(L, { aluminum: 0.85, copper: 0.15 }, { sizes: { aluminum: 30, copper: 30 } });
+  const ing = ev.terminals.filter((t) => t.form === 'ingot').map((t) => ({ st: Sim.binStats(t.stream.m, t.form) }))[0], s = Inv.newStock(), mi = Inv.newMisc();
+  Inv.absorbBins(s, [ing], 10, 0, mi);
+  check(ing.st.share < 0.9 && s.aluminum && s.aluminum.alloy === true && !s.copper && Inv.miscTotal(mi) === 0, 'an ' + f(ing.st.share * 100, 0) + '% ingot is one aluminum lot flagged alloy, nothing in MISC');
+  check(near(s.aluminum.t, ing.st.total / 1000 * 10) && near(Inv.lotValue(s, 'aluminum', null, 1), ing.st.value / Sim.prices.market * 10, 1e-6), 'it keeps its whole mass and the ingot-grade value');
+  const back = Inv.deserialize(JSON.parse(JSON.stringify(Inv.serialize(s, Inv.newMarket(), {}, mi))));
+  check(back.stock.aluminum && back.stock.aluminum.alloy === true && Inv.miscTotal(back.misc) === 0, 'a saved alloy lot loads back as stock, not MISC');
+  const w = Inv.withdrawLot(s, 'aluminum', 1); check(w.alloy === true, 'a withdrawal carries the alloy flag (a put-back stays alloy)');
+}
+/* ---- #288: free water is never sold or held ---- */
+{
+  const wet = Sim.binStats(Sim.makeFeed({ wood: 0.9, water: 0.1 }, 1000).m), s = Inv.newStock(), mi = Inv.newMisc();
+  check(wet.sellable && wet.share === 1 && near(wet.liquid, 100, 1e-6), "water does not count against a bin's purity (wet wood chips are 100% wood)");
+  Inv.absorbBins(s, [{ st: wet }], 1, 0, mi);
+  check(near(s.wood.t, 0.9) && !s.water && Inv.miscTotal(mi) === 0, 'the wood is held, the water drains off');
+  const dry = Sim.binStats(Sim.makeFeed({ water: 1 }, 1000).m), s2 = Inv.newStock(), m2 = Inv.newMisc();
+  Inv.absorbBins(s2, [{ st: dry }], 1, 0, m2);
+  check(!dry.sellable && dry.main === 'water' && Object.keys(s2).length === 0 && Inv.miscTotal(m2) === 0, 'a bin of plain water is neither stock nor MISC');
 }
 
 console.log('\n' + (fails ? fails + ' of ' + n + ' CHECKS FAILED' : 'all ' + n + ' inventory checks pass'));

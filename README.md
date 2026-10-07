@@ -137,6 +137,7 @@ node tests/round.js
 node tests/save-clamp.js
 node tests/saveio.js
 node tests/sensor.js
+node tests/sinkfloat.js
 node tests/slots.js
 node tests/small-fixes.js
 node tests/stamp.js

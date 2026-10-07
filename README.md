@@ -55,6 +55,8 @@ Preset lines act as blueprints: loading one you cannot afford shows what to buy.
 
 ## Play
 
+**Install it on Windows:** double-click `install.cmd` in this folder (or run `powershell -ExecutionPolicy Bypass -File tools/install.ps1`). It copies the game to `%LOCALAPPDATA%\CrunchSim`, downloads three.js and the fonts once so nothing loads from the web, and adds Desktop and Start Menu shortcuts. The shortcuts open the game in its own Edge (or Chrome) app window with its own profile. That window has no browser tabs or toolbar, uses the GPU, and does not throttle the game when it is in the background. Run it again after pulling to update; saves are kept. `-Uninstall` removes it (add `-Purge` to delete the saves too). The installed game keeps its own saves: move a game across with Settings > EXPORT SAVE on the website and IMPORT in the app.
+
 **Play it online:** <https://jackgary86-dev.github.io/CrunchSim/> (the `main` branch, served by GitHub Pages). The 3D plant floor is at `plant3d.html` and the machine gallery at `gallery.html` under the same address. A single-file bundle for hosts that only allow inline code is built with `python tools/build.py` into `dist/artifact.html`. It needs no other files, but it still loads its fonts from Google Fonts, so offline it shows system fonts instead.
 
 Open `index.html` in a browser. There is no build step and no dependency. To serve it:

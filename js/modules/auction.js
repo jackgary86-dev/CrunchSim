@@ -463,7 +463,7 @@
     });
     /* #361: a tier the rank opens (a sale, income, a batch, a purchase) shows at once, not only when the clock next moves */
     function recheck() { if (!app.booted || roundMode() || !seeded) return false; const open = Math.min(TIERS.length, tiersOpen(rankIdx())); for (let k = 0; k < open; k++) if (!st.board.some((l) => l.tier === k)) return tiers(); return false; }
-    ['sale', 'income', 'lotBought', 'batchComplete', 'refined'].forEach((ev) => app.on(ev, () => { if (recheck()) render(); }));
+    ['sale', 'income', 'batchComplete', 'refined'].forEach((ev) => app.on(ev, () => { if (recheck()) render(); }));   // #366: not on lotBought: the lot is not in the yard yet, so net worth (and the rank) dips for a moment
     app.on('render', () => { recheck(); render(); });
     app.on('drawerOpen', () => { if (aucStale) render(); });
     app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; st.sellers = {}; st.settle = null; tiers(); render(); });

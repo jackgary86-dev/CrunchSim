@@ -51,7 +51,7 @@ console.log('== #331 the hall is advised only when it lets a paying sorter in ==
   S.money = 5e6; S.plant.room = 0;
   while (!F.addVeto(S.line, 'sinkfloat', 0)) S.line.push(CS.Sim.makeNode('hammer', {}, { uid: S.line[S.line.length - 1].uid, port: 'product' }));
   check(!!F.addVeto(S.line, 'sinkfloat', 0) && !CS.Slots.addVeto(S.line, 'sinkfloat', CS.Slots.live.owned()), 'setup: the floor blocks a sorter, the slots do not');
-  const pick = { ms: ['sinkfloat'], src: { uid: S.line[0].uid, port: 'product' }, gain: 5, sets: [{}] };
+  const pick = { ms: ['sinkfloat'], src: { uid: S.line[0].uid, port: 'product' }, gain: 500, sets: [{}] };   // pays the hall and itself back (#369)
   let asked = [];
   app.nextPurchases = () => { asked.push(S.plant.room); return F.addVeto(S.line, 'sinkfloat', S.plant.room) ? [] : [pick]; };
   const fits1 = !F.addVeto(S.line, 'sinkfloat', 1);

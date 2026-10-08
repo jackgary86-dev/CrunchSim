@@ -121,5 +121,24 @@ console.log('== #354: a SERVICE or BUY out of reach becomes SELL, the advance or
   const ns = app.layout.nextStep();
   check(ns.title !== 'BUY', 'an unaffordable machine on the line is never a refused BUY (' + ns.title + ' ' + ns.label + ')');
 }
+console.log('== #364 #365: taking a station off never empties the line and keeps the stations after it fed ==');
+{
+  const env = mk(), { CS, app, S } = env, A = CS.Auction.live;
+  A.dealTier(0, 'elv'); const lot = A.dealTier(0, 'elv'); A.deliver(lot, lot.ask, 'Bought');
+  S.line = [S.line[0]]; const h = S.line[0]; h.wear = 1; h.autoService = false; S.levels.hammer = 5; app.markDirty(true);
+  S.money = 100; const blk = app.runBlock();
+  const ns = app.layout.nextStep();
+  check(!(blk && blk.cost > 5000) || !/OFF THE LINE/.test(ns.label), 'the only grinder is never taken off (' + ns.title + ' ' + ns.label + ')');
+}
+{
+  const env = mk(), { CS, app, S } = env, A = CS.Auction.live;
+  A.dealTier(0, 'elv'); const lot = A.dealTier(0, 'elv'); A.deliver(lot, lot.ask, 'Bought');
+  const h = S.line[0], mg = S.line.find((x) => x.m === 'magnet');
+  S.owned.add('sensor'); S.units.sensor = 1; const xs = CS.Sim.makeNode('sensor', {}, { uid: h.uid, port: 'product' }); xs.wear = 1; xs.autoService = false;
+  S.line = [h, xs, CS.Sim.makeNode('magnet', {}, { uid: xs.uid, port: 'residue' })]; app.markDirty(true); S.money = 100;
+  const ns = app.layout.nextStep(); ns.go();
+  const m2 = S.line.find((x) => x.m === 'magnet');
+  check(/OFF THE LINE/.test(ns.label) && m2 && m2.src && m2.src.uid === h.uid && m2.src.port === 'product', 'the magnet after the removed sorter takes the shredder product (' + JSON.stringify(m2 && m2.src) + ')');
+}
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' regression checks pass'));
 process.exit(fails ? 1 : 0);

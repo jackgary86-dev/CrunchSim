@@ -22,7 +22,7 @@ console.log('== #359: NEXT STEP leads to the end game ==');
   check(ns.title === 'END GAME' && /BUY & PLACE OMNI/.test(ns.label), 'then BUY & PLACE OMNI (' + ns.label + ')');
   const m0 = S.money; ns.go(); env.flush();
   check(S.line.some((n) => n.m === 'omni') && S.owned.has('omni') && m0 - S.money >= app.pairPrice({ ms: ['omni'] }) - 1e-6, 'it is bought and placed on the head feed');
-  check(!/END GAME/.test(app.layout.nextStep().title), 'and the advice moves on (no second offer)');
+  { const n2 = app.layout.nextStep(); check(!/OMNI|HALL|SLOT|BIGGER/.test(n2.label), 'and the advice moves on to the final batch, no second offer and no more growth (#369: ' + n2.title + ' ' + n2.label + ')'); }
   const env2 = mk(); env2.flush(); env2.S.money = 1.2 * env2.CS.RANKS[env2.CS.RANKS.length - 1][0]; env2.S.mode = 'rivals';
   check(!/END GAME/.test(env2.app.layout.nextStep().title || ''), 'never in Rivals');
 }

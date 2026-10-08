@@ -113,7 +113,7 @@ console.log('== #345: GROW pays back, big tonnages read with separators, late mi
   check(MS.reached({}, Object.assign({}, snap, { rank: 3, omniRuns: 0 })).filter((id) => ['industrial', 'mega', 'endgame'].indexOf(id) >= 0).length === 0, 'none of them at Plant operator');
   // GROW: a machine that adds cents a tonne for thousands of dollars is not advised
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'modules', 'layout.js'), 'utf8');
-  check(/p\.gain \* Math\.max\(S\.tons \|\| 0, [^;]*\) \* 10 >= price/.test(src), 'GROW asks for a payback within ten batches');
+  check(/p\.gain \* lotTonnes\(\) \* 10 >= price/.test(src), 'GROW asks for a payback within ten batches of the lots actually run (#369)');
 }
 
 console.log(fails ? '\n' + fails + ' late-game check(s) FAILED' : '\nall late-game checks pass');

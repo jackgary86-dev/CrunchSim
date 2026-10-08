@@ -31,7 +31,7 @@
     mats.forEach((m) => { const e = stock && stock[m], t = e ? e.t : 0; if (t > 0) { comp[m] = t; tot += t; if (e.p80 > 0) sizes[m] = e.p80; } });
     if (tot < 1) return { error: 'small', tot };
     for (const m in comp) comp[m] /= tot;
-    return { comp, sizes, tot, tons: tot <= cap ? Math.round(tot * 1000) / 1000 : Math.floor(cap) };   // sizes: the recorded p80 of each material (#41); #350: a bucket that fits one batch runs whole
+    return { comp, sizes, tot, tons: tot <= cap ? tot : Math.floor(cap) };   // sizes: the recorded p80 of each material (#41); #350: a bucket that fits one batch runs whole
   }
   /* where a re-run bucket goes in: the first station that is not a shredder or crusher; null (the head feed, station 1)
    * when that is station 1 or the line is all size reduction (#42) */
@@ -199,6 +199,7 @@
   const W0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }), W1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   function fmtW(t) {
     if (typeof t !== 'number' || !isFinite(t)) return '--';
+    if (Math.abs(t) < 1e-6) t = 0;   // #368: float crumbs print 0, never '-0 g'
     const neg = t < 0 ? '-' : ''; t = Math.abs(t);
     if (t >= 0.95) { const r1 = Math.round(t * 10) / 10; return neg + (r1 >= 1000 ? W0.format(Math.round(t)) : W1.format(r1)) + ' t'; }
     return t >= 0.001 ? neg + Math.round(t * 1000) + ' kg' : neg + Math.round(t * 1e6) + ' g';
@@ -555,9 +556,9 @@
   // #331: the floor and slot rules are asked directly (the slot veto says 'sorting hall' too), and an upgrade is offered only when
   // NEXT PURCHASE, re-ranked as if it were bought (a room level up, one more slot), finds a sorter that adds margin
   let buCache = { at: 0, key: '', v: null };
-  function upgradeLetsIn(dRoom, dSlot) {
-    const S = app.S, SL = CS.Slots && CS.Slots.live, room0 = S.plant.room || 0;
-    try { S.plant.room = room0 + dRoom; if (SL && SL.trial) SL.trial(dSlot); const ps = app.nextPurchases(); return !!(ps && ps.length); }
+  function upgradeLetsIn(dRoom, dSlot, upCost) {   // #369: and the machine it lets in pays back the upgrade and itself within ten batches
+    const S = app.S, SL = CS.Slots && CS.Slots.live, room0 = S.plant.room || 0, t = lotTonnes();
+    try { S.plant.room = room0 + dRoom; if (SL && SL.trial) SL.trial(dSlot); const ps = app.nextPurchases(); return !!(ps && ps.some((p) => p.gain * t * 10 >= (upCost || 0) + (app.pairPrice ? app.pairPrice(p) : 0))); }
     finally { S.plant.room = room0; if (SL && SL.trial) SL.trial(0); }
   }
   function blockedUpgrade() {
@@ -572,9 +573,9 @@
     const hall = () => { const lvl = room, cost = U.room.costs[lvl]; return { title: 'GROW', label: 'BUY A BIGGER PLANT HALL ' + app.fmtMoney(cost), sub: 'The next sorter has no floor space: the Plant hall goes from ' + U.room.levels[lvl] + ' to ' + U.room.levels[lvl + 1] + ' m².', cost, go: () => app.buyPlant('room') }; };
     const slot = () => { const cost = SL.next(); return { title: 'GROW', label: 'BUY A SORTER SLOT ' + app.fmtMoney(cost), sub: 'Every sorter slot is in use: a new one lets the plant hold ' + (SL.owned() + 1) + ' sorters.', cost, go: () => SL.buy() }; };
     let v = null;
-    if (canHall && upgradeLetsIn(1, 0)) v = hall();
-    else if (canSlot && upgradeLetsIn(0, 1)) v = slot();
-    else if (canHall && canSlot && upgradeLetsIn(1, 1)) v = U.room.costs[room] <= SL.next() ? hall() : slot();   // both block: the cheaper of the two first
+    if (canHall && upgradeLetsIn(1, 0, U.room.costs[room])) v = hall();
+    else if (canSlot && upgradeLetsIn(0, 1, SL.next())) v = slot();
+    else if (canHall && canSlot && upgradeLetsIn(1, 1, U.room.costs[room] + SL.next())) v = U.room.costs[room] <= SL.next() ? hall() : slot();   // both block: the cheaper of the two first
     buCache = { at: Date.now(), key, v };
     return v;
   }
@@ -582,11 +583,18 @@
    * (one level at a time) and the next lot, NEXT STEP buys the hall and then places it on the head feed; its first batch is the final score */
   function omniStep(spare) {
     const S = app.S, E = CS.Endgame, F = CS.Floor, U = CS.PLANT_UPGRADES && CS.PLANT_UPGRADES.room; if (!E || S.run || S.mode === 'rivals' || !app.buyAndAdd) return null;
-    const id = Object.keys(MACHINES).find(E.isOmni); if (!id || E.lineHasOmni(S.line) || (S.owned && S.owned.has(id))) return null;
+    const id = Object.keys(MACHINES).find(E.isOmni); if (!id || E.lineHasOmni(S.line) || (E.reached && E.reached())) return null;
+    if (S.owned && S.owned.has(id)) {   // #369: owned but taken off the line: put it back (a spare unit, no charge)
+      if ((CS.SaveIO && CS.SaveIO.lineFull && CS.SaveIO.lineFull(S.line.length)) || app.veto('addMachine', { m: id })) return null;
+      return { title: 'END GAME', label: 'PLACE ' + MACHINES[id].short + ' BACK ON THE LINE', sub: 'The ' + MACHINES[id].name + ' is yours: its first batch ends the game with your final score.', cost: 0, go: () => app.buyAndAdd({ ms: [id], src: 'feed', gain: 0 }) };
+    }
     let ri = 0; try { ri = app.rankOf(app.netWorth()).idx; } catch (e) { ri = 0; } if (!E.unlockStatus(id, ri).ok) return null;
     const room = S.plant.room || 0, M = MACHINES[id], price = app.pairPrice ? app.pairPrice({ ms: [id] }) : M.price; let lvl = room, hallCost = 0;
     while (F && F.addVeto(S.line, id, lvl)) { if (!U || lvl >= U.costs.length) return null; hallCost += U.costs[lvl]; lvl++; }   // the smallest hall it fits in
     if (hallCost + price > spare) return null;
+    // #363: a full line (or any other rule) that would refuse the machine: no END GAME step that cannot be taken
+    if (CS.SaveIO && CS.SaveIO.lineFull && CS.SaveIO.lineFull(S.line.length)) return null;
+    if (lvl === room && app.veto('addMachine', { m: id })) return null;
     if (lvl > room) { const cost = U.costs[room]; return { title: 'END GAME', label: 'BUY A BIGGER PLANT HALL ' + app.fmtMoney(cost), sub: 'The ' + M.name + ' is unlocked and needs ' + F.fmtArea(F.machineArea(id)) + ' m² of floor: the Plant hall goes from ' + U.levels[room] + ' to ' + U.levels[room + 1] + ' m²' + (lvl > room + 1 ? ', then to ' + U.levels[lvl] + ' m²' : '') + '.', cost, go: () => app.buyPlant('room') }; }
     return { title: 'END GAME', label: 'BUY & PLACE ' + M.short + ' ' + app.fmtMoney(price), sub: 'The ' + M.name + ' sorts every material into a bin of its own in one pass. Its first batch ends the game with your final score.', cost: price, go: () => app.buyAndAdd({ ms: [id], src: 'feed', sets: [{}] }) };
   }
@@ -597,6 +605,13 @@
     const big = (board || []).filter((L) => L.tons > 1.5 * now).length;
     if ((big < 2 && !(board || []).some((L) => L.tons > 2.5 * now)) || cost > spare) return null;   // #343: one trainload of the $1M or $10M tier is reason enough
     return { title: 'GROW', label: 'BIGGER BATCHES ' + app.fmtMoney(cost), sub: big + (big === 1 ? ' lot on the board is' : ' lots on the board are') + ' well over your ' + fmtW(now) + ' batch: Feed logistics takes ' + fmtW(now + U.levels[lvl + 1] - U.levels[lvl]) + ' a batch.', cost, go: () => app.buyPlant('logistics') };
+  }
+  /* #369: the tonnes a batch really runs: the lots you can afford on the board, capped by the batch limit (not the limit alone) */
+  function lotTonnes() {
+    const S = app.S, A = CS.Auction && CS.Auction.live, cap = app.plantValue ? app.plantValue('logistics') : 30;
+    const t = (A ? A.board() : []).filter((L) => (A.priceOf ? A.priceOf(L) : L.ask) * L.tons <= Math.max(S.money, 0)).map((L) => L.tons);
+    const typical = t.length ? t.sort((x, y) => x - y)[Math.floor(t.length / 2)] : (S.tons || 30);
+    return Math.max(1, Math.min(cap, Math.max(S.tons || 0, typical)));
   }
   function lineSortsMisc() {
     const S = app.S, I = CS.Inventory, misc = I && I.misc ? I.misc() : {};
@@ -645,13 +660,16 @@
       if (S.mode !== 'rivals' && loan + need <= ADVANCE_MAX) return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(need) + ' ADVANCE', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is more than the bank and the buckets hold. A scrap merchant advances the money, repaid from a quarter of everything the yard takes in.', go: () => takeAdvance(need) };
       const off = blk.kind === 'buy' ? S.line.find((x) => blk.ms.indexOf(x.m) >= 0 && !(app.nodeOwned ? app.nodeOwned(x) : true)) || S.line.find((x) => blk.ms.indexOf(x.m) >= 0) : blk.n;
       const k = off ? S.line.indexOf(off) : -1;
+      // #364: never the last station or the only grinder: without them nothing runs
+      const grinders = S.line.filter((x) => MACHINES[x.m] && MACHINES[x.m].kind === 'comminution').length;
+      if (off && (S.line.length <= 1 || (MACHINES[off.m].kind === 'comminution' && grinders <= 1))) return { title: 'STUCK', label: 'OPEN THE PLANT DRAWER', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is out of reach and the line cannot run without it. Sell machines you do not use, or wait for the advance to be repaid.', go: () => showDrawer('plant') };
       if (off) return { title: 'STUCK', label: 'TAKE ' + MACHINES[off.m].short + ' ' + (k + 1) + ' OFF THE LINE', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is out of reach. Without station ' + (k + 1) + ' the lot can still run; put it back once the bank allows.', go: () => { S.sel = off.uid; const rb = $('#btn-remove'); if (rb) rb.click(); renderFlow(true); } };
     }
     if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
     const lotRunning = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();   // #336: between a lot's own batches the next one starts by itself: no TUNE search there
     if (S.feedPrepaid && !S.run && !lotRunning) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
-    if (S.feedPrepaid) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
+    if (S.feedPrepaid && S.line.length) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
     // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};
     let best = null; for (const m in stock) { const v = I.quote ? I.quote(m) : 0; if (stock[m].t > 0.05 && v > 0 && (!best || v > best.v)) best = { m, v }; }
@@ -663,9 +681,11 @@
     const A0 = CS.Auction && CS.Auction.live, board0 = A0 ? A0.board() : [], lotPrice = (L) => (A0 && A0.priceOf ? A0.priceOf(L) : L.ask) * L.tons;
     const cheapest = board0.length ? Math.min.apply(null, board0.map(lotPrice)) : Infinity;
     { const om = omniStep(S.money - (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest)); if (om) return om; }   // #359: the end game before another machine
+    { const E = CS.Endgame;   // #369: with the Omniprocessor on the line only its first batch is left: no more growth, buy a lot and run it
+      if (E && S.mode !== 'rivals' && E.lineHasOmni(S.line) && !(E.reached && E.reached())) { const a = nextAction(); return Object.assign({}, a, { title: 'END GAME', sub: 'The ' + MACHINES[S.line.find((n) => E.isOmni(n.m)).m].name + ' is on the line: buy a lot and run it for your final score.' }); } }
     if (p) {
       const price = app.pairPrice ? app.pairPrice(p) : 0;
-      const pays = price <= 0 || p.gain * Math.max(S.tons || 0, app.plantValue ? app.plantValue('logistics') : 30) * 10 >= price;   // #345: only a machine whose gain pays its price back within ten full batches
+      const pays = price <= 0 || p.gain * lotTonnes() * 10 >= price;   // #345, #369: only a machine whose gain pays its price back within ten batches of the lots you actually run
       if (pays && price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
     // #326: the plant upgrades that unblock growth: a bigger hall or a sorter slot when the next machine has nowhere to go, and
@@ -914,7 +934,7 @@
     const S = app.S, stock = srcMap(loaded.src);
     if (!S.run && S.feedPrepaid && S.feedOwner === 'rerun' && sameComp(S.comp, loaded.comp)) {
       let have = 0; for (const m in loaded.comp) have += stock[m] ? stock[m].t : 0;   // never run more than the bucket holds
-      if (have >= 1) { if (S.tons > have) { S.tons = Math.floor(have); app.syncFeedRows(); } return; }
+      if (have >= 1) { if (S.tons > have + 1e-6) { S.tons = Math.floor(have * 1000) / 1000; app.syncFeedRows(); } return; }   // #362: down to what it holds, not whole tonnes
       // emptied (sold or refined) since it was loaded: there is nothing left to run
     }
     if (S.run) return;

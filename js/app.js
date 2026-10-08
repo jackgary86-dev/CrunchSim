@@ -296,7 +296,7 @@
       const idx = S.line.indexOf(n);
       if (Eco()) Eco().shelve(S.shelf, n);   // #193: the unit keeps its wear while it is off the line
       S.line = S.line.filter((x) => x !== n);
-      S.line.forEach((x) => { if (x.src && x.src !== 'feed' && x.src.uid === n.uid) x.src = 'feed'; });
+      S.line.forEach((x) => { if (x.src && x.src !== 'feed' && x.src.uid === n.uid) x.src = n.src && n.src !== 'feed' ? { uid: n.src.uid, port: n.src.port } : 'feed'; });   // #365: the stations after it take what it was fed
       S.sel = S.line.length ? S.line[Math.min(idx, S.line.length - 1)].uid : null;
       S.linePreset = 'custom'; sel.value = 'custom'; Audio.ui('click'); log('Removed ' + MACHINES[n.m].name + ' from the line (you still own it).'); markDirty(true);
     });
@@ -1138,7 +1138,11 @@
     $('#btn-newgame').addEventListener('click', newGame);
     $('#scorecard').addEventListener('click', hideCard);
     // #353: a BUY styled 'poor' says why on hover (in Rivals a bin may still be bought on the credit line, so it stays enabled)
-    document.addEventListener('mouseover', (e) => { const b = e.target && e.target.closest && e.target.closest('button.buy.poor'); if (b && !b.dataset.poorTip) { b.dataset.poorTip = '1'; b.title = 'More than the bank holds (' + fmtMoney(S.money) + ')' + (b.title ? ' · ' + b.title : ''); } });
+    document.addEventListener('mouseover', (e) => {   // #368: written fresh on each hover, only on an enabled button the bank cannot pay (a locked one keeps its own reason)
+      const b = e.target && e.target.closest && e.target.closest('button.buy'); if (!b) return;
+      const base = String(b.title || '').replace(/^More than the bank holds \([^)]*\)( · )?/, '');
+      b.title = b.classList.contains('poor') && !b.disabled ? 'More than the bank holds (' + fmtMoney(S.money) + ')' + (base ? ' · ' + base : '') : base;
+    });
     $('#sources').innerHTML = SOURCES.map((s) => '<li><a href="' + esc(s[1]) + '" target="_blank" rel="noopener">' + esc(s[0]) + '</a></li>').join('');
     window.addEventListener('keydown', (e) => {
       if (!CS.hotkeyOk(e, document)) return;   // typing, a focused button, a modifier key or an open modal keeps the key (#197)

@@ -99,6 +99,7 @@
     API.on('load', restore);
     if (API.S && API.S.ext) restore(API.S.ext);   // registered after boot: the 'load' event has already gone by
     API.on('save', function () { return { endgame: { shown: state.shown } }; });
+    CS.Endgame.reached = function () { return state.shown; };   // #369: NEXT STEP stops growing once only the final batch is left
     API.on('newgame', function () { state.shown = false; hide(); });
     API.on('veto:addMachine', function (p) { return p ? veto(p.m) : ''; });
     API.on('veto:applyLine', function (p) {

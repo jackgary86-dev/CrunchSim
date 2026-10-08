@@ -284,7 +284,7 @@
     /* #342: jobs are sized from the lots the auction deals at the tiers open to this yard (by rank) and within reach of its bank (lotSizes) */
     let optMemo = { key: null, v: null };   // net worth is read once per sim hour, batch, bank or limit change, not on every tick
     const genOpts = function () {
-      const s = S(), key = Math.floor(clockH()) + ':' + (s ? s.batches + ':' + Math.round(Math.log(Math.max(1, s.money)) * 20) : '') + ':' + limit() + ':' + Math.round(headRate()) + ':' + st.rep; if (optMemo.key === key) return optMemo.v;
+      const s = S(), key = Math.floor(clockH()) + ':' + (s ? s.batches + ':' + Math.round(Math.log(Math.max(1, s.money)) * 20) : '') + ':' + limit() + ':' + Math.round(headRate()) + ':' + st.rep + ':' + (s && s.line ? s.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src)).join() : ''); if (optMemo.key === key) return optMemo.v;   // #368: a changed line reaches other metals
       optMemo = { key, v: genOptsNow() }; return optMemo.v;
     };
     const genOptsNow = function () {

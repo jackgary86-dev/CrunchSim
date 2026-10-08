@@ -61,7 +61,8 @@
     offerH: [12, 48],    // an offer stays on the board 12-48 sim hours, like an online tender
     board: { min: 2, max: 4, arriveH: 12 },   // two to four open jobs; a new one about every 12 sim hours (Poisson)
     maxActive: 2,        // two jobs at once: more and the yard is a toll processor, not a plant
-    minTons: 0.5
+    minTons: 0.5,
+    lineMargin: 0.85     // #360: a dealt lot runs leaner than its listing (sellers pad, the mix varies), so a job sized from the line asks 85% of what it makes
   };
   const CLIENTS = ['Harbour Secondary Smelter', 'Northgate Brass Foundry', 'Two Rivers Die-casting', 'Westfield Rolling Mill', 'Kestrel Alloys', 'Lakeside Wire & Cable', 'Bayside Ingot Works', 'Delta Refiners'];
 
@@ -70,9 +71,9 @@
   function yieldPerBatch(mat, feeds, limit, lotT) { return bestBatch(mat, feeds, limit, lotT).y; }
   /* { y: t of mat into a clean bin, t: feed tonnes of that batch } for the richest feed */
   function bestBatch(mat, feeds, limit, lotT) {
-    let best = 0, bt = 0; const lim = limit > 0 ? limit : 30;
-    (feeds || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const f = F.comp[mat] || 0; if (!(f >= JOB.minFrac)) return; const t = lotT && lotT[id] > 0 ? Math.min(lim, lotT[id]) : lim; if (f * t > best) { best = f * t; bt = t; } });
-    return { y: best * JOB.recovery, t: bt };
+    let best = 0, bt = 0, bid = null; const lim = limit > 0 ? limit : 30;
+    (feeds || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const f = F.comp[mat] || 0; if (!(f >= JOB.minFrac)) return; const t = lotT && lotT[id] > 0 ? Math.min(lim, lotT[id]) : lim; if (f * t > best) { best = f * t; bt = t; bid = id; } });
+    return { y: best * JOB.recovery, t: bt, id: bid };
   }
   /* #342: the feeds the auction deals at tiers 0..open-1 and the most a lot of each weighs: the tier's money at a fair price, capped at
    * the tier's tonnage (CS.Auction). maxBudget leaves out the tiers the yard cannot pay for yet, except the first one up that deals a
@@ -88,18 +89,51 @@
   }
   /* #342: hpb, the plant hours a batch takes (its tonnes at the head rate, plus an hour to source and load), when longer than JOB.hoursPerBatch */
   function windowFor(batches, hpb) { return Math.ceil(batches * Math.max(JOB.hoursPerBatch, hpb > 0 ? hpb : 0) * 2 + JOB.windowSlack); }
-  /* Generate one job. opts: { feeds: [ids the player can buy], limit: t per batch, lotT: { feed: most t in a lot }, rate: head t/h, rep, clockH, id } */
+  /* #360: the lowest purity a job for mat asks (a bin under PURE_MIN is MISC and never ships) */
+  function purityFloor(mat) { const pr = JOB.purity[mat] || [0.9, 0.95]; return Math.round(Math.max(PURE_MIN, pr[0]) * 100) / 100; }
+  /* #360: { mat: { feed: [{ s: purity, f: t per head-tonne }] } }, the clean bins carrying each job metal that the line makes from a lot of
+   * each feed (its listed mix), purity on the solids as applyBins measures it. evalLine(comp) returns the line's terminals
+   * ({ stream: { m }, form }); binStats is CS.Sim.binStats. reachMax is the purest bin, reachAt the tonnes per head-tonne at a purity. */
+  function reachMax(bins) { let p = 0; (bins || []).forEach(function (b) { if (b.s > p) p = b.s; }); return p; }
+  function reachAt(bins, purity) { let f = 0; (bins || []).forEach(function (b) { if (b.s + 1e-9 >= purity) f += b.f; }); return f; }
+  function lineReach(evalLine, binStats, feeds) {
+    const out = {}; JOB.mats.forEach(function (m) { out[m] = {}; });
+    (feeds || []).forEach(function (id) {
+      const F = FEEDS[id]; if (!F || !JOB.mats.some(function (m) { return (F.comp[m] || 0) >= JOB.minFrac; })) return;
+      let ev = null; try { ev = evalLine(F.comp); } catch (e) { ev = null; }
+      const bins = {}; JOB.mats.forEach(function (m) { bins[m] = []; });
+      ((ev && ev.terminals) || []).forEach(function (t) {
+        if (t.form === 'dross') return; const st = binStats(t.stream.m, t.form); if (!st || !st.sellable || !(st.total > 0)) return;
+        const solid = Math.max(1e-9, st.total - (st.liquid || 0));
+        JOB.mats.forEach(function (m) { const pm = st.perMat && st.perMat[m]; if (pm && pm.mass > 0) bins[m].push({ s: pm.mass / solid, f: pm.mass / 1000 }); });
+      });
+      JOB.mats.forEach(function (m) { if ((F.comp[m] || 0) >= JOB.minFrac) out[m][id] = bins[m]; });
+    });
+    return out;
+  }
+  /* Generate one job. opts: { feeds: [ids the player can buy], limit: t per batch, lotT: { feed: most t in a lot }, rate: head t/h, rep, clockH, id,
+   * reach: lineReach's bins }. #360: with reach, only a metal and feed the line sorts clean at the job's purity floor are offered, the purity
+   * asked is at most the line's purest bin, the tonnes are what the line puts in bins of that purity (not a flat recovery), and null comes
+   * back when the line makes no such metal (the board then shows fewer jobs) */
   function genJob(rng, opts) {
     opts = opts || {};
-    const feeds = opts.feeds && opts.feeds.length ? opts.feeds : ['elv'];
-    const cands = JOB.mats.map(function (m) { const b = bestBatch(m, feeds, opts.limit, opts.lotT); return { m: m, y: b.y, t: b.t }; }).filter(function (c) { return c.y > 0; });
+    const feeds = opts.feeds && opts.feeds.length ? opts.feeds : ['elv'], reach = opts.reach || null;
+    const lim = opts.limit > 0 ? opts.limit : 30, lotOf = function (id) { return opts.lotT && opts.lotT[id] > 0 ? Math.min(lim, opts.lotT[id]) : lim; };
+    const fromLine = function (m) { let c = { m: m, y: 0, t: 0, id: null }; feeds.forEach(function (id) { const b = reach[m] && reach[m][id], y = reachAt(b, purityFloor(m)) * lotOf(id); if (y > c.y) c = { m: m, y: y, t: lotOf(id), id: id }; }); return c; };
+    const cands = JOB.mats.map(function (m) { if (reach) return fromLine(m); const b = bestBatch(m, feeds, opts.limit, opts.lotT); return { m: m, y: b.y, t: b.t, id: b.id }; })
+      .filter(function (c) { return c.y > 0 && (!reach || c.y * JOB.batches[0][1] >= JOB.minTons); });   // #360: two batches make at least the smallest job
+    if (!cands.length && reach) return null;
     const c = cands.length ? pick(rng, cands) : Object.assign({ m: 'aluminum' }, bestBatch('aluminum', ['elv'], opts.limit, opts.lotT));
     const hpb = opts.rate > 0 && c.t > 0 ? c.t / opts.rate + 1 : 0;
     const tier = Math.floor(rng() * (tierOf(opts.rep || 0) + 1));
     const br = JOB.batches[tier], batches = Math.round(uni(rng, br[0], br[1]));
-    const tons = Math.max(JOB.minTons, Math.round(c.y * batches * 10) / 10);
+    let tons = Math.max(JOB.minTons, Math.round(c.y * batches * 10) / 10);
     const pr = JOB.purity[c.m] || [0.9, 0.95];
-    const purity = Math.round(Math.max(PURE_MIN, uni(rng, pr[0], pr[1])) * 100) / 100;   // a bin under PURE_MIN is MISC and never ships (#216), so no job asks for less
+    let purity = Math.round(Math.max(PURE_MIN, uni(rng, pr[0], pr[1])) * 100) / 100;   // a bin under PURE_MIN is MISC and never ships (#216), so no job asks for less
+    if (reach && c.id) {   // #360: never above the line's purest bin, and the tonnes its bins of that purity make
+      const b = reach[c.m][c.id]; purity = Math.max(purityFloor(c.m), Math.min(purity, Math.floor((reachMax(b) + 1e-9) * 100) / 100));
+      tons = Math.max(JOB.minTons, Math.round(reachAt(b, purity) * c.t * batches * JOB.lineMargin * 10) / 10);
+    }
     const mult = Math.round(uni(rng, JOB.mult[0], JOB.mult[1]) * 100) / 100;
     const clockH = opts.clockH || 0;
     return { id: opts.id || 0, mat: c.m, tier: tier, batches: batches, tons: tons, purity: purity, mult: mult, windowH: windowFor(batches, hpb),
@@ -111,9 +145,9 @@
   function tickBoard(J, rng, clockH, dh, opts) {
     const before = J.board.length;
     J.board = J.board.filter(function (j) { return j.offerExpiresH > clockH; });
-    const mk = function () { return genJob(rng, Object.assign({}, opts, { clockH: clockH, id: J.nextId++ })); };
-    if (dh > 0 && J.board.length < JOB.board.max && rng() < 1 - Math.exp(-dh / JOB.board.arriveH)) J.board.push(mk());
-    while (J.board.length < JOB.board.min) J.board.push(mk());
+    const mk = function () { const j = genJob(rng, Object.assign({}, opts, { clockH: clockH, id: J.nextId })); if (j) J.nextId++; return j; };   // #360: null when the line can meet no job
+    if (dh > 0 && J.board.length < JOB.board.max && rng() < 1 - Math.exp(-dh / JOB.board.arriveH)) { const j = mk(); if (j) J.board.push(j); }
+    while (J.board.length < JOB.board.min) { const j = mk(); if (!j) break; J.board.push(j); }
     return J.board.length !== before;
   }
   function acceptJob(J, id, clockH, rep) {
@@ -226,7 +260,7 @@
     mulberry32, REP, TIERS, JOB, CLIENTS, DONE_KEEP,
     hoursNeeded,
     tierOf, tierName, repApply,
-    yieldPerBatch, lotSizes, windowFor, genJob, validJob, newJobs, tickBoard, acceptJob, dropJob, expireJobs, qualifying, qualifyingKg, applyBins, jobHours, jobPrice,
+    yieldPerBatch, lotSizes, windowFor, purityFloor, reachMax, reachAt, lineReach, genJob, validJob, newJobs, tickBoard, acceptJob, dropJob, expireJobs, qualifying, qualifyingKg, applyBins, jobHours, jobPrice,
     newState, serialize, deserialize, fmtH
   };
 
@@ -256,8 +290,19 @@
     const genOptsNow = function () {
       let open = 0; try { open = CS.Auction.tiersOpen(API.rankOf(API.netWorth()).idx); } catch (e) { open = 0; }
       const s = S(), L = lotSizes(open, s ? Math.max(0, s.money) : null);
-      return L ? { feeds: L.feeds, lotT: L.lotT, limit: limit(), rate: headRate(), rep: st.rep } : { feeds: feeds(), limit: limit(), rate: headRate(), rep: st.rep };
+      const o = L ? { feeds: L.feeds, lotT: L.lotT, limit: limit(), rate: headRate(), rep: st.rep } : { feeds: feeds(), limit: limit(), rate: headRate(), rep: st.rep };
+      const r = reachNow(o.feeds); if (r) o.reach = r;
+      return o;
     };
+    /* #360: what the line makes of each job metal from each feed, read again only when the line (machines, settings, wiring, levels) or the feeds change */
+    let reachMemo = { key: null, v: null };
+    function reachNow(fs) {
+      const s = S(); if (!s || !Array.isArray(s.line) || !CS.Sim || !CS.Sim.evalLine || !CS.Sim.binStats) return null;
+      const lv = function (m) { try { return typeof API.levelOf === 'function' ? API.levelOf(m) : 0; } catch (e) { return 0; } };
+      const key = JSON.stringify(s.line.map(function (n) { return [n.m, n.uid, n.settings, n.src, lv(n.m)]; })) + '|' + fs.join();
+      if (reachMemo.key !== key) reachMemo = { key: key, v: lineReach(function (comp) { return CS.Sim.evalLine(s.line, comp); }, CS.Sim.binStats, fs) };
+      return reachMemo.v;
+    }
     function credit(amount) { const s = S(); if (!s || !(amount > 0)) return; s.money += amount; s.lifetime = (s.lifetime || 0) + amount; if (API.emit) API.emit('income', { amount, from: 'job' }); }
     function rep(delta, why) { const before = st.rep; st.rep = repApply(st.rep, delta); if (st.rep !== before) log('Reputation ' + (delta > 0 ? '+' : '') + delta + ' (' + why + '): now ' + st.rep + ', ' + tierName(st.rep) + '.', delta > 0 ? 'ok' : 'warn'); }
 
@@ -338,7 +383,7 @@
         b.addEventListener('click', function () { drop(j.id, b); });
         r.appendChild(b); els.jb.appendChild(r);
       });
-      if (!st.jobs.board.length && !st.jobs.active.length) els.jb.appendChild(API.el('div', 'empty', 'No jobs on the board.'));
+      if (!st.jobs.board.length && !st.jobs.active.length) els.jb.appendChild(API.el('div', 'empty', 'No jobs on the board: clients post jobs for the metals your line sorts clean (90% and up).'));   // #360
       st.jobs.board.slice().sort(function (a, b) { return a.offerExpiresH - b.offerExpiresH; }).forEach(function (j) {
         const locked = j.tier > tier, full = st.jobs.active.length >= JOB.maxActive;
         const sp = spot(j.mat), price = jobPrice(j, sp);

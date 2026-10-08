@@ -560,6 +560,18 @@
     buCache = { at: Date.now(), key, v };
     return v;
   }
+  /* #359: the end game. Once the rank unlocks the Omniprocessor (js/modules/endgame.js) and the bank holds its price, the hall it needs
+   * (one level at a time) and the next lot, NEXT STEP buys the hall and then places it on the head feed; its first batch is the final score */
+  function omniStep(spare) {
+    const S = app.S, E = CS.Endgame, F = CS.Floor, U = CS.PLANT_UPGRADES && CS.PLANT_UPGRADES.room; if (!E || S.run || S.mode === 'rivals' || !app.buyAndAdd) return null;
+    const id = Object.keys(MACHINES).find(E.isOmni); if (!id || E.lineHasOmni(S.line) || (S.owned && S.owned.has(id))) return null;
+    let ri = 0; try { ri = app.rankOf(app.netWorth()).idx; } catch (e) { ri = 0; } if (!E.unlockStatus(id, ri).ok) return null;
+    const room = S.plant.room || 0, M = MACHINES[id], price = app.pairPrice ? app.pairPrice({ ms: [id] }) : M.price; let lvl = room, hallCost = 0;
+    while (F && F.addVeto(S.line, id, lvl)) { if (!U || lvl >= U.costs.length) return null; hallCost += U.costs[lvl]; lvl++; }   // the smallest hall it fits in
+    if (hallCost + price > spare) return null;
+    if (lvl > room) { const cost = U.costs[room]; return { title: 'END GAME', label: 'BUY A BIGGER PLANT HALL ' + app.fmtMoney(cost), sub: 'The ' + M.name + ' is unlocked and needs ' + F.fmtArea(F.machineArea(id)) + ' m² of floor: the Plant hall goes from ' + U.levels[room] + ' to ' + U.levels[room + 1] + ' m²' + (lvl > room + 1 ? ', then to ' + U.levels[lvl] + ' m²' : '') + '.', cost, go: () => app.buyPlant('room') }; }
+    return { title: 'END GAME', label: 'BUY & PLACE ' + M.short + ' ' + app.fmtMoney(price), sub: 'The ' + M.name + ' sorts every material into a bin of its own in one pass. Its first batch ends the game with your final score.', cost: price, go: () => app.buyAndAdd({ ms: [id], src: 'feed', sets: [{}] }) };
+  }
   /* #326: bigger batches once the lots on the board are more than one and a half batches */
   function logisticsStep(board, spare) {
     const S = app.S, U = CS.PLANT_UPGRADES && CS.PLANT_UPGRADES.logistics; if (!U || S.run || S.plant.logistics >= U.costs.length) return null;
@@ -626,6 +638,7 @@
     const p = topPurchase();
     const A0 = CS.Auction && CS.Auction.live, board0 = A0 ? A0.board() : [], lotPrice = (L) => (A0 && A0.priceOf ? A0.priceOf(L) : L.ask) * L.tons;
     const cheapest = board0.length ? Math.min.apply(null, board0.map(lotPrice)) : Infinity;
+    { const om = omniStep(S.money - (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest)); if (om) return om; }   // #359: the end game before another machine
     if (p) {
       const price = app.pairPrice ? app.pairPrice(p) : 0;
       const pays = price <= 0 || p.gain * Math.max(S.tons || 0, app.plantValue ? app.plantValue('logistics') : 30) * 10 >= price;   // #345: only a machine whose gain pays its price back within ten full batches

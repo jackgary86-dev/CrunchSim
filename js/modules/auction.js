@@ -460,7 +460,10 @@
       else if (st.pending && !S().feedPrepaid) loadPending();
       build(); render();
     });
-    app.on('render', render);
+    /* #361: a tier the rank opens (a sale, income, a batch, a purchase) shows at once, not only when the clock next moves */
+    function recheck() { if (!app.booted || roundMode() || !seeded) return false; const open = Math.min(TIERS.length, tiersOpen(rankIdx())); for (let k = 0; k < open; k++) if (!st.board.some((l) => l.tier === k)) return tiers(); return false; }
+    ['sale', 'income', 'lotBought', 'batchComplete', 'refined'].forEach((ev) => app.on(ev, () => { if (recheck()) render(); }));
+    app.on('render', () => { recheck(); render(); });
     app.on('drawerOpen', () => { if (aucStale) render(); });
     app.on('newgame', () => { rng.setState(Math.floor(S().clock)); st.board = []; st.pending = null; st.yard = []; st.sellers = {}; st.settle = null; tiers(); render(); });
     /* #95: restoreSave clears the prepaid flag; load the lot in the yard again (unless a re-run bucket is the loaded feed) */
@@ -471,7 +474,7 @@
     }
     app.on('modechange', () => { tiers(); reassert(); render(); });
     app.on('tick', (p) => {
-      if (!(p.dh > 0)) return;
+      if (!(p.dh > 0)) { if (recheck()) refresh(true); return; }   // #361: paused, a rank-up still opens its tier
       marketStep(st.market, rng, p.dh);
       const changed = tiers();
       guard();

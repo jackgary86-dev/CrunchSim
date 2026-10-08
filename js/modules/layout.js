@@ -690,6 +690,9 @@
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
     const lotRunning = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();   // #336: between a lot's own batches the next one starts by itself: no TUNE search there
     if (S.feedPrepaid && !S.run && !lotRunning) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
+    { const pm = CS.Sim.prices.perMat || {}, st1 = I && I.stock ? I.stock() : {};   // #375: a HOT price lasts one round: sell that bucket before the next batch moves the market
+      let hot = null; for (const m in st1) { const f = pm[m] || 1, v = I.quote ? I.quote(m) : 0; if (st1[m].t > 0.05 && f >= 1.5 && v >= Math.max(5000, 0.1 * Math.max(0, S.money)) && (!hot || v > hot.v)) hot = { m, v, f }; }
+      if (hot && S.feedPrepaid && !S.run) return { title: 'SELL', label: 'SELL ' + MATERIALS[hot.m].name.toUpperCase() + ' ' + app.fmtMoney(hot.v), sub: MATERIALS[hot.m].name + ' is HOT at ' + hot.f.toFixed(2) + ' times list: the next batch moves the market, so sell before you run.', go: () => { if (I.sellMat) I.sellMat(hot.m); } }; }
     if (S.feedPrepaid && S.line.length) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
     // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};
@@ -714,7 +717,7 @@
     const spare = S.money - (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest);
     if (!p && S.mode !== 'rivals') { const up = blockedUpgrade(); if (up && up.cost <= spare) return up; }
     if (S.mode !== 'rivals') { const lg = logisticsStep(board0, spare); if (lg) return lg; }
-    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const tn = tuneFor(mp.comp, 'your MISC pile', { sizes: mp.sizes, entry: defaultEntry(S.line, MACHINES) }); if (tn) return tn; } }
+    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const o = { sizes: mp.sizes, entry: defaultEntry(S.line, MACHINES) }, bt = app.bestTune ? app.bestTune(mp.comp, o) : null; if (bt && bt.gain >= 5) { const tn = tuneFor(mp.comp, 'your MISC pile', o); if (tn) return tn; } } }   // #377: only a tune that makes the pile worth re-running (the RE-RUN step follows), not one the next lot undoes
     if (mt >= 1 && lineSortsMisc()) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material: your line pulls something pure out of it.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
     const cap = app.plantValue ? app.plantValue('logistics') : 30, dq = I && I.dumpQuote ? I.dumpQuote() : null;
     // ship it out only when it pays, or costs a quarter of the bank at most

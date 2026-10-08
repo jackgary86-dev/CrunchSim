@@ -79,11 +79,12 @@
    * the tier's tonnage (CS.Auction). maxBudget leaves out the tiers the yard cannot pay for yet, except the first one up that deals a
    * job metal (a yard with no metal in reach is offered jobs from the next lots it can buy). null without the auction. */
   function lotSizes(open, maxBudget) {
+    // #376: a lot is no bigger than the bank can buy at the fair price, so a job asks for what can actually be bought
     const A = CS.Auction; if (!A || !A.TIERS || !A.TIER_FEEDS) return null;
     const lotT = {}; let any = false, metal = false;
     for (let k = 0; k < Math.min(open || A.TIERS.length, A.TIERS.length); k++) {
       if (k > 0 && maxBudget != null && A.TIERS[k] > maxBudget && metal) break;
-      (A.TIER_FEEDS[k] || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const fa = A.worthOf(F.comp) * A.fairRatio(id); if (!(fa > 0.5)) return; if (JOB.mats.some(function (m) { return (F.comp[m] || 0) >= JOB.minFrac; })) metal = true; const t = Math.min(A.TIER_MAX_T[k] || Infinity, A.TIERS[k] / fa * 1.1); if (!(t > (lotT[id] || 0))) return; lotT[id] = t; any = true; });
+      (A.TIER_FEEDS[k] || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const fa = A.worthOf(F.comp) * A.fairRatio(id); if (!(fa > 0.5)) return; if (JOB.mats.some(function (m) { return (F.comp[m] || 0) >= JOB.minFrac; })) metal = true; const t = Math.min(A.TIER_MAX_T[k] || Infinity, A.TIERS[k] / fa * 1.1, maxBudget != null ? Math.max(1, maxBudget / fa) : Infinity); if (!(t > (lotT[id] || 0))) return; lotT[id] = t; any = true; });
     }
     return any ? { feeds: Object.keys(lotT), lotT: lotT } : null;
   }

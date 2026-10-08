@@ -7,7 +7,7 @@
   const Score = CS.Score;
   const $ = (s) => document.querySelector(s);
   const SAVE_KEY = 'crunchsim.v2';
-  /* Two game modes, each with its own save: PROGRESS (level up your plant on your own; the six-tier auction board, no
+  /* Two game modes, each with its own save: PROGRESS (level up your plant on your own; the auction board of up to eight tiers, no
    * rivals) and RIVALS (round-based auctions against three rival yards). The last mode played is remembered. */
   const MODE_KEY = 'crunchsim.mode', MODES = ['progress', 'rivals'];
   let memMode = null;   // #254: the mode last chosen, for when localStorage throws
@@ -19,6 +19,15 @@
   function fmtNum(x, d) { if (x == null || !isFinite(x)) return '--'; const f = Math.abs(x) >= 1000 ? 0 : (d == null ? (Math.abs(x) >= 100 ? 0 : Math.abs(x) >= 10 ? 1 : 2) : d); return numFmt(f).format(x); }
   /* #335: one cached formatter per decimal count: toLocaleString builds a new one on every call, which was 15% of a batch's CPU */
   const NUM_FMT = {}; function numFmt(f) { return NUM_FMT[f] || (NUM_FMT[f] = new Intl.NumberFormat('en-US', { minimumFractionDigits: f, maximumFractionDigits: f })); }
+  /* #371: tonnes the way the plant screen prints them (layout fmtW): '109.4 t', '10,000 t', '850 kg', '300 g' */
+  function fmtT(t) {
+    if (typeof t !== 'number' || !isFinite(t)) return '--';
+    const neg = t < 0 ? '-' : ''; t = Math.abs(t);
+    if (t >= 0.95) { const r1 = Math.round(t * 10) / 10; return neg + (r1 >= 1000 ? numFmt(0).format(Math.round(t)) : numFmt(1).format(r1)) + ' t'; }
+    return t >= 0.001 ? neg + Math.round(t * 1000) + ' kg' : neg + Math.round(t * 1e6) + ' g';
+  }
+  /* #371: a trace share per tonne (gold, silver): '1.3 kg/t' rather than '1290 g/t', '12 g/t' as is */
+  function fmtPerT(share) { if (typeof share !== 'number' || !isFinite(share)) return '--'; const g = share * 1e6; return g >= 1000 ? numFmt(g >= 10000 ? 0 : 1).format(g / 1000) + ' kg/t' : numFmt(g >= 10 ? 0 : 1).format(g) + ' g/t'; }
   function fmtSize(mm) {
     if (mm == null || !isFinite(mm) || mm <= 0) return '--';
     if (mm >= 1000) return fmtNum(mm / 1000, 2) + ' m';
@@ -99,7 +108,7 @@
   function maxTonsEver() { const top = (L) => (L && L.levels ? L.levels[L.levels.length - 1] : 0); return top(PLANT_UPGRADES.logistics) + top(CS.FACILITY_UPGRADES && CS.FACILITY_UPGRADES.weighbridge); }
   function applyPlant() {
     Sim.prices.power = plantValue('power'); Sim.prices.ln2 = plantValue('nitrogen'); Sim.prices.market = plantValue('market');
-    const max = plantValue('logistics'); const r = $('#feed-tons'); r.max = max; if (S.tons > max) { S.tons = max; r.value = max; $('#feed-tons-v').textContent = S.tons + ' t'; }
+    const max = plantValue('logistics'); const r = $('#feed-tons'); r.max = max; if (S.tons > max) { S.tons = max; r.value = max; $('#feed-tons-v').textContent = fmtT(S.tons); }
   }
   /* Machines are bought per unit: each copy on the line needs its own unit (S.units[m]); S.owned keeps the types ever bought. */
   function unitsFrom(list) { const u = {}; list.forEach((m) => { u[m] = (u[m] || 0) + 1; }); return u; }
@@ -236,7 +245,7 @@
       box.appendChild(row);
     }
     const tons = $('#feed-tons');
-    tons.addEventListener('input', () => { S.tons = +tons.value; $('#feed-tons-v').textContent = S.tons + ' t'; renderPlant(); });
+    tons.addEventListener('input', () => { S.tons = +tons.value; $('#feed-tons-v').textContent = fmtT(S.tons); renderPlant(); });
     renderFeedSelect(); syncFeedRows();
   }
   function renderFeedSelect() {
@@ -260,7 +269,7 @@
       row.querySelector('.pct').textContent = tot > 0 ? Math.round(100 * f / tot) + '%' : '0%';
       row.classList.toggle('on', f > 0);
     });
-    $('#feed-tons').value = S.tons; $('#feed-tons-v').textContent = fmtNum(S.tons, S.tons < 10 ? 1 : 0) + ' t';
+    $('#feed-tons').value = S.tons; $('#feed-tons-v').textContent = fmtT(S.tons);
   }
   function updateFeedInfo() {
     const head = S.ev ? S.ev.head : null;
@@ -828,15 +837,15 @@
     { const why = API.veto('startRun', {}); if (why) { undo(); Audio.ui('deny'); log(why, 'warn'); return; } }   // modules may refuse a batch (Rivals: MISC only in a round with no bin)
     if (AUCTION_ONLY && !S.feedPrepaid) { undo(); Audio.ui('deny'); log('Nothing is loaded. Material comes only from the auction or your MISC bucket: win a lot in the Auction (it waits in the yard), or RE-RUN a bucket.', 'bad'); return; }
     const feedC = feedCostPerT() * S.tons;
-    if (feedC > 0 && !spend(feedC, S.tons + ' t of feed')) { undo(); return; }
+    if (feedC > 0 && !spend(feedC, fmtT(S.tons) + ' of feed')) { undo(); return; }
     if (feedC <= 0) S.money -= feedC;   // paid to take it
     let svcC = 0; S.line.forEach((nd, i) => { const k = due.indexOf(nd); if (k >= 0) { nd.wear = wear0[k]; svcC += autoService(nd, i); } });   // the start is going ahead: pay for the service now
     recompute();
     const proj = marginPerT();   // #18: the projection the score card compares the actual net with
     S.run = { total: S.tons, done: 0, rate: effRate(), kwh: 0, rev: 0, extra: 0, feedC, t0: S.clock, rankIdx: rankOf(netWorth()).idx, projPerT: proj.margin, serviceC: svcC, wearC: 0, perNode: {} };
     Audio.init(); Audio.ui('ok'); hideCard();
-    log('Batch start: ' + fmtNum(S.tons, S.tons < 10 ? 1 : 0) + ' t of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.', 'ok');
-    S.ev.nodes.forEach((n, i) => n.warnings.forEach((w) => { if (w.level !== 'info') log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + w.text, w.level); }));
+    log('Batch start: ' + fmtT(S.tons) + ' of ' + (FEEDS[S.feedPreset] ? FEEDS[S.feedPreset].name : 'custom mix') + ' at ' + fmtNum(S.run.rate, 1) + ' t/h. Feed ' + (feedC < 0 ? 'pays ' + fmtMoney(-feedC) : 'costs ' + fmtMoney(feedC)) + '.', 'ok');
+    S.ev.nodes.forEach((n, i) => n.warnings.forEach((w) => { if (w.level !== 'info') log('Station ' + (i + 1) + ' ' + n.M.short + ': ' + w.text, w.level); }));
     renderRunState(); renderBank(); API.emit('batchStart', { run: S.run });
   }
   function stopRun(why) {
@@ -872,9 +881,9 @@
         const before = nd.wear; nd.wear = Math.min(1, nd.wear + n.wearPerHeadT * tons);
         if (before < AUTO_SERVICE_AT && nd.wear >= AUTO_SERVICE_AT) {
           if (nd.autoService) r.serviceC += autoService(nd, i);   // #20
-          else log('Node ' + (i + 1) + ' ' + n.M.short + ': ' + n.M.wearInfo + ' at 80% wear. Service soon.', 'warn');
+          else log('Station ' + (i + 1) + ' ' + n.M.short + ': ' + n.M.wearInfo + ' at 80% wear. Service soon.', 'warn');
         }
-        if (before < 1 && nd.wear >= 1) { log('Node ' + (i + 1) + ' ' + n.M.short + ' has worn out.', 'bad'); dirty = true; }
+        if (before < 1 && nd.wear >= 1) { log('Station ' + (i + 1) + ' ' + n.M.short + ' has worn out.', 'bad'); dirty = true; }
       }
     });
     r.kwh += kwh; r.extra += extra; r.wearC += wearC; r.rev += revenuePerHeadT() * tons;
@@ -883,7 +892,7 @@
   /* #20: pay for new wear parts on a node whose auto-service switch is on. Returns what was paid (0 when the bank refused). */
   function autoService(nd, i) {
     const M = MACHINES[nd.m], cost = serviceCost(M, nd.wear);
-    if (!spend(cost, 'auto-service on ' + M.name)) { log('Node ' + (i + 1) + ' ' + M.short + ' stays at ' + Math.round(nd.wear * 100) + '% wear: auto-service could not be paid.', 'warn'); return 0; }
+    if (!spend(cost, 'auto-service on ' + M.name)) { log('Station ' + (i + 1) + ' ' + M.short + ' stays at ' + Math.round(nd.wear * 100) + '% wear: auto-service could not be paid.', 'warn'); return 0; }
     nd.wear = 0; dirty = true;
     log('Auto-service: node ' + (i + 1) + ' ' + M.short + ' got new ' + M.wearInfo + ' for ' + fmtMoney(cost) + '.', 'ok');
     return cost;
@@ -917,7 +926,7 @@
     const lim = S.mr && S.mr.limiter;
     const tip = net < 0 ? 'Negative batches usually mean the wrong machine for the material, or a feed that costs more than its products sell for. Check the warnings on each node.' :
       (r.done > 0 && r.kwh / r.done > 40 ? 'Energy is eating your margin. Fine grinding and cryogenics are expensive; make sure they are earning their keep.' :
-        (lim && lim.why === 'capacity' ? 'Node ' + (S.line.findIndex((n) => n.uid === lim.uid) + 1) + ' is the bottleneck. Upgrading it raises the whole line\'s throughput.' : 'Bigger batches earn more per run. Feed logistics raises the batch limit.'));
+        (lim && lim.why === 'capacity' ? 'Station ' + (S.line.findIndex((n) => n.uid === lim.uid) + 1) + ' is the bottleneck. Upgrading it raises the whole line\'s throughput.' : 'Bigger batches earn more per run. Feed logistics raises the batch limit.'));
     const loss = biggestLoss(), hint = earnHint(r);
     /* #18 projected versus actual, #20 wear, #21 power and consumables by machine */
     const projNet = r.projPerT != null ? r.projPerT * r.done : null;
@@ -1103,7 +1112,7 @@
     if (!first) save();
     S.mode = mode;
     restoreSave();
-    log('Game mode: ' + (mode === 'rivals' ? 'RIVALS. Auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC.' : 'PROGRESS. Build your plant on your own: buy lots from the six-tier auction board and level up.'), 'ok');
+    log('Game mode: ' + (mode === 'rivals' ? 'RIVALS. Auction rounds against three rival yards: three bins a round, four bidders, and whoever goes home without a bin runs their MISC.' : 'PROGRESS. Build your plant on your own: buy lots from the auction board (six price tiers, then a $1M tier at Plant operator and a $10M tier at Industrial group) and level up to Mega-plant, where the Omniprocessor ends the game with a final score and play goes on.'), 'ok');
     API.emit('modechange', { mode }); renderAll(); save();
   }
 
@@ -1114,7 +1123,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, buyPlant, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, buyPlant, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtT, fmtPerT, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

@@ -39,7 +39,15 @@
     };
   }
 
-  CS.Endgame = { isOmni: isOmni, lineHasOmni: lineHasOmni, rankNeeded: rankNeeded, unlockStatus: unlockStatus, vetoFor: vetoFor, endStats: endStats };
+  /* #372: the machine kinds this yard actually had (owned or on the line), in plant order: 'a shredder, magnets and eddy currents' */
+  const KIND_WORDS = [['shred', 'a shredder'], ['magnet', 'magnets'], ['eddy', 'eddy currents'], ['air', 'air classifiers'], ['screen', 'screens'], ['sinkfloat', 'density tanks'], ['sensor', 'sensor sorters'], ['furnace', 'furnaces']];
+  function yardKinds(ids) {
+    const has = {}; (ids || []).forEach(function (m) { const M = MACHINES[m]; if (!M || M.omni) return; has[M.kind === 'comminution' ? 'shred' : M.kind === 'furnace' ? 'furnace' : m] = true; });
+    const w = KIND_WORDS.filter(function (k) { return has[k[0]]; }).map(function (k) { return k[1]; });
+    return w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : w.join('');
+  }
+
+  CS.Endgame = { isOmni: isOmni, lineHasOmni: lineHasOmni, rankNeeded: rankNeeded, unlockStatus: unlockStatus, vetoFor: vetoFor, endStats: endStats, yardKinds: yardKinds };
 
   /* ---------------- page integration (needs CS.app) ---------------- */
   const CSS = '#endgame { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,9,14,.82); z-index: 60; }' +
@@ -69,7 +77,7 @@
         document.body.appendChild(overlay);
         overlay.addEventListener('click', function (e) { if (e.target === overlay) hide(); });
       }
-      const nw = API.netWorth(), st = endStats(S(), nw, API.rankOf(nw).name), M = MACHINES[omniId()];
+      const nw = API.netWorth(), st = endStats(S(), nw, API.rankOf(nw).name), M = MACHINES[omniId()], kinds = yardKinds(Array.from(S().owned || []).concat((S().line || []).map(function (n) { return n.m; })));
       overlay.innerHTML = '<div class="card"><h2>END GAME<span>' + API.esc(M.name.toUpperCase()) + ' ONLINE</span></h2>' +
         '<div class="net"><small>FINAL SCORE · NET WORTH</small>' + API.fmtMoney(st.score) + '</div>' +
         '<dl><dt>Rank</dt><dd class="rk">' + API.esc(st.rank.toUpperCase()) + '</dd>' +
@@ -77,7 +85,7 @@
         '<dt>Batches run</dt><dd>' + API.fmtNum(st.batches, 0) + '</dd>' +
         '<dt>Tonnes processed</dt><dd>' + API.fmtNum(st.tonnes, 0) + ' t</dd>' +
         '<dt>Plant clock</dt><dd>' + API.esc(API.fmtClock(st.clock)) + '</dd></dl>' +
-        '<div class="lesson">One pass, one bin per material. No real plant can do this: every sensor and every breaking mechanism works on some materials and not others, which is why the yard you built needed a shredder, magnets, eddy currents, air, density and sensor sorters in series.</div>' +
+        '<div class="lesson">One pass, one bin per material. No real plant can do this: every sensor and every breaking mechanism works on some materials and not others' + (kinds ? ', which is why the yard you built needed ' + API.esc(kinds) + ' in series' : '') + '.</div>' +   // #372: only the kinds this yard had
         '<button type="button" class="buy" id="endgame-keep">KEEP PLAYING</button></div>';
       overlay.querySelector('#endgame-keep').addEventListener('click', hide);
       overlay.classList.remove('hidden');

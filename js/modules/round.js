@@ -161,7 +161,7 @@
       app.log('Auction round ' + st.n + ': three bins on the table, ' + cards.map((L) => L.catName.toLowerCase() + ' (' + fmtT(L.tons) + ' of ' + L.headline + ')').join(', ') + '.', 'ok');
       return true;
     }
-    const fmtT = (t) => t >= 10 ? Math.round(t) + ' t' : t.toFixed(1) + ' t';
+    const fmtT = (t) => typeof app.fmtT === 'function' ? app.fmtT(t) : t >= 10 ? Math.round(t) + ' t' : t.toFixed(1) + ' t';   // #371: the shared tonnage format
     const snd = (kind, k) => { if (CS.Audio && CS.Audio.sfx) CS.Audio.sfx(kind, k); };
     const R = () => st.open, card = () => R() && R().cards[R().k];
     const inFor = (id) => !R().won[id] && R().out.indexOf(id) < 0;
@@ -261,7 +261,7 @@
     }
     function close() { if (ov) ov.classList.add('hidden'); }
     function compBar(c) { return '<div class="rc-comp">' + Object.entries(c).sort((a, b) => b[1] - a[1]).map((e) => '<i style="flex:' + e[1].toFixed(4) + ';background:' + MATERIALS[e[0]].color + '"></i>').join('') + '</div>'; }
-    function heavy(c) { const e = Object.entries(c).sort((a, b) => b[1] - a[1]); const tops = e.slice(0, 3).filter((x) => x[1] >= 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 100) + '%'); const prec = e.filter((x) => CS.Sim.PRECIOUS.indexOf(x[0]) >= 0 && x[1] > 0 && x[1] < 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 1e6) + ' g/t'); return tops.concat(prec).join(', '); }
+    function heavy(c) { const e = Object.entries(c).sort((a, b) => b[1] - a[1]); const tops = e.slice(0, 3).filter((x) => x[1] >= 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + Math.round(x[1] * 100) + '%'); const prec = e.filter((x) => CS.Sim.PRECIOUS.indexOf(x[0]) >= 0 && x[1] > 0 && x[1] < 0.02).map((x) => MATERIALS[x[0]].name.toLowerCase() + ' ' + (app.fmtPerT ? app.fmtPerT(x[1]) : Math.round(x[1] * 1e6) + ' g/t')); return tops.concat(prec).join(', '); }
     const worthOf = (id) => { const m = M_(); if (m.final && m.final[id] != null) return m.final[id]; return id === 'you' ? app.netWorth() : recOf(id).worth; };
     function emblem(id) { return '<i class="emb" style="background:' + COLORS[id] + '">' + (id === 'you' ? 'Y' : nameOf(id)[0]) + '</i>'; }
     function players() {
@@ -313,7 +313,7 @@
         '<div class="rc-h"><b>' + fmtT(L.tons) + '</b> of ' + esc(L.headline) + '</div>' +
         '<div class="rc-d">Declared: ' + esc(heavy(L.declared)) + '</div>' + compBar(L.declared) + estHtml(L) +
         (L.sample ? '<div class="rc-d sampled">Sampled: ' + esc(heavy(L.sample)) + '</div>' + compBar(L.sample) : '') +
-        '<div class="rc-d small">' + esc(L.seller) + ' <span class="rep">(' + esc(A().live.rep ? A().live.rep(L.seller) : '') + ')</span>: ' + esc(L.note) + '</div>' +
+        '<div class="rc-d small">' + (A().sellerHtml ? A().sellerHtml(L.seller, A().live.rep ? A().live.rep(L.seller) : '') : esc(L.seller)) + ': ' + esc(L.note) + '</div>' +
         (!r.done && k >= r.k && !L.sample && !r.sampled && r.leader !== 'you' && !r.won.you ? '<button type="button" class="samp" data-k="' + k + '">SAMPLE ' + money(A().sampleFee(L, L.opening)) + '</button>' : '') + foot + '</div>';
     }
     function marketHtml() {

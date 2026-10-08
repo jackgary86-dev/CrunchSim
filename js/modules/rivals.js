@@ -309,6 +309,7 @@
     const log = (msg, cls) => { if (typeof app.log === 'function') app.log(msg, cls); };
     const money = (x) => typeof app.fmtMoney === 'function' ? app.fmtMoney(x) : '$' + Math.round(x);
     const fnum = (x, d) => typeof app.fmtNum === 'function' ? app.fmtNum(x, d) : String(Math.round(x * 10) / 10);
+    const fmtT = (t) => typeof app.fmtT === 'function' ? app.fmtT(+t) : Math.round(t * 10) / 10 + ' t';   // #371
     const esc = (s) => typeof app.esc === 'function' ? app.esc(s) : String(s);
     const fmtH = (h) => CS.Missions && CS.Missions.fmtH ? CS.Missions.fmtH(h) : (Math.round(h * 10) / 10) + ' h';
     const auction = () => CS.Auction && CS.Auction.live ? CS.Auction.live : null;
@@ -346,7 +347,7 @@
       A.placeBid(L, 'you', perT, clockH());
       if (st.mine.indexOf(L.id) < 0) { st.mine.push(L.id); if (st.mine.length > 20) st.mine.shift(); }
       if (CS.Audio) CS.Audio.ui('ok');
-      log('Bid ' + money(perT) + '/t on lot #' + L.id + ' (' + L.tons + ' t of ' + L.headline + ', ' + money(total) + ' if it closes now). The high bid at the timer takes the lot.', 'ok');
+      log('Bid ' + money(perT) + '/t on lot #' + L.id + ' (' + fmtT(L.tons) + ' of ' + L.headline + ', ' + money(total) + ' if it closes now). The high bid at the timer takes the lot.', 'ok');
       redrawAuction(); render(); save();
       return true;
     }
@@ -366,8 +367,8 @@
         else q.award = r.perT;
       } else if (r) {
         const rs = st.rivals[r.by]; if (rs) { rs.lots++; rs.lotT += L.tons; rs.spent += r.perT * L.tons; }
-        if (mine) log('Lot #' + L.id + ' (' + L.tons + ' t of ' + L.headline + ') went to ' + nameOf(r.by) + ' at ' + money(r.perT) + '/t, ' + money(r.perT * L.tons) + ' in all.', 'warn');
-        news('Lot #' + L.id + ' ' + L.headline + ' ' + L.tons + ' t to ' + nameOf(r.by) + ' at ' + money(r.perT) + '/t');
+        if (mine) log('Lot #' + L.id + ' (' + fmtT(L.tons) + ' of ' + L.headline + ') went to ' + nameOf(r.by) + ' at ' + money(r.perT) + '/t, ' + money(r.perT * L.tons) + ' in all.', 'warn');
+        news('Lot #' + L.id + ' ' + L.headline + ' ' + fmtT(L.tons) + ' to ' + nameOf(r.by) + ' at ' + money(r.perT) + '/t');
       }
       st.mine = st.mine.filter((id) => id !== L.id);
       st.results.unshift(res); if (st.results.length > RESULTS_KEEP) st.results.length = RESULTS_KEEP;
@@ -506,7 +507,7 @@
         if (mine) { b.textContent = 'LEADING'; b.className = 'buy max'; b.disabled = true; }
         else {
           b.textContent = 'BID ' + money(next) + '/t'; b.className = 'buy' + (S().money < next * L.tons ? ' poor' : '');
-          b.title = 'Commit ' + money(next * L.tons) + ' for ' + L.tons + ' t. The high bid at the timer takes the lot; it comes into the yard when it closes.';
+          b.title = 'Commit ' + money(next * L.tons) + ' for ' + fmtT(L.tons) + '. The high bid at the timer takes the lot; it comes into the yard when it closes.';
           b.addEventListener('click', () => raise(L.id));
         }
         const col = row.querySelector('.cbtns');
@@ -517,7 +518,7 @@
       if (st.results.length) {
         p.box.appendChild(app.el('div', 'small', 'CLOSED LOTS'));
         st.results.slice(0, 5).forEach((r) => {
-          p.box.appendChild(app.el('div', 'rres', '#' + r.id + ' ' + esc(r.headline) + ' ' + r.tons + ' t · ' + (r.by ? '<b>' + esc(r.by === 'you' ? 'YOU' : nameOf(r.by)) + '</b> at ' + money(r.perT) + '/t, ' + money(r.perT * r.tons) : (r.def ? 'your bid defaulted, relisted' : 'unsold')) + ' · ' + (typeof app.fmtClock === 'function' ? app.fmtClock(r.h * 3600) : '')));
+          p.box.appendChild(app.el('div', 'rres', '#' + r.id + ' ' + esc(r.headline) + ' ' + fmtT(r.tons) + ' · ' + (r.by ? '<b>' + esc(r.by === 'you' ? 'YOU' : nameOf(r.by)) + '</b> at ' + money(r.perT) + '/t, ' + money(r.perT * r.tons) : (r.def ? 'your bid defaulted, relisted' : 'unsold')) + ' · ' + (typeof app.fmtClock === 'function' ? app.fmtClock(r.h * 3600) : '')));
         });
       }
     });

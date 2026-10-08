@@ -394,6 +394,8 @@
     }
 
     function fmtPrice(x) { return API.fmtMoney(x); }
+    function fmtT(t) { return typeof API.fmtT === 'function' ? API.fmtT(t) : API.fmtNum(t, 1) + ' t'; }   // #371: '1.8 kg', not '0.0 t'
+    function tAt(t, price) { return t < 0.95 ? fmtT(t) + ' at ' + fmtPrice(price / 1000) + '/kg' : fmtT(t) + ' at ' + fmtPrice(price) + '/t'; }   // #371: gold bars sell by the kilo
     function matName(mat) { return MATERIALS[mat] ? MATERIALS[mat].name : mat; }
     function producedText(produced) {
       const parts = [];
@@ -406,7 +408,7 @@
       credit(r.proceeds);
       API.emit('sale', { mat, t: r.t, proceeds: r.proceeds, purity: r.purity });   // milestones (#73)
       const margin = r.proceeds - r.cost;
-      API.log((why || 'Sold') + ' ' + fmtUnits(r.n, r.unit) + ' of ' + matName(mat).toLowerCase() + ' (' + API.fmtNum(r.t, 1) + ' t at ' + fmtPrice(r.price) + '/t, grade ' + Math.round(r.grade * r.sf * 100) + '%) for ' + fmtPrice(r.proceeds) + (r.cost > 0 ? ', ' + (margin >= 0 ? 'margin ' : 'loss ') + fmtPrice(Math.abs(margin)) + ' on a cost of ' + fmtPrice(r.cost) : '') + '.', margin >= 0 ? 'ok' : 'warn');
+      API.log((why || 'Sold') + ' ' + fmtUnits(r.n, r.unit) + ' of ' + matName(mat).toLowerCase() + ' (' + tAt(r.t, r.price) + ', grade ' + Math.round(r.grade * r.sf * 100) + '%) for ' + fmtPrice(r.proceeds) + (r.cost > 0 ? ', ' + (margin >= 0 ? 'margin ' : 'loss ') + fmtPrice(Math.abs(margin)) + ' on a cost of ' + fmtPrice(r.cost) : '') + '.', margin >= 0 ? 'ok' : 'warn');
       afterSale();
     }
     function sellEverything() {
@@ -423,7 +425,7 @@
     function checkTargets() {
       const ev = targetEvents(targets, stock, livePrice);
       ev.forEach(function (e) {
-        API.log('Price alert: ' + matName(e.mat) + ' at ' + fmtPrice(e.price) + '/t has reached your ' + fmtPrice(e.target) + '/t target (' + API.fmtNum(e.t, 1) + ' t held).', 'ok');
+        API.log('Price alert: ' + matName(e.mat) + ' at ' + fmtPrice(e.price) + '/t has reached your ' + fmtPrice(e.target) + '/t target (' + fmtT(e.t) + ' held).', 'ok');
         if (e.auto) sellMat(e.mat, 'Auto-sell at target:');
       });
       return ev.length > 0;
@@ -485,7 +487,7 @@
         const row = API.el('div', 'urow',
           '<span class="ic"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + D.color + ';border:1px solid rgba(0,0,0,.5)"></i></span>' +
           '<span><div class="nm">' + API.esc(D.name) + ' <span class="small">' + API.esc(fmtUnits(u.n, u.unit)) + '</span>' + (hot ? '<span class="tag hot">HOT</span>' : cold ? '<span class="tag cold">COLD</span>' : '') + '</div>' +
-          '<div class="cur">' + API.fmtNum(e.t, 1) + ' t · purity ' + Math.round(e.purity * 100) + '% · <b>' + fmtPrice(price) + '</b>/t ' +
+          '<div class="cur">' + fmtT(e.t) + ' · purity ' + Math.round(e.purity * 100) + '% · <b>' + fmtPrice(price) + '</b>/t ' +
           '<span class="' + (tr > 0 ? 'ok' : tr < 0 ? 'bad' : '') + '">' + trendArrow(market, mat) + '</span> <span class="' + (pct > 0 ? 'ok' : pct < 0 ? 'bad' : '') + '">' + (pct > 0 ? '+' : '') + pct + '%</span></div>' +
           '<div class="cur">cost <b class="' + (cost > 0 && price < cost ? 'bad' : '') + '">' + fmtPrice(cost) + '</b>/t · ' + (sto.perMat[mat] ? sto.perMat[mat] + ' bay' + (sto.perMat[mat] === 1 ? '' : 's') : 'shared bay') + '</div>' +
           '<canvas class="spark" title="Price over the last 30 batches: list (grey), your cost (amber), target (green)"></canvas>' +

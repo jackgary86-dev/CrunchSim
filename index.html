@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=fdba9f5106">
+  <link rel="stylesheet" href="css/style.css?v=f1a009d52c">
 </head>
 <body>
 <!-- shown only when css/style.css did not load (the page opened on its own, without its css/ and js/ folders) -->
@@ -141,7 +141,7 @@
     <h2>CrunchSim</h2>
     <p>A simulator of how industry crunches stuff into bits, played as a plant-building score game. Grinding earns credits into your bank. The bank buys machines and upgrades. Your score is your net worth.</p>
     <ol>
-      <li><b>Two games.</b> PROGRESS is the long game: earn money and keep building out your plant from the six-tier auction board, with no end. RIVALS is a match of auction rounds (12 by default) against three rival yards: three bins a round, four bidders, whoever goes home without a bin runs one batch of their MISC bin, and the highest worth after the last round wins. Each keeps its own save. MENU in the toolbar goes back to the title screen; RESTART RIVALS starts a new match (a Progress yard is never wiped).</li>
+      <li><b>Two games.</b> PROGRESS is the long game: earn money and keep building out your plant from the auction board (six price tiers, eight once your rank opens the $1M and $10M lots). At the top rank you can buy the Omniprocessor, the end game: it sorts every material in one pass, and the END GAME card shows your final score (your net worth, rank and lifetime totals). KEEP PLAYING closes the card and the yard carries on. RIVALS is a match of auction rounds (12 by default) against three rival yards: three bins a round, four bidders, whoever goes home without a bin runs one batch of their MISC bin, and the highest worth after the last round wins. Each keeps its own save. MENU in the toolbar goes back to the title screen; RESTART RIVALS starts a new match (a Progress yard is never wiped).</li>
       <li><b>Auction.</b> Material comes only from the scrap auction, or from re-running your own MISC bucket. The board shows one lot per price tier, from $1k to $100k, plus a $1M tier from Plant operator and a $10M tier from Industrial group, and each tier deals scrap the next machine can sort: pallets and office clear-outs (a magnet) at $1k, old windows (a water tank) from $3k, tires and white goods, car hulks, zorba, and circuit boards and gold-plated pins at $100k. Lots are sold on the seller&rsquo;s declaration; the weighbridge tells the truth when the batch starts. A won lot waits in the yard and feeds batch after batch until it runs out; LOAD picks which lot runs next. The Loaded card shows what is loaded; only the batch size is yours to set.</li>
       <li><b>The plant.</b> The main screen shows your stations left to right in the order you placed them, three at a time (the arrows page through longer lines). Each station shows its machine at work, the bins it fills and what is left over moving on to the next station. Click a station to sit down at it: the machine cam, its settings, upgrades and telemetry, with CLOSE to get back.</li>
       <li><b>Flowsheet.</b> Open PLANT in the toolbar to add machines (NEXT PURCHASE there names the best one). Each one takes its input from the head feed or from an output port of an earlier machine. Separators have two output ports: one fills a bin, the other can feed the next station.</li>
@@ -170,28 +170,28 @@
 <script src="js/scenes-a.js?v=c6fcdb1f5d"></script>
 <script src="js/scenes-b.js?v=103592bf12"></script>
 <script src="js/score.js?v=7561daceb9"></script>
-<script src="js/app.js?v=73596b1a29"></script>
+<script src="js/app.js?v=63d5f52218"></script>
 <script src="js/modules/market.js?v=39be413550"></script>
-<script src="js/modules/inventory.js?v=7be02cc481"></script>
-<script src="js/modules/auction.js?v=c19626dfc7"></script>
-<script src="js/modules/missions.js?v=3e3c6b4312"></script>
+<script src="js/modules/inventory.js?v=37d917ef80"></script>
+<script src="js/modules/auction.js?v=b389ce22f7"></script>
+<script src="js/modules/missions.js?v=70a713fd4f"></script>
 <script src="js/modules/floor.js?v=96f87edaf0"></script>
 <script src="js/modules/onboarding.js?v=f8437dd2af"></script>
 <script src="js/modules/blueprints.js?v=112d06794d"></script>
 <script src="js/modules/playbooks.js?v=041741f41b"></script>
 <script src="js/modules/economics.js?v=567aaaaa12"></script>
 <script src="js/modules/facility.js?v=b16666e2b5"></script>
-<script src="js/modules/rivals.js?v=834150c883"></script>
-<script src="js/modules/endgame.js?v=0872d0a2cb"></script>
+<script src="js/modules/rivals.js?v=81855eccc4"></script>
+<script src="js/modules/endgame.js?v=6736f5344f"></script>
 <script src="js/modules/refinery.js?v=a54c4607cd"></script>
 <script src="js/modules/slots.js?v=a77fb059f0"></script>
-<script src="js/modules/round.js?v=5e0144b622"></script>
+<script src="js/modules/round.js?v=de26379f62"></script>
 <script src="js/modules/autorun.js?v=96cba6c1d1"></script>
 <script src="js/modules/milestones.js?v=806168a811"></script>
 <script src="js/modules/saveio.js?v=6a556cd1c6"></script>
 <script src="js/modules/guide.js?v=ff5b06c575"></script>
 <script src="js/modules/overlays.js?v=f8705f9d42"></script>
-<script src="js/modules/layout.js?v=f6af1b8e12"></script>
-<script src="js/modules/modes.js?v=5f0c09d1b9"></script>
+<script src="js/modules/layout.js?v=97f61056c8"></script>
+<script src="js/modules/modes.js?v=7e24617dee"></script>
 </body>
 </html>

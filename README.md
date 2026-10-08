@@ -109,6 +109,7 @@ node tests/endgame.js
 node tests/facility.js
 node tests/fixes-329.js
 node tests/fixes-359.js
+node tests/fixes-370.js
 node tests/floor.js
 node tests/furnace.js
 node tests/gallery-grid.js

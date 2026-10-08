@@ -289,7 +289,7 @@
     const st = RL && RL.state ? RL.state() : null;
     const auction = S.mode === 'rivals' && st ? (st.match && st.match.over ? 'match over' : st.n ? 'round ' + st.n + ' of ' + st.match.length : 'start the match') : (A ? A.board().length + ' lots on the board' : 'buy a lot');
     const P = A && A.pending ? A.pending() : null;
-    const shred = S.run ? fmtW(S.run.total - S.run.done) + ' to go' : S.feedPrepaid ? (P && S.feedOwner === 'auction' ? fmtW(P.tons) + ' in the yard' : S.tons + ' t loaded') : 'nothing loaded';
+    const shred = S.run ? fmtW(S.run.total - S.run.done) + ' to go' : S.feedPrepaid ? (P && S.feedOwner === 'auction' ? fmtW(P.tons) + ' in the yard' : fmtW(S.tons) + ' loaded') : 'nothing loaded';   // #371: fmtW, not the raw float
     const sort = SL ? SL.used() + ' / ' + SL.owned() + ' sorter slots' : 'sorters';
     const lvl = RF ? RF.level() : 0, refine = lvl >= 2 ? 'furnace + precious' : lvl === 1 ? 'smelting furnace' : 'no refinery yet';
     const sell = mats.length ? mats.length + ' bucket' + (mats.length === 1 ? '' : 's') + ' · ' + app.fmtMoney(value) : 'pure buckets only';
@@ -316,10 +316,16 @@
           sub = pct + '% out' + (st && st.main && st.total > 0 ? ' · ' + MATERIALS[st.main].name.toLowerCase() + ' ' + Math.round(st.share * 100) + '%' : '');
         } else if (M.kind === 'furnace') sub = 'melts to ingots';
       }
-      nodes.push({ key: 'sort', uid: n.uid, k: 'STATION ' + (i + 1), main: M.name, sub, sorter: M.kind === 'separator' || !!M.omni });
+      nodes.push({ key: 'sort', uid: n.uid, num: i + 1, omni: !!M.omni, k: 'STATION ' + (i + 1), main: M.name, sub, sorter: M.kind === 'separator' || !!M.omni });
     });
-    { const st = nodes.filter((x) => x.uid != null);   // #353: a long line folds its middle stations into one step, so the buckets and the money stay in view
-      if (st.length > 5) { const mid = st.slice(2, st.length - 2), at = nodes.indexOf(mid[0]); nodes.splice(at, mid.length, { key: 'sort', k: 'STATIONS ' + mid[0].k.replace('STATION ', '') + '-' + mid[mid.length - 1].k.replace('STATION ', ''), main: '+' + mid.length + ' more', sub: mid.map((x) => x.main).join(', '), sorter: true }); } }
+    { const st = nodes.filter((x) => x.uid != null), keep = foldRoom();   // #353: a long line folds its middle stations into one step, so the buckets and the money stay in view
+      if (st.length > keep) {   // #370: fold to fit the width (keep - 1 stations stay, the fold is the last slot), never fold the Omniprocessor
+        const L = st.length - (keep - 1), head = Math.max(1, Math.floor((keep - 1) / 2)), starts = [];
+        for (let s = 1; s + L <= st.length; s++) starts.push(s);
+        starts.sort((a, b) => Math.abs(a - head) - Math.abs(b - head) || a - b);
+        const s0 = starts.find((s) => !st.slice(s, s + L).some((x) => x.omni)), mid = st.slice(s0 == null ? head : s0, (s0 == null ? head : s0) + L).filter((x) => !x.omni);
+        if (mid.length > 1) { const at = nodes.indexOf(mid[0]); mid.forEach((x) => nodes.splice(nodes.indexOf(x), 1)); nodes.splice(at, 0, { key: 'sort', fold: mid[0].uid, k: 'STATIONS ' + numRanges(mid.map((x) => x.num)), main: '+' + mid.length + ' more', sub: mid.map((x) => x.main).join(', '), sorter: true }); }
+      } }
     if (!nodes.some((x) => x.key === 'sort')) nodes.push({ key: 'sort', k: 'SORT', main: 'no sorter yet', sub: hints.sort });
     // what this batch makes: the pure buckets and the MISC share
     let pure = [], miscKg = 0, totKg = 0;
@@ -337,11 +343,26 @@
     nodes.push({ key: 'sell', k: 'MONEY', main: value > 0 ? app.fmtMoney(value) + ' to sell' : 'bank ' + app.fmtMoney(S.money), sub: value > 0 ? 'bank ' + app.fmtMoney(S.money) : 'sell pure buckets', money: true });
     return nodes;
   }
+  /* #370: how many station nodes (the fold counts as one) fit beside LOT, SHRED, BUCKETS, REFINE and MONEY: a node is 104 px
+   * (84 px under 900 px, matching the CSS) and a link 16 px; at least 3 (first, fold, last), 4 when the width is unknown */
+  function foldRoom() {
+    const box = $('#loop'), w = box && box.clientWidth > 0 ? box.clientWidth : 0; if (!w) return 4;
+    const narrow = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 900px)').matches, per = (narrow ? 84 : 104) + 16;
+    return Math.max(3, Math.floor((w + 16) / per) - 5);
+  }
+  function numRanges(a) { const out = []; a.forEach((n) => { const r = out[out.length - 1]; if (r && n === r[1] + 1) r[1] = n; else out.push([n, n]); }); return out.map((r) => r[0] === r[1] ? String(r[0]) : r[0] + '-' + r[1]).join(', '); }   // #370: 4, 5, 6, 10, 11 reads '4-6, 10-11'
+  /* #367: the folded node pages the plant view to its first station */
+  function pageTo(uid) {
+    closeDrawer(); closeStation();
+    offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === uid)); renderFlow(true);
+    const col = document.querySelector('#flow-nodes .fcol.mach'); if (col) { col.classList.remove('flash'); void col.offsetWidth; col.classList.add('flash'); }
+  }
   let procSig = '';
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', () => { if (app && app.S && $('#loop')) renderProcess(); });   // #370: the fold follows the width
   function renderProcess() {
     const box = $('#loop'); if (!box) return;
     const nodes = processNodes(), lit = loopState(), run = !!app.S.run;
-    const sig = JSON.stringify([nodes.map((x) => [x.k, x.main, x.sub, x.prog == null ? null : Math.round(x.prog * 50), x.chips]), lit, run]);
+    const sig = JSON.stringify([nodes.map((x) => [x.k, x.main, x.sub, x.prog == null ? null : Math.round(x.prog * 50), x.chips, x.uid, x.fold]), lit, run]);   // uids too: a rebuilt line of the same machines must not keep clicks bound to the old stations
     if (sig === procSig) return; procSig = sig;
     const focus = document.activeElement && box.contains(document.activeElement) ? document.activeElement.dataset.i : null;
     box.innerHTML = '';
@@ -352,7 +373,7 @@
       b.innerHTML = '<small>' + esc(x.k) + '</small><b>' + esc(x.main) + '</b>' + (x.chips ? '<span class="p-chips">' + x.chips + '</span>' : '') + (x.sub ? '<span>' + esc(x.sub) + '</span>' : '') + (x.prog >= 0 ? '<i class="p-bar"><i style="width:' + Math.round(x.prog * 100) + '%"></i></i>' : '');
       b.title = x.k + ': ' + x.main + (x.sub ? ' · ' + x.sub : '');
       b.classList.toggle('on', lit.indexOf(x.key) >= 0 && !(x.key === 'sort' && !run) && !(x.money && x.key === 'sell' && lit.indexOf('sell') < 0));
-      b.addEventListener('click', () => (x.uid ? showStation(x.uid) : goStep(x.key)));
+      b.addEventListener('click', () => (x.uid ? showStation(x.uid) : x.fold != null ? pageTo(x.fold) : goStep(x.key)));   // #367: the fold pages to its first station
       box.appendChild(b);
     });
     if (focus != null) { const f = box.querySelector('[data-i="' + focus + '"]'); if (f) f.focus({ preventScroll: true }); }
@@ -663,7 +684,7 @@
       // #364: never the last station or the only grinder: without them nothing runs
       const grinders = S.line.filter((x) => MACHINES[x.m] && MACHINES[x.m].kind === 'comminution').length;
       if (off && (S.line.length <= 1 || (MACHINES[off.m].kind === 'comminution' && grinders <= 1))) return { title: 'STUCK', label: 'OPEN THE PLANT DRAWER', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is out of reach and the line cannot run without it. Sell machines you do not use, or wait for the advance to be repaid.', go: () => showDrawer('plant') };
-      if (off) return { title: 'STUCK', label: 'TAKE ' + MACHINES[off.m].short + ' ' + (k + 1) + ' OFF THE LINE', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is out of reach. Without station ' + (k + 1) + ' the lot can still run; put it back once the bank allows.', go: () => { S.sel = off.uid; const rb = $('#btn-remove'); if (rb) rb.click(); renderFlow(true); } };
+      if (off) return { title: 'STUCK', label: 'TAKE ' + MACHINES[off.m].short + ' ' + (k + 1) + ' OFF THE LINE', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is out of reach. Without station ' + (k + 1) + ' ' + (S.feedOwner === 'rerun' && loaded ? (loaded.src === 'misc' ? 'the MISC re-run' : 'the re-run') : 'the lot') + ' can still run; put it back once the bank allows.', go: () => { S.sel = off.uid; const rb = $('#btn-remove'); if (rb) rb.click(); renderFlow(true); } };
     }
     if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
@@ -745,7 +766,7 @@
         '<div class="lc-t"><b>' + fmtW(P.tons) + '</b> left of ' + fmtW(P.boughtTons || P.tons) + '<span>paid ' + app.fmtMoney(P.ask) + '/t</span></div>' +
         '<div class="small">' + esc(P.seller || '') + (seen === P.truth ? ' · weighbridge mix' : ' · declared mix') + '</div>' + compBars(seen, 4);
     } else if (loaded && S.feedPrepaid) {
-      h = '<div class="lc-h"><b>RE-RUN</b><span>' + esc(loaded.label) + ' bucket</span></div>' + binPic(loaded.comp) + '<div class="lc-t"><b>' + S.tons + ' t</b> per batch<span>already yours</span></div>' + compBars(loaded.comp, 4);
+      h = '<div class="lc-h"><b>RE-RUN</b><span>' + esc(loaded.label) + ' bucket</span></div>' + binPic(loaded.comp) + '<div class="lc-t"><b>' + fmtW(S.tons) + '</b> per batch<span>already yours</span></div>' + compBars(loaded.comp, 4);
     } else if (S.feedPrepaid) {
       const src = feedSource();
       h = '<div class="lc-h"><b>LOADED</b><span>' + esc(src ? src.name : 'material') + '</span></div>' + binPic(S.comp) + compBars(S.comp, 4);
@@ -920,7 +941,7 @@
     app.markDirty(true);
     const k = entry == null ? 0 : S.line.findIndex((n) => n.uid === entry);
     offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === (entry == null ? S.line[0].uid : entry)));   // page the plant screen to the entry station
-    app.log('Loaded the ' + label + ' bucket as the feed: ' + tons + ' t per batch, no feed cost, entering at station ' + (k + 1) + '.' + (tot > tons + 1e-6 ? ' The rest stays in the bucket (batch limit ' + cap + ' t).' : '') + ' Pick another entry station above the plant if you like, then press RUN BATCH.', 'ok');
+    app.log('Loaded the ' + label + ' bucket as the feed: ' + fmtW(tons) + ' per batch, no feed cost, entering at station ' + (k + 1) + '.' + (tot > tons + 1e-6 ? ' The rest stays in the bucket (batch limit ' + fmtW(cap) + ').' : '') + ' Pick another entry station above the plant if you like, then press RUN BATCH.', 'ok');
     renderFlow(true);
   }
   function setEntry(uid) {
@@ -1164,7 +1185,7 @@
     if (app.storedMode && app.storedMode()) return;
     const d = el('div', 'overlay'); d.id = 'mode-pick';
     d.innerHTML = '<div class="sheet"><div class="sheet-h"><b>CHOOSE A GAME</b></div><div class="sheet-b mode-b">' +
-      '<button type="button" class="mode-card" data-mode="progress"><b>PROGRESS</b><span>Build your plant on your own. Buy scrap from the six-tier auction board, grind it, sort it, refine it and sell it, and level up from scrapyard to mega-plant.</span></button>' +
+      '<button type="button" class="mode-card" data-mode="progress"><b>PROGRESS</b><span>Build your plant on your own. Buy scrap from the auction board (six price tiers, eight as you rank up), grind it, sort it, refine it and sell it, and level up from scrapyard to mega-plant, where the Omniprocessor ends the game with a final score. Keep playing after it if you like.</span></button>' +
       '<button type="button" class="mode-card" data-mode="rivals"><b>RIVALS</b><span>Auction rounds against three rival yards. Three bins a round, four bidders: whoever goes home without a bin runs their MISC instead. Watch the market to judge your bids.</span></button>' +
       '<div class="small">Each mode keeps its own save. Switch any time from the toolbar.</div></div></div>';
     document.body.appendChild(d);

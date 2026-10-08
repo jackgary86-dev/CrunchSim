@@ -392,7 +392,7 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .loop.process { display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: thin; }
 .p-node { flex: 1 1 0; min-width: 104px; position: relative; align-items: flex-start !important; text-align: left; gap: 2px !important; padding: 7px 10px !important; border-right: 0 !important; }
 .p-node::after { display: none; }
-.p-node small { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; color: var(--muted); }
+.p-node small { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .p-node b { font-family: var(--sans); font-weight: 600 !important; font-size: 12.5px !important; line-height: 1.25; letter-spacing: 0 !important; color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 100%; }
 .p-node span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .p-node.sorter { background: #0d1d27; }

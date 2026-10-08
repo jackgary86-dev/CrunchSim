@@ -351,7 +351,7 @@
       panel = API.addPanel('left', 'missions-panel', 'Missions', 'bank-panel');
       panel.querySelector('h2').appendChild(API.el('span', 'tag', ''));
       const ro = API.el('div', 'readouts two'); ro.id = 'missions-readouts'; panel.appendChild(ro);
-      const jh = API.el('h3', null, 'Job board '); jh.appendChild(API.el('span', 'small', 'large lots, paid above spot')); panel.appendChild(jh);
+      const jh = API.el('h3', null, 'Job board '); jh.appendChild(API.el('span', 'small', 'paid above spot'));   // #373: a job can be under a tonne, so no promise of big lots panel.appendChild(jh);
       const jb = API.el('div'); jb.id = 'jobs'; panel.appendChild(jb);
       panel.appendChild(API.el('div', 'small', 'The mission clock runs only while a batch runs: a window is a budget of plant time. A job counts every product bin that meets its purity, from any batch, and pays its premium over spot on delivery; the bales still sell at spot from inventory.'));
       const css = document.createElement('style');
@@ -369,7 +369,7 @@
       const h = clockH(), R = headRate(), bl = bins();
       const tier = tierOf(st.rep);
       els.tag.textContent = st.jobs.active.length + ' JOB' + (st.jobs.active.length === 1 ? '' : 'S') + ' · ' + st.jobs.board.length + ' OPEN';
-      els.ro.innerHTML = API.ro('REPUTATION', Math.round(st.rep), tierName(st.rep).toUpperCase(), tier >= 2 ? 'good' : '') + API.ro('ACTIVE JOBS', st.jobs.active.length + ' / ' + JOB.maxActive, '');
+      els.ro.innerHTML = API.ro('REPUTATION', Math.round(st.rep), '&nbsp;· ' + tierName(st.rep).toUpperCase(), tier >= 2 ? 'good' : '') + API.ro('ACTIVE JOBS', st.jobs.active.length + ' / ' + JOB.maxActive, '');   // #373: 'REPUTATION 0 · NEW YARD', not '0NEW YARD'
       // job board
       els.jb.innerHTML = '';
       const matName = function (mat) { return MATERIALS[mat].name.toLowerCase(); };
@@ -383,7 +383,7 @@
         b.addEventListener('click', function () { drop(j.id, b); });
         r.appendChild(b); els.jb.appendChild(r);
       });
-      if (!st.jobs.board.length && !st.jobs.active.length) els.jb.appendChild(API.el('div', 'empty', 'No jobs on the board: clients post jobs for the metals your line sorts clean (90% and up).'));   // #360
+      if (!st.jobs.board.length && !st.jobs.active.length) els.jb.appendChild(API.el('div', 'empty', 'No jobs on the board: clients post jobs only for ' + JOB.mats.map(function (m) { return matName(m).toLowerCase() + ' (' + Math.round(purityFloor(m) * 100) + '%+)'; }).join(', ').replace(/, ([^,]*)$/, ' and $1') + ', when your line sorts that metal clean.'));   // #360; #373: name the job metals and their purity floors
       st.jobs.board.slice().sort(function (a, b) { return a.offerExpiresH - b.offerExpiresH; }).forEach(function (j) {
         const locked = j.tier > tier, full = st.jobs.active.length >= JOB.maxActive;
         const sp = spot(j.mat), price = jobPrice(j, sp);

@@ -521,7 +521,7 @@
       const mAdd = miscTotal(misc) - m0;
       const txt = producedText(produced);
       if (txt) API.log('Into inventory: ' + txt + (batchCost > 0 ? ' (cost basis ' + fmtPrice(batchCost) + ' shared by value)' : '') + '.', 'ok');
-      if (mAdd > 1e-6) API.log('Into MISC: ' + API.fmtNum(mAdd, 1) + ' t of mixed material that no sorter separated. It cannot be sold: re-run it through different sorters.', txt ? '' : 'warn');
+      if (mAdd >= 0.05) API.log('Into MISC: ' + API.fmtNum(mAdd, 1) + ' t of mixed material that no sorter separated. It cannot be sold: re-run it through different sorters.', txt ? '' : 'warn');
       // a round in the yard: rent on every bay in use, owned ones cheap, hired ones dear
       // #304: a batch stopped before it ran a tonne is not a round in the yard (the market's rule too): no rent
       const sto = r.done >= 1 || p.why === 'complete' ? chargeStorage(stock, ownedBays(storageLevel()), miscTotal(misc)) : Object.assign(storage(stock, ownedBays(storageLevel()), miscTotal(misc)), { rent: 0 });

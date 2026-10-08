@@ -13,6 +13,7 @@ function fakeEl(name) {
       if (p === 'then') return undefined;
       if (p === 'length') return 0;
       if (p === '__name') return name;
+      if (p === 'closest') return () => (globalThis.__fakeStash ? {} : null);   // #356: a fake element sits in no container, so gated panels render in tests (__fakeStash: they act parked, as in a browser with drawers closed)
       if (p === 'getClientRects') return () => [];
       if (p === 'getBoundingClientRect') return () => ({ width: 300, height: 200, left: 0, top: 0, right: 300, bottom: 200 });
       if (p === 'querySelectorAll') return () => [];

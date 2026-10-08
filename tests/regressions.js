@@ -101,5 +101,25 @@ for (const withStock of [false, true]) {
   check(withStock ? ns.title === 'SELL' : ns.title === 'STUCK', (withStock ? 'with a bucket: SELL first' : 'nothing to sell: the advance') + ' (' + ns.title + ' ' + ns.label + ')');
   if (!withStock) { ns.go(); const n2 = app.layout.nextStep(); check(n2.title === 'SERVICE' && S.money >= 1300, 'then the service is affordable (' + n2.label + ')'); }
 }
+console.log('== #354: a SERVICE or BUY out of reach becomes SELL, the advance or taking the station off ==');
+{
+  const env = mk(), { CS, app, S } = env, A = CS.Auction.live;
+  A.dealTier(0, 'elv'); const lot = A.dealTier(0, 'elv'); A.deliver(lot, lot.ask, 'Bought');
+  const mg = S.line.find((x) => x.m === 'magnet');
+  S.owned.add('sensor'); S.units.sensor = 1; const xs = CS.Sim.makeNode('sensor', {}, { uid: mg.uid, port: 'residue' }); xs.wear = 1; xs.autoService = false; S.line.push(xs); app.markDirty(true);
+  S.money = 100;
+  let ns = app.layout.nextStep();
+  check(ns.title === 'STUCK' && /OFF THE LINE/.test(ns.label), 'an $18k service with $100 and nothing to sell: take it off the line (' + ns.label + ')');
+  ns.go(); ns = app.layout.nextStep();
+  check(!S.line.includes(xs) && ns.title === 'READY', 'then the lot can run (' + ns.title + ')');
+}
+{
+  const env = mk(), { CS, app, S } = env, A = CS.Auction.live;
+  A.dealTier(0, 'elv'); const lot = A.dealTier(0, 'elv'); A.deliver(lot, lot.ask, 'Bought');
+  const mg = S.line.find((x) => x.m === 'magnet'); S.line.push(CS.Sim.makeNode('sensor', {}, { uid: mg.uid, port: 'residue' })); app.markDirty(true);
+  S.money = 500;
+  const ns = app.layout.nextStep();
+  check(ns.title !== 'BUY', 'an unaffordable machine on the line is never a refused BUY (' + ns.title + ' ' + ns.label + ')');
+}
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' regression checks pass'));
 process.exit(fails ? 1 : 0);

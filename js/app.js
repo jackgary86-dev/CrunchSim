@@ -327,7 +327,7 @@
     const add = $('#add-machine'); const curAdd = add.value; add.innerHTML = '';
     for (const [grp, ids] of MACHINE_GROUPS) {
       const og = document.createElement('optgroup'); og.label = grp;
-      ids.forEach((id) => { const M = MACHINES[id]; og.appendChild(new Option(M.name + (S.owned.has(id) ? (unitsOf(id) > 1 ? ' · ' + unitsOf(id) + ' owned' : '') + (levelOf(id) ? ' · owned, Lv ' + levelOf(id) : ' · owned') : ' · ' + fmtMoney(M.price)), id)); });
+      ids.forEach((id) => { const M = MACHINES[id]; og.appendChild(new Option(M.name + (S.owned.has(id) ? ' · ' + (unitsOf(id) > 1 ? unitsOf(id) + ' owned' : 'owned') + (levelOf(id) ? ', Lv ' + levelOf(id) : '') : ' · ' + fmtMoney(M.price)), id)); });
       add.appendChild(og);
     }
     if (curAdd && MACHINES[curAdd]) add.value = curAdd;
@@ -520,7 +520,7 @@
   function lineKey() {
     const P = Sim.prices, pm = P.perMat || {};
     return S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src) + 'L' + levelOf(n.m) + (n.wear >= 0.999 ? 'w' : '')).join() +
-      '|' + P.power + '|' + P.market + '|' + Object.keys(pm).map((m) => m + (+pm[m]).toFixed(1)).join();   // #336: the advice caches (estimates, NEXT PURCHASE, TUNE) follow market moves in 0.1 steps, not every batch's drift
+      '|' + P.power + '|' + P.market + '|' + Object.keys(pm).map((m) => m + Math.round(50 * Math.log(Math.max(1e-6, +pm[m] || 1)))).join();   // #336, #355: the advice caches follow market moves in ~2% steps, not every batch's drift
   }
   function lotEstimate(comp) {
     if (!S.line.length || !comp) return null;
@@ -1137,6 +1137,8 @@
     $('#help').addEventListener('click', (e) => { if (e.target === $('#help')) $('#help').classList.add('hidden'); });
     $('#btn-newgame').addEventListener('click', newGame);
     $('#scorecard').addEventListener('click', hideCard);
+    // #353: a BUY styled 'poor' says why on hover (in Rivals a bin may still be bought on the credit line, so it stays enabled)
+    document.addEventListener('mouseover', (e) => { const b = e.target && e.target.closest && e.target.closest('button.buy.poor'); if (b && !b.dataset.poorTip) { b.dataset.poorTip = '1'; b.title = 'More than the bank holds (' + fmtMoney(S.money) + ')' + (b.title ? ' · ' + b.title : ''); } });
     $('#sources').innerHTML = SOURCES.map((s) => '<li><a href="' + esc(s[1]) + '" target="_blank" rel="noopener">' + esc(s[0]) + '</a></li>').join('');
     window.addEventListener('keydown', (e) => {
       if (!CS.hotkeyOk(e, document)) return;   // typing, a focused button, a modifier key or an open modal keeps the key (#197)

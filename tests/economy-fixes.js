@@ -83,7 +83,7 @@ console.log('== #299: NEXT STEP says what makes RUN possible ==');
   let ns = app.layout.nextStep();
   check(ns.title === 'SERVICE' && /SERVICE MAG/.test(ns.label), 'a worn-out station: NEXT STEP says SERVICE (' + ns.title + ' ' + ns.label + ')');
   ns.go(); check(mg.wear === 0, 'and its button services it');
-  S.line.push(CS.Sim.makeNode('eddy', {}, { uid: mg.uid, port: 'residue' })); app.markDirty(true);
+  S.line.push(CS.Sim.makeNode('eddy', {}, { uid: mg.uid, port: 'residue' })); S.money = 1e6; app.markDirty(true);   // a bank that can pay (#354 handles one that cannot)
   ns = app.layout.nextStep();
   check(ns.title === 'BUY' && /ECS/.test(ns.label), 'an unowned machine on the line: NEXT STEP says BUY it (' + ns.title + ' ' + ns.label + ')');
 }

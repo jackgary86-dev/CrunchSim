@@ -146,8 +146,9 @@
     ask = Math.max(1, Math.round(ask * mk));
     const limit = opts.limit > 0 ? opts.limit : 30;
     let tons = Math.max(1, Math.round(uni(rng, TONS[0], TONS[1] * limit)));
-    // a tier lot costs about the tier's money at the asking price: a bargain is more tonnes for it, a bad buy fewer (#48)
-    if (opts.budget > 0) { const x = clamp(opts.budget / ask * uni(rng, 0.9, 1.1), TIER_TONS[0], opts.tier != null && TIER_MAX_T[opts.tier] ? TIER_MAX_T[opts.tier] : TIER_TONS[1]); tons = x < 10 ? Math.round(x * 10) / 10 : Math.round(x); }   // small rich lots to 0.1 t
+    // a tier lot costs about the tier's money at the asking price: a bargain is more tonnes for it, a bad buy fewer (#48);
+    // never more than the tier's UP TO price (#353)
+    if (opts.budget > 0) { const x = clamp(opts.budget / ask * uni(rng, 0.85, 0.995), TIER_TONS[0], opts.tier != null && TIER_MAX_T[opts.tier] ? TIER_MAX_T[opts.tier] : TIER_TONS[1]); tons = x < 10 ? Math.max(0.1, Math.floor(x * 10) / 10) : Math.floor(x); }   // small rich lots to 0.1 t; rounded down so the lot stays within its tier (#353)
     const clockH = opts.clockH || 0, expiresH = clockH + Math.round(uni(rng, LIFE_H[0], LIFE_H[1]) * 2) / 2;
     const seller = pick(rng, SELLERS);
     let note;

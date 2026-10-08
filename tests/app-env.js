@@ -12,6 +12,7 @@ function fakeEl() {
       if (p === Symbol.toPrimitive) return () => 0;
       if (p === 'then') return undefined;
       if (p === 'length') return 0;
+      if (p === 'closest') return () => null;   // #356: a fake element sits in no container (not the hidden #stash), so gated panels render in tests
       if (p === 'getClientRects') return () => [];
       if (p === 'getBoundingClientRect') return () => ({ width: 300, height: 200, left: 0, top: 0, right: 300, bottom: 200 });
       if (p === 'querySelectorAll') return () => [];

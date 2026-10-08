@@ -75,6 +75,7 @@
       panel.querySelector('h2').appendChild(app.el('span', 'tag', ''));
       panel.appendChild(app.el('div', 'ms-body'));
       st.rankSeen = Math.max(st.rankSeen || 0, app.rankOf ? app.rankOf(app.netWorth()).idx : 0);
+      if (!(app.S && app.S.mode === 'rivals')) { const s0 = snapshot(); s0.miscMax = st.miscMax; reached(st.done, s0).forEach((id) => { st.done[id] = app.S.clock || 1; }); }   // #357: what a save had already reached (milestones added later) counts silently
       ready = true; render();
     });
     CS.Milestones.live = { state: () => st, lotRun: () => { st.lotsRun++; check(); } };

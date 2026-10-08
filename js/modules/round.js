@@ -323,10 +323,10 @@
       if (!M || !M.hot || !M.hot()) h += '<div class="small">The first market round opens after your first batch: until then everything trades at list.</div>';
       const mats = new Set(); (r ? r.cards : []).forEach((L) => Object.keys(L.declared).forEach((m) => { if (L.declared[m] >= 0.01 || CS.Sim.PRECIOUS.indexOf(m) >= 0) mats.add(m); }));
       const view = M && M.view ? M.view() : null;
-      h += '<div class="mk-t"><div class="r h"><span>IN THE BINS</span><span>$/t</span><span></span></div>';
+      h += '<div class="mk-t"><div class="r h"><span>IN THE BINS</span><span>$/t</span><span>VS LIST</span></div>';
       CS.MAT_ORDER.filter((m) => mats.has(m)).forEach((m) => {
         const f = factor(m), t = view ? (view.trend[m] || 0) : 0, p = MATERIALS[m].sell * CS.Sim.prices.market * f;
-        h += '<div class="r"><span><i style="background:' + MATERIALS[m].color + '"></i>' + esc(MATERIALS[m].name) + '</span><span>' + money(p) + '</span><span class="' + (t > 0.0005 ? 'up' : t < -0.0005 ? 'down' : '') + '">' + (t > 0.0005 ? '&#9650;' : t < -0.0005 ? '&#9660;' : '') + '×' + f.toFixed(2) + '</span></div>';
+        h += '<div class="r"><span><i style="background:' + MATERIALS[m].color + '"></i>' + esc(MATERIALS[m].name) + '</span><span>' + money(p) + '</span><span class="' + (t > 0.0005 ? 'up' : t < -0.0005 ? 'down' : '') + '" title="' + (t > 0.0005 ? 'rising' : t < -0.0005 ? 'falling' : 'steady') + ': ' + f.toFixed(2) + ' times the list price">×' + f.toFixed(2) + (t > 0.0005 ? ' &#9650;' : t < -0.0005 ? ' &#9660;' : '') + '</span></div>';   // #353: the factor first, the trend after it
       });
       h += '</div><div class="small">Pure buckets sell at these prices; everything still mixed sells for nothing. A bin is worth what your sorters can pull out of it clean.</div>';
       return h;

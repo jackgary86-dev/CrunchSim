@@ -195,7 +195,14 @@
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   /* tonnes, kilograms or grams: a batch's gold is a few hundred grams (#53) */
-  function fmtW(t) { return t >= 0.95 ? t.toLocaleString('en-US', { minimumFractionDigits: t >= 1000 ? 0 : 1, maximumFractionDigits: t >= 1000 ? 0 : 1 }) + ' t' : t >= 0.001 ? Math.round(t * 1000) + ' kg' : Math.max(0, Math.round(t * 1e6)) + ' g'; }   // #345: thousands separators, whole tonnes from 1,000 t
+  /* #358: cached formatters (toLocaleString builds one per call); rounded first so 999.96 t reads 1,000 t; '--' when not a number */
+  const W0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }), W1 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  function fmtW(t) {
+    if (typeof t !== 'number' || !isFinite(t)) return '--';
+    const neg = t < 0 ? '-' : ''; t = Math.abs(t);
+    if (t >= 0.95) { const r1 = Math.round(t * 10) / 10; return neg + (r1 >= 1000 ? W0.format(Math.round(t)) : W1.format(r1)) + ' t'; }
+    return t >= 0.001 ? neg + Math.round(t * 1000) + ' kg' : neg + Math.round(t * 1e6) + ' g';
+  }   // #345: thousands separators, whole tonnes from 1,000 t
   function fmtSz(mm) { return mm >= 1 ? mm.toFixed(mm >= 100 ? 0 : 1) + ' mm' : Math.round(mm * 1000) + ' µm'; }
 
   /* ---------------- frame ---------------- */
@@ -310,6 +317,8 @@
       }
       nodes.push({ key: 'sort', uid: n.uid, k: 'STATION ' + (i + 1), main: M.name, sub, sorter: M.kind === 'separator' || !!M.omni });
     });
+    { const st = nodes.filter((x) => x.uid != null);   // #353: a long line folds its middle stations into one step, so the buckets and the money stay in view
+      if (st.length > 5) { const mid = st.slice(2, st.length - 2), at = nodes.indexOf(mid[0]); nodes.splice(at, mid.length, { key: 'sort', k: 'STATIONS ' + mid[0].k.replace('STATION ', '') + '-' + mid[mid.length - 1].k.replace('STATION ', ''), main: '+' + mid.length + ' more', sub: mid.map((x) => x.main).join(', '), sorter: true }); } }
     if (!nodes.some((x) => x.key === 'sort')) nodes.push({ key: 'sort', k: 'SORT', main: 'no sorter yet', sub: hints.sort });
     // what this batch makes: the pure buckets and the MISC share
     let pure = [], miscKg = 0, totKg = 0;
@@ -320,7 +329,7 @@
     });
     pure.sort((a, b) => b.kg - a.kg);
     const chips = pure.slice(0, 4).map((x) => '<i class="p-chip" style="background:' + (MATERIALS[x.m].color || '#888') + '" title="' + esc(MATERIALS[x.m].name) + ' ' + Math.round(x.share * 100) + '% pure"></i>').join('');
-    nodes.push({ key: 'sell', k: 'BUCKETS', main: idle ? hints.sell : pure.length ? pure.length + ' pure' + (totKg > 0 && miscKg > 0 ? ' · ' + Math.round(100 * miscKg / totKg) + '% MISC' : '') : 'all MISC', sub: idle ? '' : pure.slice(0, 3).map((x) => MATERIALS[x.m].name.toLowerCase()).join(', '), chips });
+    nodes.push({ key: 'sell', k: 'BUCKETS', main: idle ? hints.sell : pure.length ? new Set(pure.map((x) => x.m)).size + ' pure' + (totKg > 0 && miscKg > 0 ? ' · ' + Math.round(100 * miscKg / totKg) + '% MISC' : '') : 'all MISC', sub: idle ? '' : Array.from(new Set(pure.map((x) => MATERIALS[x.m].name.toLowerCase()))).slice(0, 3).join(', '), chips });
     const lvl = RF ? RF.level() : 0;
     nodes.push({ key: 'refine', k: 'REFINE', main: lvl >= 2 ? 'furnace + precious' : lvl === 1 ? 'smelting furnace' : 'no refinery', sub: lvl ? 'ingots and bars' : 'Plant drawer', off: !lvl });
     const stock = I ? I.stock() : {}; let value = 0; for (const m in stock) if (stock[m].t > 0.05) value += I.quote ? I.quote(m) : 0;
@@ -426,9 +435,18 @@
     const W = Math.max(20, Math.round(r.width)), H = Math.max(20, Math.round(r.height));
     const bw = Math.round(W * dpr), bh = Math.round(H * dpr);   // the bitmap is an integer: compare the rounded size, or a fractional dpr (1.25, 1.5) reallocates and re-seeds every frame
     if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; heap.pieces = null; }
-    if (!heap.pieces) heap.pieces = heapPieces(heap.comp, heap.level, W, H, 1234 + Math.round(heap.level * 100), MATERIALS);
-    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-    heap.pieces.forEach((p) => heapShape(ctx, p, MATERIALS[p.m] ? MATERIALS[p.m].color : '#888'));
+    if (!heap.pieces) { heap.pieces = heapPieces(heap.comp, heap.level, W, H, 1234 + Math.round(heap.level * 100), MATERIALS); heap.bg = null; }
+    const ctx = cv.getContext('2d');
+    // #338: the settled heap is drawn once into an offscreen bitmap; each frame copies it and draws only the falling shred
+    if (!heap.bg) {
+      const bg = document.createElement('canvas'); bg.width = bw; bg.height = bh;
+      const bx = bg.getContext && bg.getContext('2d');
+      if (bx) { bx.setTransform(dpr, 0, 0, dpr, 0, 0); heap.pieces.forEach((p) => heapShape(bx, p, MATERIALS[p.m] ? MATERIALS[p.m].color : '#888')); heap.bg = bg; }
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, bw, bh);
+    if (heap.bg) ctx.drawImage(heap.bg, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!heap.bg) heap.pieces.forEach((p) => heapShape(ctx, p, MATERIALS[p.m] ? MATERIALS[p.m].color : '#888'));
     if (app.S.run && heap.pieces.length && dt > 0) {   // shred dropping in from the grinder
       if (Math.random() < dt * 14) { const src = heap.pieces[Math.floor(Math.random() * heap.pieces.length)]; heap.falls.push(Object.assign({}, src, { x: W * (0.3 + 0.4 * Math.random()), y: -4, vy: 40 + 40 * Math.random(), a: Math.random() * 6 })); }
       const floor = heap.pieces[0] ? heap.pieces[0].y : H;
@@ -444,7 +462,7 @@
     miniAcc += real; sizeAcc += real;
     const period = app && app.S && app.S.run ? 1 / 30 : 0.25;
     if (miniAcc < period) { requestAnimationFrame(miniLoop); return; }
-    let dt = Math.min(0.1, miniAcc); miniAcc = 0;
+    let dt = Math.min(period + 0.05, miniAcc); miniAcc = 0;   // #358: a standby frame advances the time it covers (0.1 s cap made standby run at 40%)
     const sizeCheck = sizeAcc >= 1; if (sizeCheck) sizeAcc = 0;
     if (document.body.classList.contains('reduce-motion') === true) dt = 0;   // #258: still frames, no falling shred or moving cams
     if (!stationOpen && !openDrawer && !document.hidden && app && app.S) {
@@ -566,7 +584,7 @@
     const lvl = S.plant.logistics, cost = U.costs[lvl], now = app.plantValue ? app.plantValue('logistics') : U.levels[lvl];
     const big = (board || []).filter((L) => L.tons > 1.5 * now).length;
     if ((big < 2 && !(board || []).some((L) => L.tons > 2.5 * now)) || cost > spare) return null;   // #343: one trainload of the $1M or $10M tier is reason enough
-    return { title: 'GROW', label: 'BIGGER BATCHES ' + app.fmtMoney(cost), sub: big + ' lots on the board are well over your ' + fmtW(now) + ' batch: Feed logistics takes ' + fmtW(now + U.levels[lvl + 1] - U.levels[lvl]) + ' a batch.', cost, go: () => app.buyPlant('logistics') };
+    return { title: 'GROW', label: 'BIGGER BATCHES ' + app.fmtMoney(cost), sub: big + (big === 1 ? ' lot on the board is' : ' lots on the board are') + ' well over your ' + fmtW(now) + ' batch: Feed logistics takes ' + fmtW(now + U.levels[lvl + 1] - U.levels[lvl]) + ' a batch.', cost, go: () => app.buyPlant('logistics') };
   }
   function lineSortsMisc() {
     const S = app.S, I = CS.Inventory, misc = I && I.misc ? I.misc() : {};
@@ -604,14 +622,20 @@
       return { title: 'TUNE', label: 'SET ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO ' + val, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' is set wrong for ' + what + ': ' + (D ? D.label.toLowerCase() : k) + ' ' + val + ' adds about ' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
     };
     const blk = S.feedPrepaid && !S.run && app.runBlock ? app.runBlock() : null;   // #299: RUN would refuse: say what fixes it instead
-    if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
-    if (blk && blk.cost > S.money && S.mode !== 'rivals') {   // the service is more than the bank holds: sell first, else the advance covers it
-      let sv = 0; const st0 = I && I.stock ? I.stock() : {}; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (v > 0) sv += v; }
-      const need = Math.max(ADVANCE, Math.ceil((blk.cost - S.money) / 100) * 100);
-      if (sv + S.money < blk.cost && loan + need <= ADVANCE_MAX) return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(need) + ' ADVANCE', sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and its service (' + app.fmtMoney(blk.cost) + ') is more than the bank and the buckets hold. A scrap merchant advances the money, repaid from a quarter of everything the yard takes in.', go: () => takeAdvance(need) };
-      let bm = null; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (st0[m].t > 0.05 && v > 0 && (!bm || v > bm.v)) bm = { m, v }; }
-      if (bm) return { title: 'SELL', label: 'SELL ' + MATERIALS[bm.m].name.toUpperCase() + ' ' + app.fmtMoney(bm.v), sub: 'Station ' + (blk.i + 1) + ' needs a ' + app.fmtMoney(blk.cost) + ' service the bank cannot pay yet: sell a bucket first.', go: () => { if (I.sellMat) I.sellMat(bm.m); } };
+    // #354: a SERVICE or BUY the bank cannot pay is never offered: sell a bucket that covers it (a quarter of a sale repays an
+    // advance), else the yard advance where it fits (not in Rivals, within its cap), else take the station off the line
+    if (blk && blk.cost > S.money) {
+      const st0 = I && I.stock ? I.stock() : {}, net = loan > 0 ? 0.75 : 1;
+      let sv = 0, bm = null; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (v > 0) sv += v * net; if (st0[m].t > 0.05 && v > 0 && (!bm || v > bm.v)) bm = { m, v }; }
+      const what = blk.kind === 'buy' ? blk.ms.map((m) => MACHINES[m].name).join(', ') : 'station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + "'s service";
+      if (bm && S.money + sv >= blk.cost) return { title: 'SELL', label: 'SELL ' + MATERIALS[bm.m].name.toUpperCase() + ' ' + app.fmtMoney(bm.v), sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is more than the bank holds: sell a bucket first.', go: () => { if (I.sellMat) I.sellMat(bm.m); } };
+      const need = Math.max(ADVANCE, Math.ceil((blk.cost - S.money - sv) / 100) * 100);
+      if (S.mode !== 'rivals' && loan + need <= ADVANCE_MAX) return { title: 'STUCK', label: 'TAKE A ' + app.fmtMoney(need) + ' ADVANCE', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is more than the bank and the buckets hold. A scrap merchant advances the money, repaid from a quarter of everything the yard takes in.', go: () => takeAdvance(need) };
+      const off = blk.kind === 'buy' ? S.line.find((x) => blk.ms.indexOf(x.m) >= 0 && !(app.nodeOwned ? app.nodeOwned(x) : true)) || S.line.find((x) => blk.ms.indexOf(x.m) >= 0) : blk.n;
+      const k = off ? S.line.indexOf(off) : -1;
+      if (off) return { title: 'STUCK', label: 'TAKE ' + MACHINES[off.m].short + ' ' + (k + 1) + ' OFF THE LINE', sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is out of reach. Without station ' + (k + 1) + ' the lot can still run; put it back once the bank allows.', go: () => { S.sel = off.uid; const rb = $('#btn-remove'); if (rb) rb.click(); renderFlow(true); } };
     }
+    if (blk && blk.kind === 'buy') return { title: 'BUY', label: 'BUY ' + blk.ms.map((m) => MACHINES[m].short).join(' + ') + ' ' + app.fmtMoney(blk.cost), sub: 'The line uses ' + blk.ms.map((m) => MACHINES[m].name).join(', ') + ', which the yard does not own: buy ' + (blk.ms.length > 1 ? 'them' : 'it') + ' or take ' + (blk.ms.length > 1 ? 'them' : 'it') + ' off the line before the lot can run.', go: () => { blk.ms.forEach((m, k) => { for (let u = 0; u < (blk.n ? blk.n[k] : 1); u++) if (!app.buyMachine(m)) break; }); app.markDirty(true); } };   // #323: every missing unit
     if (blk) return { title: 'SERVICE', label: 'SERVICE ' + MACHINES[blk.n.m].short + ' ' + (blk.i + 1) + ' ' + app.fmtMoney(blk.cost), sub: 'Station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + ' is worn out and the line cannot run until it is serviced.', go: () => app.serviceNode(blk.n) };
     const lotRunning = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();   // #336: between a lot's own batches the next one starts by itself: no TUNE search there
     if (S.feedPrepaid && !S.run && !lotRunning) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
@@ -1144,7 +1168,7 @@
       ff.innerHTML = 'FEED &#9654; <b>nothing loaded</b> · win a lot in the <a href="#" id="ff-auction">Auction</a>, or RE-RUN a bucket';
       const a = ff.querySelector('#ff-auction'); if (a) a.addEventListener('click', (e) => { e.preventDefault(); showDrawer('auction'); });
     } else {
-      ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b>' + (src && src.sub ? ' <span class="small">' + esc(src.sub) + '</span>' : '') + ' · ' + S.tons + ' t · ' + (src ? esc(src.note) : S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
+      ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b>' + (src && src.sub ? ' <span class="small">' + esc(src.sub) + '</span>' : '') + ' · ' + fmtW(S.tons) + ' · ' + (src ? esc(src.note) : S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');
     }
     const entry = S.feedOpts && S.feedOpts.entry != null ? S.feedOpts.entry : null;
     if (loaded && !S.run && S.line.length) {

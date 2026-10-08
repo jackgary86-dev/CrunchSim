@@ -116,6 +116,25 @@ const car = binsOf(LINES.car, 'elv');
   check(M.applyBins(M.newJobs(), [{ st: { total: 100, perMat: { aluminum: { mass: 100 } } }, form: 'dross' }], 10, (m) => 1).length === 0, 'dross never ships');
 }
 
+/* ---- #360: jobs the line can meet ---- */
+console.log('=== #360: only jobs the line can meet');
+{
+  const zl = Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'sinkfloat', s: { sg: 3.2 }, src: '1:product' }] });
+  const reach = M.lineReach((comp) => Sim.evalLine(zl, comp), Sim.binStats, feeds);
+  check(M.reachMax(reach.aluminum.zorba) >= 0.95 && !(M.reachMax(reach.copper.zorba) >= M.purityFloor('copper')), 'the twin + sink-float line makes ' + Math.round(M.reachMax(reach.aluminum.zorba) * 100) + '% aluminum from zorba and no clean copper');
+  let n = 0, okAll = true, mats = {};
+  for (let seed = 1; seed <= 40; seed++) { const j = M.genJob(M.mulberry32(seed), { feeds, limit: 30, rep: 60, reach }); if (!j) continue; n++; mats[j.mat] = 1; const best = Math.max(...Object.values(reach[j.mat]).map(M.reachMax)); if (!(j.purity <= best + 1e-9 && j.purity >= M.purityFloor(j.mat))) okAll = false; }
+  check(n === 40 && okAll, 'every job offered asks a purity the line makes and at least the floor (' + n + ' jobs: ' + Object.keys(mats).join(', ') + ')');
+  const al = reach.aluminum.zorba, j1 = M.genJob(M.mulberry32(1), { feeds: ['zorba'], limit: 30, rep: 0, reach });
+  check(j1 && Math.abs(j1.tons - Math.max(M.JOB.minTons, Math.round(M.reachAt(al, j1.purity) * 30 * j1.batches * M.JOB.lineMargin * 10) / 10)) < 1e-9, 'its tonnes are what the line puts in bins of that purity (less a margin for lean lots): ' + j1.tons + ' t over ' + j1.batches + ' batch(es) of 30 t');
+  const none = M.lineReach((comp) => Sim.evalLine([], comp), Sim.binStats, feeds), J = M.newJobs();
+  check(M.genJob(M.mulberry32(3), { feeds, limit: 30, reach: none }) === null, 'a line that makes no clean metal is offered no job');
+  M.tickBoard(J, M.mulberry32(3), 0, 50, { feeds, limit: 30, reach: none });
+  check(J.board.length === 0 && J.nextId === 1, 'the board then stays empty (fewer jobs, not jobs nobody can meet)');
+  const J2 = M.newJobs(); M.tickBoard(J2, M.mulberry32(3), 0, 0, { feeds, limit: 30 });
+  check(J2.board.length >= M.JOB.board.min, 'without a line reading (pure callers) the board fills as before');
+}
+
 /* ---- persistence ---- */
 console.log('=== persistence');
 {
@@ -134,6 +153,7 @@ check(M.fmtH(2.5) === '2 h 30 min' && M.fmtH(0.25) === '15 min' && M.fmtH(-1) ==
 console.log('=== hooks');
 {
   const ext = () => Object.assign({}, ...hooks.save.map((fn) => fn() || {}));
+  app.S.line = Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'sinkfloat', s: { sg: 3.2 }, src: '1:product' }] });   // #360: a line that makes clean aluminum, so the board has jobs it can meet
   app.emit('load', {}); app.booted = true; app.emit('boot');
   check(ext().missions && ext().missions.rep === 0 && ext().missions.jobs.board.length >= M.JOB.board.min, 'boot fills the job board and a fresh save carries it');
   const boardBefore = JSON.stringify(ext().missions.jobs.board);

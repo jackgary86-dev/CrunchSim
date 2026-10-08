@@ -22,6 +22,7 @@ const app = {
   binList() { return []; }, plantValue() { return 30; }, save() {}, renderBank() {}, renderAll() {}, markDirty() {}, syncFeedRows() {}
 };
 globalThis.CS.app = app;
+app.S.line = globalThis.CS.Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'sinkfloat', s: { sg: 3.2 }, src: '1:product' }] });   // #360: the job board offers what the yard's line can meet: a zorba line makes clean aluminum
 require('../js/modules/market.js'); require('../js/modules/auction.js'); require('../js/modules/missions.js'); require('../js/modules/rivals.js');
 const { Auction: A, Missions: M, Rivals: RV, Market: MK } = globalThis.CS;
 check(RV && typeof RV.valuation === 'function' && typeof RV.tender === 'function', 'CS.Rivals is exported');

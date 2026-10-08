@@ -462,13 +462,37 @@
   /* line: [{uid, m, settings, wear, src: 'feed' | {uid, port}}]. comp: {mat: fraction}. */
   /* opts (optional): sizes { mat: p80 } for already-broken feed (#41); entry: uid of the station the feed enters at
    * (#42). With an entry, that station takes the whole head feed and the head-fed stations ahead of it get nothing. */
-  function evalLine(line, comp, opts) {
-    const sizes = opts && opts.sizes, entry = opts && opts.entry != null && line.some(function (n) { return n.uid === opts.entry; }) ? opts.entry : null;
-    const head = makeFeed(comp, 1000, sizes);
-    const ports = {}, consumed = {}, nodes = [], index = {}, users = {};
-    line.forEach(function (n) { if (n.uid !== entry && n.src && n.src !== 'feed') { const key = n.src.uid + ':' + n.src.port; users[key] = (users[key] || 0) + 1; } });
-    let headUsers = 0; line.forEach(function (n) { if (entry == null && (!n.src || n.src === 'feed')) headUsers++; });
-    for (let k = 0; k < line.length; k++) {
+  function entryOf(line, opts) { return opts && opts.entry != null && line.some(function (n) { return n.uid === opts.entry; }) ? opts.entry : null; }
+  function usersOf(line, entry) {
+    const users = { feed: 0 };
+    line.forEach(function (n) { if (n.uid !== entry && n.src && n.src !== 'feed') { const key = n.src.uid + ':' + n.src.port; users[key] = (users[key] || 0) + 1; } else if (entry == null && (!n.src || n.src === 'feed')) users.feed++; });
+    return users;
+  }
+  function evalLine(line, comp, opts) { return evalRun(line, comp, opts, 0, null); }
+  /* #380: evaluate `line` reusing base (an evaluation of baseLine, same comp and opts) for the stations before `from`: they are the
+   * same node objects and read ports with the same number of readers, so their streams are unchanged. null when that does not hold. */
+  function evalFrom(base, baseLine, from, line, comp, opts) {
+    if (!base || from <= 0 || from > line.length || baseLine.length < from) return null;
+    for (let k = 0; k < from; k++) if (line[k] !== baseLine[k]) return null;
+    const entry = entryOf(line, opts); if (entry !== entryOf(baseLine, opts)) return null;
+    const u0 = usersOf(baseLine, entry), u1 = usersOf(line, entry);
+    for (let k = 0; k < from; k++) { const n = line[k], key = n.uid === entry ? null : n.src && n.src !== 'feed' ? n.src.uid + ':' + n.src.port : entry == null ? 'feed' : null; if (key && u0[key] !== u1[key]) return null; }
+    return evalRun(line, comp, opts, from, base);
+  }
+  function evalRun(line, comp, opts, from, base) {
+    const sizes = opts && opts.sizes, entry = entryOf(line, opts);
+    const head = base ? base.head : makeFeed(comp, 1000, sizes);
+    const ports = {}, consumed = {}, nodes = [], index = {}, uu = usersOf(line, entry), users = uu;
+    const headUsers = uu.feed;
+    if (from > 0) {   // the reused prefix: its nodes and the ports they made; what they read is consumed
+      const pre = {};
+      for (let k = 0; k < from; k++) {
+        const node = line[k]; index[node.uid] = k; nodes.push(base.nodes[k]); pre[node.uid] = true;
+        if ((entry == null || node.uid !== entry) && node.src && node.src !== 'feed') consumed[node.src.uid + ':' + node.src.port] = true;
+      }
+      for (const key in base.ports) if (pre[key.slice(0, key.indexOf(':'))]) ports[key] = base.ports[key];
+    }
+    for (let k = from; k < line.length; k++) {
       const node = line[k]; index[node.uid] = k;
       let inS = head, share = headUsers;
       if (entry != null && node.uid === entry) { share = 1; }
@@ -490,6 +514,29 @@
       terminals.push({ key, uid: Number(p[0]), port: p[1], stream: ports[key], form: ports[key].form || null });
     }
     return { head, nodes, ports, terminals };
+  }
+  /* #379: evaluate a line that is `base`'s line (its first n nodes, unchanged) plus appended nodes, reusing base's streams. Exact when
+   * every appended node reads a port nothing else reads (an unconsumed port of base, or another appended node's port): no earlier
+   * stream is split or changed. Returns null when that does not hold, and the caller runs the full evalLine. */
+  function evalAppend(base, n, line) {
+    if (!base || !(line.length > n)) return null;
+    const free = {}; base.terminals.forEach(function (t) { free[t.key] = true; });
+    const ports = Object.assign({}, base.ports), nodes = base.nodes.slice(), consumed = {};
+    for (let k = n; k < line.length; k++) {
+      const node = line[k], s = node.src;
+      if (!s || s === 'feed') return null;
+      const key = s.uid + ':' + s.port;
+      if (consumed[key] || !(free[key] || (ports[key] && !base.ports[key]))) return null;   // a port already read by the base line, or read twice
+      consumed[key] = true;
+      const inS = ports[key] || newStream(0), res = procNode(node, inS);
+      res.info.uid = node.uid; res.info.index = k; res.info.M = MACHINES[node.m]; res.info.inStream = inS;
+      nodes.push(res.info);
+      for (const port in res.outs) ports[node.uid + ':' + port] = res.outs[port];
+    }
+    const terminals = [];
+    base.terminals.forEach(function (t) { if (!consumed[t.key]) terminals.push(t); });
+    for (const key in ports) if (!base.ports[key] && !consumed[key]) { const p = key.split(':'); terminals.push({ key, uid: Number(p[0]), port: p[1], stream: ports[key], form: ports[key].form || null }); }
+    return { head: base.head, nodes, ports, terminals };
   }
 
   /* head-feed rate limit in t/h from capacity and power of every node */
@@ -632,7 +679,7 @@
   }
 
   G.CS.Sim = {
-    makeNode, buildLine, cleanSettings, nextUid,
+    makeNode, buildLine, cleanSettings, nextUid, evalAppend, evalFrom,
     NB, LOW, EDGE, MID, makePSD, percentile, sum, newStream, addArr, streamMass, aggregate, aggregateMap, makeFeed,
     profileFor, mixResp, procNode, procFurnace, evalLine, maxRate, binStats, binMatters, PRECIOUS, ingotGrade, pureGrade, PURE_MIN, cumCurve, pExtract,
     prices, levelOf, panelGate

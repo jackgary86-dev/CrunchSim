@@ -209,7 +209,9 @@
     return true;
   }
   function node(uid) { return S.line.find((n) => n.uid === uid); }
-  function info(uid) { return S.ev ? S.ev.nodes.find((n) => n.uid === uid) : null; }
+  /* #381: lookups by uid through a map built once per evaluation, not a find over every node */
+  let infoMap = { ev: null, m: null };
+  function info(uid) { if (!S.ev) return null; if (infoMap.ev !== S.ev) { const m = new Map(); S.ev.nodes.forEach((n) => m.set(n.uid, n)); infoMap = { ev: S.ev, m }; } return infoMap.m.get(uid) || null; }
 
   /* ---------------- evaluation ---------------- */
   function recompute() {
@@ -219,10 +221,17 @@
     dirty = false;
   }
   function effRate() { return S.mr ? S.mr.R : 0; }
+  function wearMoved() { let moved = false; S.line.forEach((n) => { const w = n.wear || 0; if (n.wearEval == null || Math.abs(w - n.wearEval) >= 0.005) moved = true; }); if (moved) S.line.forEach((n) => { n.wearEval = n.wear || 0; }); return moved; }
   function nodePower(n) { const R = S.run ? S.run.rate : effRate(); return Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); }
   function plantPower() { let P = 0; for (const n of S.ev.nodes) P += nodePower(n); return P; }
+  let binMemo = { ev: null, mk: '', v: [] };   // #381: the bins of one evaluation at one price level, built once (stepRun asks every frame)
   function binList() {
     if (!S.ev) return [];
+    const mk = Sim.prices.market + '|' + Sim.prices.power + '|' + JSON.stringify(Sim.prices.perMat || {});
+    if (binMemo.ev === S.ev && binMemo.mk === mk) return binMemo.v.slice();
+    binMemo = { ev: S.ev, mk, v: binListNow() }; return binMemo.v.slice();
+  }
+  function binListNow() {
     return S.ev.terminals.map((t) => {
       const st = Sim.binStats(t.stream.m, t.form); const n = info(t.uid);
       return { key: t.key, uid: t.uid, port: t.port, M: n ? n.M : null, idx: n ? n.index : -1, st, temp: t.stream.temp, form: t.form || null };
@@ -493,8 +502,20 @@
   const TRIAL_MACHINES = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen', 'cone', 'jaw'];
   let rankComp = null;   // the mix NEXT PURCHASE ranks against (null: the loaded feed)
   let rankOpts = null, lastRev = 0;   // #296: the feed options (re-run sizes, entry station) to rank rankComp with; the revenue of the last evaluation
+  /* #379: a trial that only appends machines to the current line reuses the line's own evaluation (Sim.evalAppend) */
+  let evalBase = { key: '', ev: null };
+  function evalTrial(line, comp, opts) {
+    const n = S.line.length; let i = 0; while (i < n && i < line.length && line[i] === S.line[i]) i++;
+    if (line !== S.line && i > 0) {   // #380: a trial that changes station i (TUNE / REWIRE) reuses the stations before it
+      const key = lineKey() + '|' + JSON.stringify(comp) + '|' + JSON.stringify(opts || null);
+      if (evalBase.key !== key) evalBase = { key, ev: Sim.evalLine(S.line, comp, opts) };
+      const ev = i === n && line.length > n && Sim.evalAppend ? Sim.evalAppend(evalBase.ev, n, line) : Sim.evalFrom ? Sim.evalFrom(evalBase.ev, S.line, i, line, comp, opts) : null;
+      if (ev) return ev;
+    }
+    return Sim.evalLine(line, comp, opts);
+  }
   function lineMarginNoFeed(line) {
-    const ev = rankComp ? Sim.evalLine(line, rankComp, rankOpts) : Sim.evalLine(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
+    const ev = rankComp ? evalTrial(line, rankComp, rankOpts) : evalTrial(line, S.comp, S.feedOpts), mr = Sim.maxRate(ev.nodes, line), R = mr.R;
     lastRev = 0; if (!(R > 0)) return -Infinity;
     let P = 0, extra = 0, wearC = 0, rev = 0;
     ev.nodes.forEach((n) => { P += Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); extra += n.extraCostPerHeadT; wearC += n.wearPerHeadT * n.M.service; });
@@ -557,7 +578,7 @@
       const free = freePorts(S.line), idx = (uid) => S.line.findIndex((x) => x.uid === uid);
       if (isFinite(base)) S.line.forEach((n, i) => {
         const sep = MACHINES[n.m].kind === 'separator', fed = S.line.some((x) => x.src && x.src !== 'feed' && x.src.uid === n.uid);
-        const srcs = [null].concat(sep && !fed ? free.filter((p) => idx(p.uid) < i && p.uid !== n.uid) : []);
+        const srcs = [null].concat(sep && !fed ? free.filter((p) => idx(p.uid) < i && p.uid !== n.uid).sort((a, b) => idx(b.uid) - idx(a.uid)).slice(0, 4) : []);   // #380: the four nearest free outputs upstream, not every one
         srcs.forEach((src) => trialSettings(n.m).forEach((set) => {
           const k = Object.keys(set)[0];
           if (!src && (!k || n.settings[k] === set[k])) return;   // nothing would change
@@ -590,10 +611,10 @@
       if (can) rankComp = can.declared;
     }
     const key = lineKey() + '|' + JSON.stringify(rankComp || S.comp) + '|' + (S.feedPrepaid ? JSON.stringify(S.feedOpts) : '') + '|' + Object.keys(S.units).map((m) => m + S.units[m]).join() + '|' + JSON.stringify(S.plant) + '|' + (CS.Slots && CS.Slots.live && CS.Slots.live.owned ? CS.Slots.live.owned() : '');   // slots and the hall decide what may be added
-    if (npMemo.key === key) { rankComp = null; return npMemo.v; }
-    try { const v = rankPurchases(); npMemo = { key, v }; return v; } finally { rankComp = null; }
+    if (npMemo.has(key)) { rankComp = null; return npMemo.get(key); }
+    try { const v = rankPurchases(); npMemo.set(key, v); if (npMemo.size > 8) npMemo.delete(npMemo.keys().next().value); return v; } finally { rankComp = null; }
   }
-  let npMemo = { key: '', v: null };
+  const npMemo = new Map();   // #382: a few keys (the hall and slot trials of NEXT STEP do not evict the real ranking)
   function rankPurchases() {
     const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
     const ports = freePorts(S.line), singles = [];
@@ -869,7 +890,7 @@
     const r = S.run; if (!r) return;
     const dh = realDt * S.speed / 60;             // 1 real second = 1 sim minute at 1x
     S.clock += dh * 3600;
-    if (performance.now() - lastEval > 1000 || dirty) { recompute(); r.rate = effRate(); lastEval = performance.now(); }   // #338: once a second for wear drift; a change sets dirty
+    if (dirty || (performance.now() - lastEval > 1000 && wearMoved())) { recompute(); r.rate = effRate(); lastEval = performance.now(); }   // #338, #381: wear drift re-evaluates once a station's wear has moved half a percent; a change sets dirty
     if (!(r.rate > 0)) { log('Line halted: ' + (S.mr.limiter ? 'node ' + (S.line.findIndex((n) => n.uid === S.mr.limiter.uid) + 1) + ' is ' + S.mr.limiter.why : 'no flow') + '.', 'bad'); Audio.ui('alarm'); stopRun('halted'); return; }
     let tons = r.rate * dh; if (r.done + tons > r.total) tons = r.total - r.done;
     r.done += tons;
@@ -927,7 +948,7 @@
     const tip = net < 0 ? 'Negative batches usually mean the wrong machine for the material, or a feed that costs more than its products sell for. Check the warnings on each node.' :
       (r.done > 0 && r.kwh / r.done > 40 ? 'Energy is eating your margin. Fine grinding and cryogenics are expensive; make sure they are earning their keep.' :
         (lim && lim.why === 'capacity' ? 'Station ' + (S.line.findIndex((n) => n.uid === lim.uid) + 1) + ' is the bottleneck. Upgrading it raises the whole line\'s throughput.' : 'Bigger batches earn more per run. Feed logistics raises the batch limit.'));
-    const loss = biggestLoss(), hint = earnHint(r);
+    const loss = biggestLoss(), hint = '<div class="hint-slot"></div>';   // #378: the purchase hint is ranked after the card is up, not inside the batch end
     /* #18 projected versus actual, #20 wear, #21 power and consumables by machine */
     const projNet = r.projPerT != null ? r.projPerT * r.done : null;
     const result = net + (r.held ? r.rev : 0);   // product held in stock is part of what the batch earned
@@ -954,6 +975,7 @@
       loss + hint +
       '<div class="tip">' + esc(tip) + ' Click to dismiss.</div></div>';
     card.classList.remove('hidden'); cardTimer = 12;
+    if (S.mode !== 'rivals') setTimeout(() => { const slot = card.querySelector('.hint-slot'); if (!slot || !slot.isConnected) return; try { const h = earnHint(r); if (h) slot.outerHTML = h; } catch (e) { /* the hint is optional */ } }, 30);
   }
   function hideCard() { $('#scorecard').classList.add('hidden'); cardTimer = 0; }
 

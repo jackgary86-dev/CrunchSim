@@ -564,12 +564,9 @@
     return { label: 'BUY A LOT', sub: 'Material comes only from the auction or your MISC bucket. ' + boardLine() + (mt >= 1 ? ' Or RE-RUN your MISC bucket: ' + fmtW(mt) + ' of mixed material is waiting.' : ''), go: () => showDrawer('auction') };
   }
   /* #135: the one next step, decided in one place for every state: the bottom note and the NEXT STEP card both show it */
-  let npCache = { at: 0, key: '', v: null };
   function topPurchase() {   // NEXT PURCHASE's best pick, cached: the ranking evaluates the line for every candidate
     const S = app.S; if (!app.nextPurchases || S.run || !S.line.length) return null;
-    const key = S.line.map((n) => n.m + n.uid).join() + '|' + Math.floor(S.money / 500);
-    if (npCache.key !== key || Date.now() - npCache.at > 5000) { const ps = app.nextPurchases(); npCache = { at: Date.now(), key, v: ps && ps[0] ? ps[0] : null }; }
-    return npCache.v;
+    const ps = app.nextPurchases(); return ps && ps[0] ? ps[0] : null;   // #382: nextPurchases keeps its own keyed memo (line, settings, feed, prices): no copy that expires on the clock
   }
   /* #169: does the line, as it stands, pull anything pure out of the MISC bucket? (cached on the line and the pile) */
   let sortCache = { key: '', v: false };

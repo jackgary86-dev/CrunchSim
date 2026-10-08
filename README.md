@@ -126,6 +126,7 @@ node tests/modes.js
 node tests/networth-lots.js
 node tests/economy-fixes.js
 node tests/regressions.js
+node tests/eval-append.js
 node tests/money.js
 node tests/reduce-motion.js
 node tests/networth-stock.js

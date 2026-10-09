@@ -140,5 +140,13 @@ console.log('== #364 #365: taking a station off never empties the line and keeps
   const m2 = S.line.find((x) => x.m === 'magnet');
   check(/OFF THE LINE/.test(ns.label) && m2 && m2.src && m2.src.uid === h.uid && m2.src.port === 'product', 'the magnet after the removed sorter takes the shredder product (' + JSON.stringify(m2 && m2.src) + ')');
 }
+console.log('== #387: a small gold bucket is shown and offered by its value ==');
+{
+  const env = mk(), { CS, app, S } = env, I = CS.Inventory;
+  I.addLot(I.stock(), 'gold', 0.0012, 0.99, 1, 1, 0.5, 0); I.addLot(I.stock(), 'copper', 2, 0.97, 1, 1, 20, 0); app.renderAll(); env.flush();
+  const ns = app.layout.nextStep();
+  check(ns.title === 'SELL' && /GOLD/.test(ns.label), 'NEXT STEP sells the 1.2 kg of gold first (' + ns.label + ')');
+  check(CS.Layout.splitBuckets(I.stock(), CS.MAT_ORDER).clean.some((x) => x.m === 'gold'), 'the gold has its own bucket on the plant screen');
+}
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' regression checks pass'));
 process.exit(fails ? 1 : 0);

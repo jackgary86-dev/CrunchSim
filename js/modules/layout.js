@@ -19,7 +19,7 @@
   function splitBuckets(stock, order, min) {
     const lim = min == null ? SORTED : min, clean = [], misc = { t: 0, comp: {} };
     (order || Object.keys(stock || {})).forEach((m) => {
-      const e = stock && stock[m]; if (!e || !(e.t > 0.05)) return;
+      const e = stock && stock[m]; if (!e || !(e.t > 0.05 || (e.t > 1e-6 && e.t * ((CS.MATERIALS[m] && CS.MATERIALS[m].sell) || 0) >= 50))) return;   // #387: dust stays out, a few hundred grams of gold does not
       if ((e.purity || 0) >= lim) clean.push({ m, t: e.t, purity: e.purity, grade: e.grade, sf: e.sf });
       else { misc.t += e.t; misc.comp[m] = e.t; }
     });
@@ -284,7 +284,7 @@
   }
   function loopHints() {
     const S = app.S, I = CS.Inventory, A = CS.Auction && CS.Auction.live, RL = CS.Round && CS.Round.live, SL = CS.Slots && CS.Slots.live, RF = CS.Refinery && CS.Refinery.live;
-    const stock = I ? I.stock() : {}, mats = Object.keys(stock).filter((m) => stock[m].t > 0.05);
+    const stock = I ? I.stock() : {}, mats = Object.keys(stock).filter((m) => stock[m].t > 1e-4);
     let value = 0; mats.forEach((m) => { value += I.quote ? I.quote(m) : 0; });
     const st = RL && RL.state ? RL.state() : null;
     const auction = S.mode === 'rivals' && st ? (st.match && st.match.over ? 'match over' : st.n ? 'round ' + st.n + ' of ' + st.match.length : 'start the match') : (A ? A.board().length + ' lots on the board' : 'buy a lot');
@@ -339,7 +339,7 @@
     nodes.push({ key: 'sell', k: 'BUCKETS', main: idle ? hints.sell : pure.length ? new Set(pure.map((x) => x.m)).size + ' pure' + (totKg > 0 && miscKg > 0 ? ' · ' + Math.round(100 * miscKg / totKg) + '% MISC' : '') : 'all MISC', sub: idle ? '' : Array.from(new Set(pure.map((x) => MATERIALS[x.m].name.toLowerCase()))).slice(0, 3).join(', '), chips });
     const lvl = RF ? RF.level() : 0;
     nodes.push({ key: 'refine', k: 'REFINE', main: lvl >= 2 ? 'furnace + precious' : lvl === 1 ? 'smelting furnace' : 'no refinery', sub: lvl ? 'ingots and bars' : 'Plant drawer', off: !lvl });
-    const stock = I ? I.stock() : {}; let value = 0; for (const m in stock) if (stock[m].t > 0.05) value += I.quote ? I.quote(m) : 0;
+    const stock = I ? I.stock() : {}; let value = 0; for (const m in stock) if (stock[m].t > 1e-4) value += I.quote ? I.quote(m) : 0;
     nodes.push({ key: 'sell', k: 'MONEY', main: value > 0 ? app.fmtMoney(value) + ' to sell' : 'bank ' + app.fmtMoney(S.money), sub: value > 0 ? 'bank ' + app.fmtMoney(S.money) : 'sell pure buckets', money: true });
     return nodes;
   }
@@ -379,7 +379,7 @@
     if (focus != null) { const f = box.querySelector('[data-i="' + focus + '"]'); if (f) f.focus({ preventScroll: true }); }
   }
   function loopState() {
-    const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 0.05);
+    const S = app.S, Inv = CS.Inventory, stock = Inv ? Inv.stock() : {}, held = Object.keys(stock).some((m) => stock[m].t > 1e-4);
     if (S.run) return ['shred', 'sort'];
     if (S.mode === 'rivals' && CS.Round && CS.Round.live && CS.Round.live.miscAllowed() && CS.Inventory.miscTotal(CS.Inventory.misc()) >= 1) return ['shred'];   // no bin this round: run your MISC
     if (!S.feedPrepaid) return held ? ['sell', 'auction'] : ['auction'];
@@ -631,6 +631,16 @@
     const typical = t.length ? t.sort((x, y) => x - y)[Math.floor(t.length / 2)] : (S.tons || 30);
     return Math.max(1, Math.min(cap, Math.max(S.tons || 0, typical)));
   }
+  /* $ a tonne of pure product a line pulls out of the MISC pile as a re-run feeds it (bins over 3% of the feed only) */
+  function miscRev(line, plan) {
+    const ev = Sim.evalLine(line, plan.comp, { sizes: plan.sizes, entry: defaultEntry(line, MACHINES) });
+    let rev = 0; ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m, t.form); if (st.sellable && st.total > 30) rev += st.value; });
+    return rev;
+  }
+  /* #392: a MISC tune is offered only when the tuned line would re-run the pile (RE-RUN is the next step), not as a tweak the next lot undoes */
+  function tunedSortsMisc(t, plan) {
+    try { const S = app.S, line = S.line.map((x) => (x.uid === t.uid ? Object.assign({}, x, { settings: Object.assign({}, x.settings, t.set) }, t.src ? { src: { uid: t.src.uid, port: t.src.port } } : {}) : x)); return miscRev(line, plan) >= 5; } catch (e) { return false; }
+  }
   function lineSortsMisc() {
     const S = app.S, I = CS.Inventory, misc = I && I.misc ? I.misc() : {};
     if (!S.line.length) return false;
@@ -639,9 +649,7 @@
     if (sortCache.key === key) return sortCache.v;
     let v = false;
     try {
-      const ev = Sim.evalLine(S.line, plan.comp, { sizes: plan.sizes, entry: defaultEntry(S.line, MACHINES) });
-      let rev = 0; ev.terminals.forEach((t) => { const st = Sim.binStats(t.stream.m, t.form); if (st.sellable && st.total > 30) rev += st.value; });   // over 3% of the feed comes out pure
-      v = rev >= 5;   // #324: and it pays for the re-run's power and rent (~$5 a tonne), or BUY A LOT is the better step
+      v = miscRev(S.line, plan) >= 5;   // #324: and it pays for the re-run's power and rent (~$5 a tonne), or BUY A LOT is the better step
     } catch (e) { v = false; }
     sortCache = { key, v }; return v;
   }
@@ -655,7 +663,7 @@
     }
     const stock0 = I && I.stock ? I.stock() : {};
     if (S.money < 0) {   // #169: in the red: sell before running more (Rivals too: power is billed as a batch runs, past the credit line)
-      let b0 = null; for (const m in stock0) { const v = I.quote ? I.quote(m) : 0; if (stock0[m].t > 0.05 && v > 0 && (!b0 || v > b0.v)) b0 = { m, v }; }
+      let b0 = null; for (const m in stock0) { const v = I.quote ? I.quote(m) : 0; if (stock0[m].t > 1e-4 && v > 0 && (!b0 || v > b0.v)) b0 = { m, v }; }
       if (b0) return { title: 'SELL', label: 'SELL ' + MATERIALS[b0.m].name.toUpperCase() + ' ' + app.fmtMoney(b0.v), sub: 'The bank is in the red: sell before you run more.', go: () => { if (I.sellMat) I.sellMat(b0.m); } };
     }
     // a sorter at the wrong setting for this mix: fix it first (a sink-float at 2.9 g/cc floats wood and glass together)
@@ -663,7 +671,7 @@
       const t = app.bestTune ? app.bestTune(comp, opts) : null; if (!t) return null;
       const k = Object.keys(t.set)[0], D = k && (MACHINES[t.m].settings || []).find((x) => x.id === k), val = k ? t.set[k] + (D && D.unit ? ' ' + D.unit : '') : '';
       const fromSt = t.src ? S.line.findIndex((x) => x.uid === t.src.uid) + 1 : 0;
-      if (t.src) return { title: 'REWIRE', label: 'MOVE ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO STATION ' + fromSt, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' never sees what it could sort in ' + what + ': feed it the ' + (app.portName ? app.portName(t.src) : t.src.port) + ' of station ' + fromSt + (k ? ' at ' + val : '') + ' for about +' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
+      if (t.src) return { title: 'REWIRE', label: 'MOVE ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO STATION ' + fromSt + ' ' + (app.portName ? app.portName(t.src).replace(/ output$/, '') : t.src.port).toUpperCase(), sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' never sees what it could sort in ' + what + ': feed it the ' + (app.portName ? app.portName(t.src) : t.src.port) + ' of station ' + fromSt + (k ? ' at ' + val : '') + ' for about +' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
       return { title: 'TUNE', label: 'SET ' + MACHINES[t.m].short + ' ' + (t.i + 1) + ' TO ' + val, sub: 'Station ' + (t.i + 1) + ' ' + MACHINES[t.m].name + ' is set wrong for ' + what + ': ' + (D ? D.label.toLowerCase() : k) + ' ' + val + ' adds about ' + app.fmtMoney(t.gain) + '/t.', go: () => app.applyTune(t) };
     };
     const blk = S.feedPrepaid && !S.run && app.runBlock ? app.runBlock() : null;   // #299: RUN would refuse: say what fixes it instead
@@ -671,7 +679,7 @@
     // advance), else the yard advance where it fits (not in Rivals, within its cap), else take the station off the line
     if (blk && blk.cost > S.money) {
       const st0 = I && I.stock ? I.stock() : {}, net = loan > 0 ? 0.75 : 1;
-      let sv = 0, bm = null; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (v > 0) sv += v * net; if (st0[m].t > 0.05 && v > 0 && (!bm || v > bm.v)) bm = { m, v }; }
+      let sv = 0, bm = null; for (const m in st0) { const v = I.quote ? I.quote(m) : 0; if (v > 0) sv += v * net; if (st0[m].t > 1e-4 && v > 0 && (!bm || v > bm.v)) bm = { m, v }; }
       const what = blk.kind === 'buy' ? blk.ms.map((m) => MACHINES[m].name).join(', ') : 'station ' + (blk.i + 1) + ' ' + MACHINES[blk.n.m].name + "'s service";
       if (bm && S.money + sv >= blk.cost) return { title: 'SELL', label: 'SELL ' + MATERIALS[bm.m].name.toUpperCase() + ' ' + app.fmtMoney(bm.v), sub: 'The ' + what + ' (' + app.fmtMoney(blk.cost) + ') is more than the bank holds: sell a bucket first.', go: () => { if (I.sellMat) I.sellMat(bm.m); } };
       const need = Math.max(ADVANCE, Math.ceil((blk.cost - S.money - sv) / 100) * 100);
@@ -688,33 +696,39 @@
     const lotRunning = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();   // #336: between a lot's own batches the next one starts by itself: no TUNE search there
     if (S.feedPrepaid && !S.run && !lotRunning) { const tn = tuneFor(S.comp, 'what is loaded', S.feedOpts); if (tn) return tn; }
     { const pm = CS.Sim.prices.perMat || {}, st1 = I && I.stock ? I.stock() : {};   // #375: a HOT price lasts one round: sell that bucket before the next batch moves the market
-      let hot = null; for (const m in st1) { const f = pm[m] || 1, v = I.quote ? I.quote(m) : 0; if (st1[m].t > 0.05 && f >= 1.5 && v >= Math.max(5000, 0.1 * Math.max(0, S.money)) && (!hot || v > hot.v)) hot = { m, v, f }; }
+      let hot = null; for (const m in st1) { const f = pm[m] || 1, v = I.quote ? I.quote(m) : 0; if (st1[m].t > 1e-4 && f >= 1.5 && v >= Math.max(5000, 0.1 * Math.max(0, S.money)) && (!hot || v > hot.v)) hot = { m, v, f }; }
       if (hot && S.feedPrepaid && !S.run) return { title: 'SELL', label: 'SELL ' + MATERIALS[hot.m].name.toUpperCase() + ' ' + app.fmtMoney(hot.v), sub: MATERIALS[hot.m].name + ' is HOT at ' + hot.f.toFixed(2) + ' times list: the next batch moves the market, so sell before you run.', go: () => { if (I.sellMat) I.sellMat(hot.m); } }; }
     if (S.feedPrepaid && S.line.length) return { title: 'READY', label: 'RUN', sub: (S.feedOwner === 'rerun' && loaded ? 'The ' + loaded.label + ' bucket' : 'The loaded lot') + ' is on the belt: ' + fmtW(S.tons) + ' a batch.', go: () => $('#btn-run').click() };
     // money first: the best pure bucket (in Rivals too: stock only counts toward worth, cash wins bins)
     const stock = I && I.stock ? I.stock() : {};
-    let best = null; for (const m in stock) { const v = I.quote ? I.quote(m) : 0; if (stock[m].t > 0.05 && v > 0 && (!best || v > best.v)) best = { m, v }; }
+    let best = null; for (const m in stock) { const v = I.quote ? I.quote(m) : 0; if (stock[m].t > 1e-4 && v > 0 && (!best || v > best.v)) best = { m, v }; }
     if (S.mode === 'rivals' && !(best && best.v >= 50)) { const a = nextAction(); return Object.assign({ title: 'NEXT' }, a); }
+    { const RF = CS.Refinery && CS.Refinery.live, g = RF && RF.gainNext && S.mode !== 'rivals' ? RF.gainNext() : null;   // #394: the refinery level whose refining pays for itself on what you hold
+      if (g && g.cost > 0 && g.gain > g.cost && g.cost <= S.money) return { title: 'GROW', label: 'BUILD A ' + g.name.toUpperCase() + ' ' + app.fmtMoney(g.cost), sub: 'Refining what you hold would earn ' + app.fmtMoney(g.gain) + ' more than selling it as scrap: the ' + g.name.toLowerCase() + ' pays for itself.', go: () => { RF.buy(); renderFlow(true); } }; }
     { const RF = CS.Refinery && CS.Refinery.live, q = best && RF && RF.level() ? RF.quote(best.m) : null;   // #353: when refining pays more than selling, say so
       if (q && q.ok && q.gain > 0 && q.net >= 50) return { title: 'REFINE', label: 'REFINE ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(q.net), sub: 'Cast into ' + q.form + ' it pays ' + app.fmtMoney(q.gain) + ' more than selling it as scrap.', go: () => { RF.refine(best.m); renderFlow(true); } }; }
     if (best && best.v >= 50) return { title: 'SELL', label: 'SELL ' + MATERIALS[best.m].name.toUpperCase() + ' ' + app.fmtMoney(best.v), sub: 'A pure bucket is money waiting: ' + fmtW(stock[best.m].t) + ' of ' + MATERIALS[best.m].name.toLowerCase() + '.', go: () => { if (I.sellMat) I.sellMat(best.m); } };
     const p = topPurchase();
     const A0 = CS.Auction && CS.Auction.live, board0 = A0 ? A0.board() : [], lotPrice = (L) => (A0 && A0.priceOf ? A0.priceOf(L) : L.ask) * L.tons;
     const cheapest = board0.length ? Math.min.apply(null, board0.map(lotPrice)) : Infinity;
+    // #396: growth keeps back the price of a lot that pays (the one NEXT PURCHASE ranked against), not just the cheapest scrap lot
+    let payLot = null, payBest = 0;   // the affordable lot that earns the most on this line (its estimate less its price, by the lot)
+    if (!S.feedPrepaid && app.lotEstimate) board0.forEach((L) => { const pr = lotPrice(L); if (pr > S.money) return; const est = app.lotEstimate(L.declared); const g = typeof est === 'number' && isFinite(est) ? est * L.tons - pr : -Infinity; if (g > payBest) { payBest = g; payLot = L; } });
+    const reserve = S.feedPrepaid ? 0 : payLot ? lotPrice(payLot) : isFinite(cheapest) ? cheapest : 0;
     { const om = omniStep(S.money - (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest)); if (om) return om; }   // #359: the end game before another machine
     { const E = CS.Endgame;   // #369: with the Omniprocessor on the line only its first batch is left: no more growth, buy a lot and run it
       if (E && S.mode !== 'rivals' && E.lineHasOmni(S.line) && !(E.reached && E.reached())) { const a = nextAction(); return Object.assign({}, a, { title: 'END GAME', sub: 'The ' + MACHINES[S.line.find((n) => E.isOmni(n.m)).m].name + ' is on the line: buy a lot and run it for your final score.' }); } }
     if (p) {
       const price = app.pairPrice ? app.pairPrice(p) : 0;
       const pays = price <= 0 || p.gain * lotTonnes() * 10 >= price;   // #345, #369: only a machine whose gain pays its price back within ten batches of the lots you actually run
-      if (pays && price + (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest) <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
+      if (pays && price + reserve <= S.money) return { title: 'GROW', label: 'BUY & PLACE ' + p.ms.map((m) => MACHINES[m].short).join(' + '), sub: p.ms.map((m) => MACHINES[m].name).join(' + ') + ' adds ' + app.fmtMoney(p.gain) + '/t' + (app.purchaseLot && app.purchaseLot() ? ' on the ' + (app.purchaseLot().headline || 'next') + ' lot' : '') + ' for ' + app.fmtMoney(price) + '.', go: () => app.buyAndAdd && app.buyAndAdd(p) };
     }
     // #326: the plant upgrades that unblock growth: a bigger hall or a sorter slot when the next machine has nowhere to go, and
     // feed logistics once the lots on the board are well over a batch. They keep their cost in net worth; the next lot stays affordable.
-    const spare = S.money - (S.feedPrepaid || !isFinite(cheapest) ? 0 : cheapest);
+    const spare = S.money - reserve;
     if (!p && S.mode !== 'rivals') { const up = blockedUpgrade(); if (up && up.cost <= spare) return up; }
     if (S.mode !== 'rivals') { const lg = logisticsStep(board0, spare); if (lg) return lg; }
-    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const o = { sizes: mp.sizes, entry: defaultEntry(S.line, MACHINES) }, bt = app.bestTune ? app.bestTune(mp.comp, o) : null; if (bt && bt.gain >= 5) { const tn = tuneFor(mp.comp, 'your MISC pile', o); if (tn) return tn; } } }   // #377: only a tune that makes the pile worth re-running (the RE-RUN step follows), not one the next lot undoes
+    if (mt >= 1) { const mp = rerunPlan(I.misc(), Object.keys(I.misc()), 30); if (!mp.error) { const o = { sizes: mp.sizes, entry: defaultEntry(S.line, MACHINES) }, bt = app.bestTune ? app.bestTune(mp.comp, o) : null; if (bt && bt.gain >= 5 && !lineSortsMisc() && tunedSortsMisc(bt, mp)) { const tn = tuneFor(mp.comp, 'your MISC pile', o); if (tn) return tn; } } }   // #377: only a tune that makes the pile worth re-running (the RE-RUN step follows), not one the next lot undoes
     if (mt >= 1 && lineSortsMisc()) return { title: 'RE-RUN', label: 'RE-RUN MISC', sub: fmtW(mt) + ' of mixed material: your line pulls something pure out of it.', go: () => { const mats = Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0); rerun(mats, 'MISC', 'misc'); } };
     const cap = app.plantValue ? app.plantValue('logistics') : 30, dq = I && I.dumpQuote ? I.dumpQuote() : null;
     // ship it out only when it pays, or costs a quarter of the bank at most

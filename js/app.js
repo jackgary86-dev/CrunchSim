@@ -187,8 +187,11 @@
   function earnHint(r) {
     const E = Eco(); if (!E || !S.line.length || Object.keys(unownedIn(S.line)).length) return '';
     if (CS.Autorun && CS.Autorun.live && CS.Autorun.live.active()) return '';   // #336: mid-lot the card goes in 0.25 s: no NEXT PURCHASE ranking for it
-    const picks = nextPurchases(); if (!picks || !picks.length) return '';
-    const b = E.betterLine(picks[0], marginPerT().margin, r.done); if (!b) return '';
+    // #388: ranked on the batch's own feed (captured when it ended), not on whatever is loaded or on the board by now
+    const keep = rankComp, keepO = rankOpts; let picks = null, margin = 0;
+    try { rankComp = r.feedComp || S.comp; rankOpts = r.feedOpts || null; margin = lineMarginNoFeed(S.line); picks = isFinite(margin) ? rankPurchases() : null; } finally { rankComp = keep; rankOpts = keepO; }
+    if (!picks || !picks.length) return '';
+    const b = E.betterLine(picks[0], margin, r.done); if (!b) return '';
     const at = b.src ? S.line.findIndex((n) => n.uid === b.src.uid) : S.line.length - 1, from = S.line[at];
     const what = b.ms.map((m) => MACHINES[m].name).join(' + '), price = b.ms.reduce((c, m) => c + MACHINES[m].price, 0);
     return '<div class="hint">WHAT WOULD HAVE EARNED · ' + (b.ms.length > 1 ? '' : 'a ') + esc(what) + ' (' + fmtMoney(price) + ') on ' + (at + 1) + ':' + esc(MACHINES[from.m].short) + '/' + esc(String(b.port).toUpperCase()) + ' lifts the margin from ' + fmtMoney(b.base / Math.max(r.done, 1e-9)) + '/t to ' + fmtMoney(b.perT) + '/t: about ' + fmtMoney(b.net) + ' on this batch.</div>';
@@ -221,7 +224,8 @@
     dirty = false;
   }
   function effRate() { return S.mr ? S.mr.R : 0; }
-  function wearMoved() { let moved = false; S.line.forEach((n) => { const w = n.wear || 0; if (n.wearEval == null || Math.abs(w - n.wearEval) >= 0.005) moved = true; }); if (moved) S.line.forEach((n) => { n.wearEval = n.wear || 0; }); return moved; }
+  const wearAt = new WeakMap();   // #386: the wear each node was last evaluated at, kept off the node so saves do not carry it
+  function wearMoved() { let moved = false; S.line.forEach((n) => { const w = n.wear || 0, a = wearAt.get(n); if (a == null || Math.abs(w - a) >= 0.005) moved = true; }); if (moved) S.line.forEach((n) => { wearAt.set(n, n.wear || 0); }); return moved; }
   function nodePower(n) { const R = S.run ? S.run.rate : effRate(); return Math.min(n.M.prated * (1 + LEVEL_FX.power * levelOf(n.M.id)), n.M.pidle + R * n.ePerHead); }
   function plantPower() { let P = 0; for (const n of S.ev.nodes) P += nodePower(n); return P; }
   let binMemo = { ev: null, mk: '', v: [] };   // #381: the bins of one evaluation at one price level, built once (stepRun asks every frame)
@@ -500,7 +504,7 @@
    * margin they add per head-tonne. Feed cost cancels in the difference, so it is left out. Computed only here, from renderBank.
    */
   const TRIAL_MACHINES = ['sinkfloat', 'magnet', 'air', 'eddy', 'screen', 'cone', 'jaw'];
-  let rankComp = null;   // the mix NEXT PURCHASE ranks against (null: the loaded feed)
+  let rankComp = null, rankLot = null;   // #388: the board lot NEXT PURCHASE ranked against (null: the loaded feed)   // the mix NEXT PURCHASE ranks against (null: the loaded feed)
   let rankOpts = null, lastRev = 0;   // #296: the feed options (re-run sizes, entry station) to rank rankComp with; the revenue of the last evaluation
   /* #379: a trial that only appends machines to the current line reuses the line's own evaluation (Sim.evalAppend) */
   let evalBase = { key: '', ev: null };
@@ -549,7 +553,7 @@
   /* everything about the line and the prices that changes what it makes */
   function lineKey() {
     const P = Sim.prices, pm = P.perMat || {};
-    return S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src) + 'L' + levelOf(n.m) + (n.wear >= 0.999 ? 'w' : '')).join() +
+    return S.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src) + 'L' + levelOf(n.m) + 'w' + Math.round((n.wear || 0) * 100)).join() +   // #383: wear changes the evaluation continuously, not only at worn-out
       '|' + P.power + '|' + P.market + '|' + Object.keys(pm).map((m) => m + Math.round(50 * Math.log(Math.max(1e-6, +pm[m] || 1)))).join();   // #336, #355: the advice caches follow market moves in ~2% steps, not every batch's drift
   }
   function lotEstimate(comp) {
@@ -578,14 +582,14 @@
       const free = freePorts(S.line), idx = (uid) => S.line.findIndex((x) => x.uid === uid);
       if (isFinite(base)) S.line.forEach((n, i) => {
         const sep = MACHINES[n.m].kind === 'separator', fed = S.line.some((x) => x.src && x.src !== 'feed' && x.src.uid === n.uid);
-        const srcs = [null].concat(sep && !fed ? free.filter((p) => idx(p.uid) < i && p.uid !== n.uid).sort((a, b) => idx(b.uid) - idx(a.uid)).slice(0, 4) : []);   // #380: the four nearest free outputs upstream, not every one
+        const srcs = [null].concat(sep && !fed ? free.filter((p) => idx(p.uid) < i && p.uid !== n.uid).sort((a, b) => idx(b.uid) - idx(a.uid)).slice(0, 40) : []);   // #380, #384: every free upstream output (evalFrom makes each trial cheap); a cap only for very long lines
         srcs.forEach((src) => trialSettings(n.m).forEach((set) => {
           const k = Object.keys(set)[0];
           if (!src && (!k || n.settings[k] === set[k])) return;   // nothing would change
           const trial = S.line.map((x) => (x === n ? Object.assign({}, x, { settings: Object.assign({}, x.settings, set) }, src ? { src: { uid: src.uid, port: src.port } } : {}) : x));
           const gain = lineMarginNoFeed(trial) - base, revGain = lastRev - baseRev;
           // #296: the change must make more product value, not just save a starved sorter's power
-          if (revGain >= 1 && gain > Math.max(1, 0.03 * Math.abs(base)) && (!best || gain > best.gain)) best = { i, uid: n.uid, m: n.m, set, src, gain };
+          if (revGain >= 1 && gain > (src ? Math.max(5, 0.1 * Math.abs(base)) : Math.max(2, 0.05 * Math.abs(base))) && (!best || gain > best.gain)) best = { i, uid: n.uid, m: n.m, set, src, gain };
         }));
       });
     } catch (e) { best = null; } finally { rankComp = keep; rankOpts = keepO; }
@@ -604,11 +608,11 @@
   function nextPurchases() {
     if (!S.line.length) return [];
     // nothing loaded: rank against the richest lot on the board the bank can buy, the scrap that comes next
-    rankComp = null;
+    rankComp = null; rankLot = null;
     const A = CS.Auction && CS.Auction.live;
     if (!S.feedPrepaid && A && A.board) {
       const can = A.board().filter((L) => L.ask * L.tons <= S.money).sort((a, b) => b.ask * b.tons - a.ask * a.tons)[0];
-      if (can) rankComp = can.declared;
+      if (can) { rankComp = can.declared; rankLot = can; }
     }
     const key = lineKey() + '|' + JSON.stringify(rankComp || S.comp) + '|' + (S.feedPrepaid ? JSON.stringify(S.feedOpts) : '') + '|' + Object.keys(S.units).map((m) => m + S.units[m]).join() + '|' + JSON.stringify(S.plant) + '|' + (CS.Slots && CS.Slots.live && CS.Slots.live.owned ? CS.Slots.live.owned() : '');   // slots and the hall decide what may be added
     if (npMemo.has(key)) { rankComp = null; return npMemo.get(key); }
@@ -872,6 +876,7 @@
   function stopRun(why) {
     why = why || 'stopped';   // public API: callers may leave the reason out
     const r = S.run; if (!r) return;
+    r.feedComp = Object.assign({}, S.comp); r.feedOpts = S.feedOpts ? JSON.parse(JSON.stringify(S.feedOpts)) : null;   // #388: the batch's own feed, for the card's hint
     S.run = null;
     const dt = S.clock - r.t0, powerC = r.kwh * Sim.prices.power;
     // a module may take the products into inventory instead of selling them now (returns a short reason string)
@@ -1145,7 +1150,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, buyPlant, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtT, fmtPerT, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, buyPlant, purchaseLot: () => rankLot, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtT, fmtPerT, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

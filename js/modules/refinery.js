@@ -140,7 +140,14 @@
       render();
     });
     API.on('render', render);
-    CS.Refinery.live = { level: () => level, quote, quoteMisc, refine, refineMisc };
+    /* #394: what refining the held stock would earn over selling it, with the refinery one level up (for NEXT STEP) */
+    function gainNext() {
+      const I = Inv(), next = level + 1; if (!I || next >= LEVELS.length) return { gain: 0, next };
+      let gain = 0; const st = I.stock();
+      for (const m in st) { const q = quoteBucket(m, st[m], next, I.quote ? I.quote(m) : 0, power(), factor(m), market()); if (q && q.ok && q.gain > 0) gain += q.gain; }
+      return { gain, next, name: LEVELS[next].name, cost: LEVELS[next].cost };
+    }
+    CS.Refinery.live = { level: () => level, quote, quoteMisc, refine, refineMisc, buy, gainNext };
   }
   if (CS.app) start();
   else if (typeof document !== 'undefined' && document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

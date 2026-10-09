@@ -320,7 +320,7 @@
       const M = CS.Market, r = R(); let h = '<h3>MARKET</h3>';
       if (M && M.hot && M.hot()) h += '<div class="mk-hc hot"><b>HOT</b> ' + esc(MATERIALS[M.hot().mat].name) + ' <span>×' + M.hot().mul.toFixed(2) + '</span><div class="small">' + esc(M.hot().why) + '</div></div>';
       if (M && M.cold && M.cold()) h += '<div class="mk-hc cold"><b>COLD</b> ' + esc(MATERIALS[M.cold().mat].name) + ' <span>×' + M.cold().mul.toFixed(2) + '</span><div class="small">' + esc(M.cold().why) + '</div></div>';
-      if (!M || !M.hot || !M.hot()) h += '<div class="small">The first market round opens after your first batch: until then everything trades at list.</div>';
+      if (!M || !M.hot || !M.hot()) h += '<div class="small">The first market round opens after your first batch of 1 t or more: until then everything trades at list.</div>';   // #391: a sliver batch does not close a round (market.js #213)
       const mats = new Set(); (r ? r.cards : []).forEach((L) => Object.keys(L.declared).forEach((m) => { if (L.declared[m] >= 0.01 || CS.Sim.PRECIOUS.indexOf(m) >= 0) mats.add(m); }));
       const view = M && M.view ? M.view() : null;
       h += '<div class="mk-t"><div class="r h"><span>IN THE BINS</span><span>$/t</span><span>VS LIST</span></div>';

@@ -320,10 +320,11 @@
     });
     { const st = nodes.filter((x) => x.uid != null), keep = foldRoom();   // #353: a long line folds its middle stations into one step, so the buckets and the money stay in view
       if (st.length > keep) {   // #370: fold to fit the width (keep - 1 stations stay, the fold is the last slot), never fold the Omniprocessor
-        const L = st.length - (keep - 1), head = Math.max(1, Math.floor((keep - 1) / 2)), starts = [];
-        for (let s = 1; s + L <= st.length; s++) starts.push(s);
-        starts.sort((a, b) => Math.abs(a - head) - Math.abs(b - head) || a - b);
-        const s0 = starts.find((s) => !st.slice(s, s + L).some((x) => x.omni)), mid = st.slice(s0 == null ? head : s0, (s0 == null ? head : s0) + L).filter((x) => !x.omni);
+        const L = st.length - (keep - 1), head = Math.max(1, Math.floor((keep - 1) / 2)), wins = [];
+        // #389: a window holds L stations besides any Omniprocessor in it (it stays out of the fold), so the count still fits the width
+        for (let s = 1; s < st.length; s++) { const m = []; let e = s; while (e < st.length && m.length < L) { if (!st[e].omni) m.push(st[e]); e++; } if (m.length === L) wins.push({ s, m, o: e - s - L }); }
+        wins.sort((a, b) => (a.o > 0) - (b.o > 0) || Math.abs(a.s - head) - Math.abs(b.s - head) || a.s - b.s);
+        const mid = wins.length ? wins[0].m : st.slice(head, head + L).filter((x) => !x.omni);
         if (mid.length > 1) { const at = nodes.indexOf(mid[0]); mid.forEach((x) => nodes.splice(nodes.indexOf(x), 1)); nodes.splice(at, 0, { key: 'sort', fold: mid[0].uid, k: 'STATIONS ' + numRanges(mid.map((x) => x.num)), main: '+' + mid.length + ' more', sub: mid.map((x) => x.main).join(', '), sorter: true }); }
       } }
     if (!nodes.some((x) => x.key === 'sort')) nodes.push({ key: 'sort', k: 'SORT', main: 'no sorter yet', sub: hints.sort });
@@ -357,12 +358,14 @@
     offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === uid)); renderFlow(true);
     const col = document.querySelector('#flow-nodes .fcol.mach'); if (col) { col.classList.remove('flash'); void col.offsetWidth; col.classList.add('flash'); }
   }
-  let procSig = '';
+  let procSig = '', procRound = '';
+  /* #390: the Rivals round and whether the match is over: the BIN node reads 'round N of 8' */
+  function roundKey() { const S = app.S, RL = CS.Round && CS.Round.live, st = S && S.mode === 'rivals' && RL && RL.state ? RL.state() : null; return st ? st.n + ':' + !!(st.match && st.match.over) : ''; }
   if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', () => { if (app && app.S && $('#loop')) renderProcess(); });   // #370: the fold follows the width
   function renderProcess() {
     const box = $('#loop'); if (!box) return;
     const nodes = processNodes(), lit = loopState(), run = !!app.S.run;
-    const sig = JSON.stringify([nodes.map((x) => [x.k, x.main, x.sub, x.prog == null ? null : Math.round(x.prog * 50), x.chips, x.uid, x.fold]), lit, run]);   // uids too: a rebuilt line of the same machines must not keep clicks bound to the old stations
+    procRound = roundKey(); const sig = JSON.stringify([nodes.map((x) => [x.k, x.main, x.sub, x.prog == null ? null : Math.round(x.prog * 50), x.chips, x.uid, x.fold]), lit, run, procRound]);   // uids too: a rebuilt line of the same machines must not keep clicks bound to the old stations; #390: the Rivals round too
     if (sig === procSig) return; procSig = sig;
     const focus = document.activeElement && box.contains(document.activeElement) ? document.activeElement.dataset.i : null;
     box.innerHTML = '';
@@ -648,7 +651,7 @@
   function nextStep() {
     const S = app.S, I = CS.Inventory, mt = I && I.misc ? I.miscTotal(I.misc()) : 0;
     const lotOn = CS.Autorun && CS.Autorun.live && CS.Autorun.live.active();
-    if (!S.run && lotOn) return { title: 'RUNNING', label: 'STOP THE LOT', sub: 'The next batch of the lot starts in a moment.', go: () => CS.Autorun.live.finish('stopped by you'), quiet: true };   // #352: between a lot's own batches
+    if (!S.run && lotOn) { const AL = CS.Autorun.live, more = !AL.left || AL.left(); return { title: 'RUNNING', label: 'STOP THE LOT', sub: more ? 'The next batch of the lot starts in a moment.' : 'The lot is used up: its summary comes up in a moment.', go: () => AL.finish(AL.stopWhy ? AL.stopWhy() : 'stopped by you'), quiet: true }; }   // #352: between a lot's own batches; #391: 'next batch' only when the lot has tonnes left
     if (S.run) {
       const lot = lotOn;
       return { title: 'RUNNING', label: lot ? 'STOP THE LOT' : 'STOP', sub: fmtW(S.run.total - S.run.done) + ' to go in this batch' + (lot ? ', then the rest of the lot' : '') + '.', go: () => $('#btn-run').click(), quiet: true };
@@ -1215,11 +1218,11 @@
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
     const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings, n.src]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0, CS.Round && CS.Round.live && CS.Round.live.miscAllowed ? CS.Round.live.miscAllowed() : 0]);   // miscAllowed: the MISC RE-RUN button (#313); #332: n.src, so a rewire (Input select, REWIRE) redraws the process line
-    if (!force && sig === lastSig) return; lastSig = sig;
+    if (!force && sig === lastSig) { if (roundKey() !== procRound) renderProcess(); return; } lastSig = sig;   // #390: a new Rivals round redraws the process line
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';
     if (!src && !S.feedPrepaid && !S.run) {   // #57: nothing is bought by the tonne
-      ff.innerHTML = 'FEED &#9654; <b>nothing loaded</b> · win a lot in the <a href="#" id="ff-auction">Auction</a>, or RE-RUN a bucket';
+      ff.innerHTML = 'FEED &#9654; <b>nothing loaded</b> · ' + (S.mode === 'rivals' ? 'win a bin in the <a href="#" id="ff-auction">auction round</a>' : 'win a lot in the <a href="#" id="ff-auction">Auction</a>') + ', or RE-RUN a bucket';   // #391: Rivals deals bins in rounds, not lots
       const a = ff.querySelector('#ff-auction'); if (a) a.addEventListener('click', (e) => { e.preventDefault(); showDrawer('auction'); });
     } else {
       ff.innerHTML = 'FEED &#9654; <b>' + esc(name) + '</b>' + (src && src.sub ? ' <span class="small">' + esc(src.sub) + '</span>' : '') + ' · ' + fmtW(S.tons) + ' · ' + (src ? esc(src.note) : S.feedPrepaid ? 'already yours' : cost < 0 ? 'paid ' + app.fmtMoney(-cost) + '/t to take' : app.fmtMoney(cost) + '/t');

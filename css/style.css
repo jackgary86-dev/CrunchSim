@@ -738,6 +738,10 @@ button.primary, button.buy, button.danger, button { min-height: 28px; }
 #tool-sell::before { content: "$"; }
 #tool-records::before { content: "≡"; }
 #toolbar .tool.on::before { color: var(--cyan); }
+/* #391: at phone width the drawer icons go, so MENU stays on screen without scrolling the toolbar */
+@media (max-width: 420px) { #toolbar .tool[data-key]::before { display: none; } #toolbar .tool { padding: 6px 8px; } }
+/* #391: on a short landscape screen the floating NOTHING LOADED bar sat on NEXT STEP's text; NEXT STEP carries the same button */
+@media (max-height: 480px) { .flow-cta { display: none; } }
 
 /* #122: the station cam fills its column at 4:3 */
 .fn-camwrap { aspect-ratio: 16 / 10; }

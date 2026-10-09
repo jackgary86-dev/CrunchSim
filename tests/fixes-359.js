@@ -33,7 +33,7 @@ console.log('== #360: jobs the line can meet ==');
   const { CS, app, S } = env, M = CS.Missions;
   const o0 = M.live.genOpts();
   check(!!o0.reach && Object.values(o0.reach).every((f) => Object.values(f).every((b) => M.reachMax(b) < M.purityFloor('copper'))), 'the line of a new yard makes no clean metal, so it is offered no job');
-  S.line = CS.Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'sinkfloat', s: { sg: 3.2 }, src: '1:product' }] }); S.money = 2e6; app.recompute();
+  S.line = CS.Sim.buildLine({ nodes: [{ m: 'twin', s: { width: 40 }, src: 'feed' }, { m: 'sinkfloat', s: { sg: 3.2 }, src: '1:product' }] }); S.money = 2e6; app.recompute(); CS.Auction.live.dealTier(4, 'zorba');   // #395: jobs come only from lots on the board, so deal one that carries aluminum
   const o = M.live.genOpts();
   check(!!o.reach && Math.max(0, ...Object.values(o.reach.aluminum).map(M.reachMax)) >= 0.95, 'a twin + sink-float line reads as clean aluminum');
   let worst = 0, n = 0;

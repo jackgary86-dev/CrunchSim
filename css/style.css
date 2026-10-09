@@ -541,12 +541,9 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 
 /* ---------- conveyors (#66) ---------- */
 .fcol { position: relative; }
-.fcol.mach, .fcol.bincol { padding-bottom: 34px; }
-.belt { position: absolute; left: 0; right: -2px; bottom: 10px; background: #1a222c; border-top: 1px solid #3a4756; border-bottom: 1px solid #3a4756; overflow: hidden; z-index: 1; }
-.belt-load { position: absolute; inset: 2px 0; opacity: .85; background-size: 36px 100%; }
-.plant-running .belt-load { animation: beltmove 1.2s linear infinite; }
-@keyframes beltmove { from { background-position: 0 0; } to { background-position: 36px 0; } }
-.belt-l { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 11px; color: var(--text); background: rgba(11,16,24,.8); padding: 0 4px; border-radius: 2px; }
+.fcol.mach, .fcol.bincol { padding-bottom: 58px; }
+/* #397: one conveyor under the stations, a canvas per column; it runs on into the next column across the divider */
+.conv { position: absolute; left: 0; right: -2px; bottom: 0; width: calc(100% + 2px); height: 52px; z-index: 1; pointer-events: none; }
 .plant-running .bigbin-fill { animation: binshake .6s ease-in-out infinite alternate; }
 @keyframes binshake { from { transform: translateY(0); } to { transform: translateY(-2px); } }
 
@@ -567,6 +564,23 @@ body.lay #scorecard { position: fixed; z-index: 50; }
 .unit.bar { height: calc(var(--us) * .5); clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%); align-self: center; }
 .unit.heap { background: repeating-linear-gradient(45deg, #6b7684 0 4px, #4a5562 4px 8px); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .bk.shelf button, .bk.misc button { padding: 7px 10px; font-size: 12px; }
+/* #398: end buckets as bins that fill up */
+.vbin { display: block; justify-self: center; position: relative; width: 36px; height: 46px; border: 2px solid #6c7a89; border-top: 0; border-radius: 0 0 5px 5px; background: #0b1018; overflow: hidden; transition: box-shadow .3s, border-color .3s; }
+.vbin::before { content: ''; position: absolute; left: -2px; right: -2px; top: 0; height: 2px; background: #8a97a6; }
+.vbin-fill { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; background: var(--c); background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.12) 0 3px, transparent 3px 7px), linear-gradient(0deg, rgba(0,0,0,.3), transparent 70%); transition: height .9s cubic-bezier(.3,.7,.4,1); }
+.vbin-fill i { display: block; flex: none; background: repeating-linear-gradient(45deg, #5d6773 0 2px, #424b56 2px 4px); }
+.vbin.ready { border-color: var(--green); box-shadow: 0 0 10px rgba(92,255,177,.35); }
+.vbin.lit { animation: binlit 1.6s ease-out 2; }
+@keyframes binlit { 0%, 100% { box-shadow: 0 0 10px rgba(92,255,177,.35); } 40% { box-shadow: 0 0 22px rgba(92,255,177,.9); } }
+.bk-ready { font-family: var(--mono); font-size: 12px; color: var(--green); margin-left: 4px; }
+.pband { position: relative; display: block; height: 5px; margin-top: 4px; background: #1a222c; border-radius: 2px; overflow: visible; }
+.pband i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--amber); border-radius: 2px; }
+.pband.ok i { background: var(--green); }
+.pband b { position: absolute; left: 90%; top: -2px; bottom: -2px; width: 2px; background: #c9d4de; }
+.bk.misc .mischeap { align-self: end; }
+@media (prefers-reduced-motion: reduce) { .vbin-fill { transition: none; } .vbin.lit { animation: none; } }
+.reduce-motion .vbin-fill { transition: none; }
+.reduce-motion .vbin.lit { animation: none; }
 .flymoney { position: fixed; z-index: 90; transform: translate(-50%, 0); font-family: var(--mono); font-size: 18px; color: var(--green); text-shadow: 0 0 8px rgba(92,255,177,.6); pointer-events: none; transition: transform .7s cubic-bezier(.3,.7,.4,1), opacity .7s ease-in; }
 .flymoney.neg { color: var(--red); }
 #money.bump { animation: bankbump .5s ease-out; }

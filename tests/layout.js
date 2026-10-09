@@ -154,13 +154,37 @@ check(Math.abs(up / 10 - f40) < 0.01 && Math.abs(step(logS, up, -1) - 10) < 0.06
   check(a1.find((p) => p.m === 'wood').kind === 'wood' && a1.find((p) => p.m === 'glass').kind === 'angular', "each piece carries its material's look");
 }
 
-// #125: the belt carries the mix
+// #397: the conveyor: each station takes its bins' share off the belt, the rest rides on
 {
-  const MATS = globalThis.CS.MATERIALS;
-  const p1 = L.beltPattern({ wood: 0.9, steel: 0.07, plastic: 0.03 }, MATS);
-  check(p1.seq.length === 12 && p1.seq.filter((m) => m === 'wood').length >= 9 && p1.seq.includes('steel') && p1.seq.includes('plastic'), 'twelve chunks a repeat, dealt by share, a trace still shows (' + p1.seq.join(',') + ')');
-  check(p1.seq.indexOf('steel') > 0 && p1.seq.indexOf('steel') < 11, 'the minor materials sit among the wood, not at one end');
-  check(L.beltPattern({}, MATS).period > 0 && L.beltPattern({ wood: 1 }, MATS).seq.every((m) => m === 'wood'), 'an empty or single-material belt still draws');
+  const line = Sim.buildLine(LINES.car), ev = Sim.evalLine(line, FEEDS.elv.comp);
+  const segs = line.map((nd) => L.beltSeg(ev, nd.uid, 30));
+  segs.forEach((s, k) => {
+    let sum = 0; for (const m in s.comp) sum += s.comp[m];
+    check(s.inT > 0 && near(sum, 1, 0.1) && s.outT <= s.inT + 1e-9, 'station ' + (k + 1) + ': tonnes in, a mix that adds up, no more out than in');
+    check(Object.keys(s.drop).every((m) => s.drop[m] >= 0 && s.drop[m] <= 1), 'station ' + (k + 1) + ': each material leaves at a share between 0 and 1');
+  });
+  const mag = line.findIndex((nd) => nd.m === 'magnet');
+  if (mag >= 0) check(segs[mag].drop.steel > 0.5 && (segs[mag].drop.plastic || 0) < 0.5, 'the magnet takes most of the steel off the belt and leaves the plastic on it');
+  const last = segs[segs.length - 1];
+  check(near(last.outT, 0, 1e-6) || last.outT < last.inT, 'the belt ends at the last station: what reaches it goes into bins');
+  check(near(L.beltSeg(ev, 99999, 30).inT, 0) && L.beltSeg(null, 1, 30) === null, 'a station with no material, or no evaluation, has an empty belt');
+  const seg = { inT: 30, outT: 20, comp: { wood: 0.7, steel: 0.3 }, drop: { steel: 1, wood: 0 } };
+  const a = L.beltChips(seg, 200, 1, 5), b2 = L.beltChips(seg, 200, 1, 5), thin = L.beltChips(seg, 200, 0.2, 5);
+  check(a.length > 20 && JSON.stringify(a) === JSON.stringify(b2), 'chips are seeded: a redraw deals the same chips');
+  check(thin.length < a.length, 'less material, fewer chips');
+  check(a.every((c) => c.off === (c.m === 'steel')), 'a chip lifts off exactly when its material goes into the station\'s bins');
+  check(a.some((c) => c.m === 'steel') && a.filter((c) => c.m === 'wood').length > a.filter((c) => c.m === 'steel').length, 'chips are dealt by share');
+  check(a.every((c) => c.u >= 0 && c.u <= 1 && c.lane >= 0 && c.lane < 1), 'chips sit on the belt');
+  check(L.beltChips(null, 200, 1, 5).length === 0 && L.beltChips({ inT: 0, comp: {}, drop: {} }, 200, 1, 5).length === 0, 'an empty belt has no chips');
+}
+
+// #398: end bins fill by tonnes
+{
+  check(L.binLevel(0, 30) === 0 && L.binLevel(-1, 30) === 0, 'an empty bucket is an empty bin');
+  check(L.binLevel(0.01, 30) === 0.06, 'a few kilos still show at the bottom of the bin');
+  check(near(L.binLevel(30, 30), 0.5) && L.binLevel(60, 30) === 1 && L.binLevel(500, 30) === 1, 'two batches fill the bin, more stays full');
+  check(near(L.binLevel(20, 5), 0.5), 'a small batch size still fills against 40 t');
+  check(L.binLevel(10, 30) < L.binLevel(20, 30), 'more tonnes, a fuller bin');
 }
 
 console.log('\n' + (n - fails) + '/' + n + ' checks passed');

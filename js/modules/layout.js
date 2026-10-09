@@ -143,22 +143,39 @@
   }
   /* a stream's mix as { mat: share } over its top n materials (#125: what the belt carries) */
   function shares(st, n) { const out = {}; if (!st || !(st.total > 0)) return out; topMats(st, n).forEach((m) => { out[m] = st.perMat[m].mass / st.total; }); return out; }
-  /* #125: the belt's pattern: twelve chunks a repeat, dealt to the materials by share (largest remainder; any material over 1%
-   * gets at least one) and spread along the belt so they mix, each chunk 5-7 px with a 3 px gap. Returns { stops, period }. */
-  function beltPattern(comp, materials) {
-    const mats = Object.keys(comp || {}).filter((m) => comp[m] > 0.01).sort((a, b) => comp[b] - comp[a]);
-    if (!mats.length) return { stops: '#5a6573 0px 6px, #0b1018 6px 9px', period: 9 };
-    const N = 12; let tot = 0; mats.forEach((m) => { tot += comp[m]; });
-    const want = mats.map((m) => ({ m, x: N * comp[m] / tot })), n = want.map((w) => Math.max(1, Math.floor(w.x)));
-    let left = N - n.reduce((a, b) => a + b, 0);
-    want.map((w, k) => ({ k, r: w.x - Math.floor(w.x) })).sort((a, b) => b.r - a.r).forEach((w) => { if (left > 0) { n[w.k]++; left--; } });
-    const seq = []; mats.forEach((m, i) => { for (let j = 0; j < n[i]; j++) seq.push({ m, at: (j + 0.5 + i * 0.13) / n[i] }); });   // each material's chunks evenly spaced along the repeat
-    seq.sort((a, b) => a.at - b.at); for (let q = 0; q < seq.length; q++) seq[q] = seq[q].m;
-    let x = 0; const parts = [];
-    seq.forEach((m, i) => { const w = 5 + (i * 7) % 3; const c = materials[m] ? materials[m].color : '#5a6573'; parts.push(c + ' ' + x + 'px ' + (x + w) + 'px', '#0b1018 ' + (x + w) + 'px ' + (x + w + 3) + 'px'); x += w + 3; });
-    return { stops: parts.join(', '), period: x, seq };
+  /* #397: one station's stretch of the conveyor: what comes in (tonnes, mix) and the share of each material it takes off the
+   * belt into its own bins (its unconnected outputs); what is left rides on to the next station */
+  function beltSeg(ev, uid, tons) {
+    if (!ev || !ev.ports) return null;
+    const term = new Set(ev.terminals.map((t) => t.key)), inM = {}, outM = {};
+    let tin = 0, tout = 0;
+    for (const key in ev.ports) {
+      if (Number(key.slice(0, key.indexOf(':'))) !== uid) continue;
+      const st = CS.Sim.binStats(ev.ports[key].m), keep = !term.has(key);
+      for (const m in st.perMat) { const kg = st.perMat[m].mass; if (!(kg > 0)) continue; inM[m] = (inM[m] || 0) + kg; tin += kg; if (keep) { outM[m] = (outM[m] || 0) + kg; tout += kg; } }
+    }
+    if (!(tin > 0)) return { inT: 0, outT: 0, comp: {}, drop: {} };
+    const comp = {}, drop = {};
+    Object.keys(inM).sort((a, b) => inM[b] - inM[a]).slice(0, 8).forEach((m) => { if (inM[m] / tin >= 0.004) { comp[m] = inM[m] / tin; drop[m] = Math.max(0, Math.min(1, 1 - (outM[m] || 0) / inM[m])); } });
+    return { inT: tin / 1000 * tons, outT: tout / 1000 * tons, comp, drop };
   }
-  CS.Layout = { shares, beltPattern, heapPieces, SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
+  /* #397: the chips on one stretch of belt, dealt from the mix (seeded, so a redraw keeps them): u is the position along the
+   * stretch (0..1), lane the height on the belt, off whether the station takes it off. More tonnes, more chips. */
+  function beltChips(seg, W, load, seed) {
+    const out = []; if (!seg || !(seg.inT > 0)) return out;
+    const mats = Object.keys(seg.comp); if (!mats.length) return out;
+    let a = (seed >>> 0) || 1; const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    let tot = 0; mats.forEach((m) => { tot += seg.comp[m]; });
+    const N = Math.max(3, Math.round(W / 7 * Math.max(0.15, Math.min(1, load))));
+    for (let k = 0; k < N; k++) {
+      let u = rnd() * tot, m = mats[mats.length - 1]; for (const x of mats) { u -= seg.comp[x]; if (u <= 0) { m = x; break; } }
+      out.push({ u: (k + 0.5 + 0.7 * (rnd() - 0.5)) / N, m, lane: rnd(), off: rnd() < (seg.drop[m] || 0), r: rnd() });
+    }
+    return out;
+  }
+  /* #398: how full an end bucket's bin looks: linear in tonnes against two batches (at least 40 t), never quite empty */
+  function binLevel(t, batch) { if (!(t > 0)) return 0; return Math.max(0.06, Math.min(1, t / Math.max(40, 2 * (batch || 0)))); }
+  CS.Layout = { beltSeg, beltChips, binLevel, shares, heapPieces, SORTED, splitBuckets, rerunPlan, defaultEntry, stationFlow, topMats, stepSetting, fmtSetting, SETTING_HELP, settingHelp, binSnapshot, biggestChange };
   if (typeof document === 'undefined') return;
   const { MACHINES, MATERIALS, MAT_ORDER, FEEDS, Sim } = CS;
 
@@ -492,6 +509,7 @@
     if (document.body.classList.contains('reduce-motion') === true) dt = 0;   // #258: still frames, no falling shred or moving cams
     if (!stationOpen && !openDrawer && !document.hidden && app && app.S) {
       if (app.S.run) drawHeap(dt);
+      if (app.S.run || convDirty || sizeCheck) drawConvs(dt);   // #397
       minis.forEach((m, uid) => {
         if (!m.cv.isConnected) return;
         if (sizeCheck) { const r = m.cv.getBoundingClientRect(); if (Math.abs(r.width - m.cam.W) > 1 || Math.abs(r.height - m.cam.H) > 1) m.cam.resize(); }
@@ -801,15 +819,55 @@
     if (tonsRow) tonsRow.classList.toggle('hidden', !S.feedPrepaid);
   }
 
-  /* ---------------- conveyors between the columns (#66) ---------------- */
-  /* #125: a conveyor carrying the mix: chunks in each material's share, thicker for more tonnes, moving at the head rate */
-  function belt(tons, comp, label) {
-    if (!(tons > 0)) return '';
-    if (Array.isArray(comp)) { const c = {}; comp.forEach((m) => { c[m] = 1 / comp.length; }); comp = c; }   // older callers pass material ids
-    const S = app.S, frac = Math.min(1, tons / Math.max(S.tons, 1e-9)), h = Math.round(6 + 12 * Math.sqrt(frac));
-    const pat = beltPattern(comp, MATERIALS), R = S.run ? S.run.rate : (S.mr ? S.mr.R : 0);
-    const dur = R > 0 ? Math.max(0.4, Math.min(3, 30 / R)) : 1.2;   // a faster line moves its belts faster
-    return '<div class="belt" style="height:' + h + 'px;--bp:' + pat.period + 'px;--bd:' + dur.toFixed(2) + 's"><div class="belt-load" style="background:repeating-linear-gradient(90deg,' + pat.stops + ');background-size:' + pat.period + 'px 100%"></div><span class="belt-l">' + esc(label) + '</span></div>';
+  /* #397: one conveyor under the stations, drawn per column so it also works when the columns stack on a phone. Chips ride
+   * in each material's colour; at a station the ones it takes out lift off into its bins, so the belt is cleaner after
+   * each sorter; a grinder turns big chunks into small shred. It moves while a batch runs and holds still otherwise. */
+  let convs = [], convT = 0, convDirty = false, convFont = null;
+  function addConv(col, seg, kind, seed) {
+    const cv = el('canvas', 'conv'); cv.setAttribute('aria-hidden', 'true'); col.appendChild(cv);
+    convs = convs.filter((c) => c.cv.isConnected);
+    convs.push({ cv, seg, kind, seed: 977 + seed * 131, chips: null, W: 0 });
+    convDirty = true; setTimeout(() => drawConvs(0), 0);
+  }
+  function drawConvs(dt) {
+    convDirty = false;
+    const S = app.S, R = S.run ? S.run.rate : 0;
+    if (S.run && dt > 0) convT += dt * Math.max(18, Math.min(60, 12 + 2 * R));   // px a second: a faster line runs its belt faster
+    convs = convs.filter((c) => c.cv.isConnected);
+    convs.forEach((c) => drawConv(c, S));
+  }
+  function drawConv(c, S) {
+    const cv = c.cv, r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.max(20, Math.round(r.width)), H = Math.max(20, Math.round(r.height)), bw = Math.round(W * dpr), bh = Math.round(H * dpr);
+    if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
+    if (!c.chips || c.W !== W) { c.W = W; c.chips = beltChips(c.seg, W, c.seg ? Math.sqrt(c.seg.inT / Math.max(S.tons, 1e-9)) : 0, c.seed); }
+    const ctx = cv.getContext && cv.getContext('2d'); if (!ctx || !ctx.fillRect) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const y0 = H - 22, bH = 16, xc = W / 2;
+    ctx.fillStyle = '#1a222c'; ctx.fillRect(0, y0, W, bH);
+    ctx.fillStyle = '#3a4756'; ctx.fillRect(0, y0 - 1, W, 1); ctx.fillRect(0, y0 + bH, W, 1);
+    const sh = convT % 14; ctx.fillStyle = '#2c3845';
+    for (let x = -sh + 14; x < W; x += 14) { ctx.beginPath(); ctx.arc(x, y0 + bH + 4, 2.5, 0, Math.PI * 2); ctx.fill(); }   // the rollers under it turn with the belt
+    const ph = convT;
+    c.chips.forEach((p) => {
+      const x = ((p.u * W + ph) % W + W) % W, col = MATERIALS[p.m] ? MATERIALS[p.m].color : '#8a97a6';
+      let y = y0 + 3 + p.lane * (bH - 9), s = 4.5 + p.r * 2, al = 1;
+      if (c.kind === 'comminution' && x < xc) s = 8 + p.r * 3;   // whole pieces go in, shred comes out
+      if (p.off && x > xc) { const q = (x - xc) / 40; if (q >= 1) return; y -= q * (y0 - 2); al = 1 - q; }   // lifted off into the station's bins
+      ctx.globalAlpha = al; ctx.fillStyle = col;
+      ctx.fillRect(Math.round(x - s / 2), Math.round(y), Math.round(s), Math.max(3, Math.round(s * 0.7)));
+    });
+    ctx.globalAlpha = 1;
+    if (c.kind !== 'bin' && c.seg && c.seg.inT > 0) {   // where the machine stands over the belt
+      ctx.fillStyle = 'rgba(42,58,75,.9)'; ctx.fillRect(xc - 9, y0 - 7, 18, bH + 7);
+      ctx.fillStyle = '#5a6b7c'; ctx.fillRect(xc - 9, y0 - 7, 18, 2);
+    }
+    if (c.seg && c.seg.outT > 0.05) {
+      if (convFont == null) convFont = '11px ' + ((typeof getComputedStyle === 'function' && getComputedStyle(document.body).getPropertyValue('--mono').trim()) || 'monospace');
+      const t = fmtW(c.seg.outT); ctx.font = convFont;
+      const tw = ctx.measureText ? ctx.measureText(t).width : t.length * 7; ctx.fillStyle = 'rgba(11,16,24,.85)'; ctx.fillRect(W - tw - 12, 1, tw + 8, 14);
+      ctx.fillStyle = '#c9d4de'; ctx.textBaseline = 'middle'; ctx.fillText(t, W - tw - 8, 8);
+    }
   }
 
   /* ---------------- sections ---------------- */
@@ -851,9 +909,8 @@
         nx.innerHTML = '<span class="fnext-a">&#10140;</span><span>' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
         col.appendChild(nx);
       });
-      const out = f.next.reduce((a, x) => a + x.tons, 0);
-      if (out > 0) col.insertAdjacentHTML('beforeend', belt(out, f.next[0].comp || f.next[0].ids, fmtW(out)));
     }
+    addConv(col, idleNow ? null : beltSeg(S.ev, n.uid, S.tons), M.kind, n.uid);   // #397
     if (idleNow) col.classList.add('idle');
     const open = () => showStation(n.uid);
     col.addEventListener('click', open);
@@ -1043,17 +1100,7 @@
     b.addEventListener('click', () => withMoney(b, () => { R.refineMisc(); renderFlow(true); }));
     return b;
   }
-  /* a held lot drawn as what it is stored in: bale, big bag, bin, drum or bar, sized by tonnes (#68) */
-  /* #124: a bucket looks like what a yard ships it as: steel, non-ferrous and plastic in strapped bales, wood as a chip pile,
-   * glass as cullet, stone as a pile, rubber as crumb, refined metal as ingots and bars, liquids in drums, fines in sacks */
-  const FORM = { wood: 'chips', glass: 'cullet', granite: 'pile', limestone: 'pile', rubber: 'crumb', gold: 'bars', silver: 'bars', gel: 'drum', water: 'drum' };
-  function formOf(m, unitName) {
-    if (/bar|ingot/.test(unitName)) return 'bars';   // refined metal
-    if (FORM[m]) return FORM[m];                       // bulk materials keep their own look whatever they are bagged in
-    if (/drum/.test(unitName)) return 'drum';
-    if (/bag|sack/.test(unitName)) return 'bag';      // fines
-    return 'bale';
-  }
+  /* the MISC heap and the refinery are drawn as what a yard ships them as (#68, #124) */
   function shade(hex, k) {   // darker (k < 1) or lighter (k > 1) of a #rrggbb colour
     const n = parseInt(hex.slice(1), 16), c = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
     return 'rgb(' + c(n >> 16) + ',' + c((n >> 8) & 255) + ',' + c(n & 255) + ')';
@@ -1077,11 +1124,6 @@
     }
     return '';
   }
-  function unitPic(m, t, p80) {
-    const I = CS.Inventory, U = I && I.unitFor ? I.unitFor(m, p80) : { name: 'bale' }, D = MATERIALS[m];
-    const form = formOf(m, U.name || ''), sz = Math.round(26 + 18 * Math.min(1, Math.sqrt(t / 40)));
-    return '<span class="unit svg" style="--us:' + sz + 'px" title="' + esc(U.name) + 's of ' + esc(D.name.toLowerCase()) + '"><svg viewBox="0 0 40 40" aria-hidden="true">' + unitSvg(form, D.color) + '</svg></span>';
-  }
   /* money that flies from a button to the bank (#68) */
   function flyMoney(a, amount) {   // a: the button's rectangle, taken before the click redrew it
     const bank = document.getElementById('money'); if (!a || !bank || !(Math.abs(amount) >= 1)) return;
@@ -1093,6 +1135,24 @@
     setTimeout(() => { f.remove(); bank.classList.remove('bump'); void bank.offsetWidth; bank.classList.add('bump'); }, 750);
     if (CS.Audio && CS.Audio.cash) CS.Audio.cash();
   }
+  /* #398: an end bucket as a bin filling in its material's colour: the level by tonnes, the impure share as a grey layer on top,
+   * and a purity band with the 90% sell line; a bin that is pure enough lights up (and flashes the first time it gets there).
+   * The level grows from where it was drawn last, so a batch landing visibly fills it. */
+  const binWas = {}, readyWas = {};
+  function fillBin(m, t, purity) {
+    const D = MATERIALS[m], lv = binLevel(t, app.S.tons), p = Math.max(0, Math.min(1, purity || 0)), ready = p >= 0.9;
+    const from = binWas[m] != null ? binWas[m] : 0, lit = ready && readyWas[m] === false;
+    binWas[m] = lv; readyWas[m] = ready;
+    return '<span class="vbin' + (ready ? ' ready' : '') + (lit ? ' lit' : '') + '" title="' + esc(fmtW(t) + ' of ' + D.name.toLowerCase() + ', ' + Math.round(p * 100) + '% pure' + (ready ? ': pure enough to sell' : ': under 90%, sells for less')) + '">' +
+      '<span class="vbin-fill" data-lv="' + (lv * 100).toFixed(1) + '" style="height:' + (from * 100).toFixed(1) + '%;--c:' + D.color + '"><i style="height:' + ((1 - p) * 100).toFixed(1) + '%"></i></span></span>';
+  }
+  function pband(purity) {
+    const p = Math.max(0, Math.min(1, purity || 0));
+    return '<span class="pband' + (p >= 0.9 ? ' ok' : '') + '" title="Purity ' + Math.round(p * 100) + '%; the line marks 90%, pure enough to sell"><i style="width:' + (p * 100).toFixed(1) + '%"></i><b></b></span>';
+  }
+  function growBins(box) {   // after the rows are in the page: run each level up to its new height
+    requestAnimationFrame(() => requestAnimationFrame(() => box.querySelectorAll('.vbin-fill[data-lv]').forEach((f) => { f.style.height = f.dataset.lv + '%'; })));
+  }
   function withMoney(btn, act) { const m0 = app.S.money, rect = btn.getBoundingClientRect(); act(); flyMoney(rect, app.S.money - m0); }
   function bucketsCol() {
     const col = el('div', 'fcol buckets'), b = buckets(), Inv = CS.Inventory;
@@ -1100,9 +1160,9 @@
     const list = el('div', 'bk-list');
     if (!b.clean.length && !(b.misc.t > 0)) list.appendChild(el('div', 'small', 'Run a batch: what comes out lands here, ready to sell or run again.'));
     b.clean.forEach((x) => {
-      const D = MATERIALS[x.m], row = el('div', 'bk shelf'), e = (CS.Inventory.stock() || {})[x.m] || {};
+      const D = MATERIALS[x.m], row = el('div', 'bk shelf');
       const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
-      row.innerHTML = unitPic(x.m, x.t, e.p80) + '<span class="bk-t"><b>' + esc(D.name) + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span></span>';
+      row.innerHTML = fillBin(x.m, x.t, x.purity) + '<span class="bk-t"><b>' + esc(D.name) + (x.purity >= 0.9 ? ' <span class="bk-ready">' + app.fmtMoney(pay) + '</span>' : '') + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span>' + pband(x.purity) + '</span>';   // #398
       const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay) + (loan > 0 ? ' (25% repays the ' + app.fmtMoney(loan) + ' yard advance)' : ''); sell.addEventListener('click', () => withMoney(sell, () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); }));
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; rerunButton(re, [x.m], 'stock', 'Load this bucket as the next batch\'s feed'); re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re);
@@ -1114,7 +1174,7 @@
     if (b.misc.t > 0) {
       const mats = Object.keys(b.misc.comp).sort((p, q) => b.misc.comp[q] - b.misc.comp[p]);
       const row = el('div', 'bk misc');
-      row.innerHTML = '<span class="unit svg" style="--us:' + Math.round(26 + 18 * Math.min(1, Math.sqrt(b.misc.t / 40))) + 'px" title="a skip of mixed material"><svg viewBox="0 0 40 40" aria-hidden="true">' + unitSvg('skip') + '</svg></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
+      row.innerHTML = '<span class="unit svg mischeap" style="--us:' + Math.round(26 + 18 * Math.min(1, Math.sqrt(b.misc.t / 40))) + 'px" title="a heap of mixed material"><svg viewBox="0 0 40 40" aria-hidden="true">' + unitSvg('pile', '#7d8793') + '</svg></span><span class="bk-t"><b>MISC</b><span class="small">' + fmtW(b.misc.t) + ' not separated yet: ' + esc(mats.slice(0, 3).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(100 * b.misc.comp[m] / b.misc.t) + '%').join(', ')) + '</span></span>';
       const re = el('button', 'buy', 'RE-RUN'); re.type = 'button'; rerunButton(re, mats, 'misc', 'Send the mixed material back through the plant'); re.addEventListener('click', () => rerun(mats, 'MISC', 'misc'));
       row.appendChild(re);
       const rf = refineMiscButton(); if (rf) { row.classList.add('rf'); row.appendChild(rf); }
@@ -1128,7 +1188,7 @@
       }
       list.appendChild(row);
     }
-    col.appendChild(list);
+    col.appendChild(list); growBins(list);
     // #129: the refinery, once owned, stands at the end of the line: a furnace glowing, pouring ingots when something is refined
     const RF = CS.Refinery && CS.Refinery.live, lvl = RF ? RF.level() : 0;
     if (lvl >= 1) {
@@ -1176,7 +1236,8 @@
       '<div class="fn-s">' + (st && st.total > 0 ? 'P80 ' + fmtSz(st.p80) + ' · everything the grinder breaks falls in here' : 'Load a lot: the grinder fills it') + '</div>' +
       '<div class="bin-list">' + list + '</div>' +
       '<div class="fnext"><span class="fnext-a">&#10140;</span><span>the sorters take it from here</span></div>' +
-      (st && st.total > 0 ? belt(tons, shares(st, 6), fmtW(tons)) : '');
+      '';
+    addConv(col, st && st.total > 0 ? { inT: tons, outT: tons, comp: shares(st, 8), drop: {} } : null, 'bin', 0);   // #397
     // #123: the heap itself
     const cv = col.querySelector('canvas.heap');
     if (cv) { const comp = {}; if (st && st.total > 0) topMats(st, 10).forEach((m) => { comp[m] = st.perMat[m].mass / st.total; }); heap = { cv, comp, level: !(st && st.total > 0) ? 0 : runProg >= 0 ? 0.55 + 0.25 * Math.sin(runProg * Math.PI) : 0.85, falls: [] }; setTimeout(() => drawHeap(0), 0); }
@@ -1232,7 +1293,13 @@
     offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
     const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings, n.src]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0, CS.Round && CS.Round.live && CS.Round.live.miscAllowed ? CS.Round.live.miscAllowed() : 0]);   // miscAllowed: the MISC RE-RUN button (#313); #332: n.src, so a rewire (Input select, REWIRE) redraws the process line
-    if (!force && sig === lastSig) { if (roundKey() !== procRound) renderProcess(); return; } lastSig = sig;   // #390: a new Rivals round redraws the process line
+    if (!force && sig === lastSig) {
+      if (roundKey() !== procRound) renderProcess();   // #390: a new Rivals round redraws the process line
+      const cb = idleNow && $('#flow-cta button');   // #399: the note's step changes without a redraw (a lot ends, its result card closes)
+      if (cb) { const l = nextStep().label; if (cb.textContent !== l) cb.textContent = l; }
+      return;
+    }
+    lastSig = sig;
     const F = FEEDS[S.feedPreset], cost = app.feedCostPerT ? app.feedCostPerT() : 0, ff = $('#flow-feed');
     const src = feedSource(), name = src ? src.name : F ? F.name : 'Custom mix';
     if (!src && !S.feedPrepaid && !S.run) {   // #57: nothing is bought by the tonne

@@ -23,8 +23,10 @@
       btn.disabled = !run && (!!app.S.run || !lotNow());
       btn.title = run ? 'Stop after this batch... or press STOP to stop now' : lotNow() ? 'Run batch after batch until this lot is used up' : 'Load a lot from the auction first';
     }
+    /* #391: the lot still has tonnes for another batch; between its last batch and the LOT DONE card it has none, and a STOP then is not 'stopped by you' */
+    const left = () => !!run && lotNow() === run.lot && !!app.S.feedPrepaid, stopWhy = () => left() ? 'stopped by you' : 'the lot is used up';
     function go() {
-      if (run) { finish('stopped by you'); return; }
+      if (run) { finish(app.S.run ? 'stopped by you' : stopWhy()); return; }
       const lot = lotNow(); if (!lot || app.S.run) return;
       const t0 = totals();
       const P = CS.Auction.live.pending();
@@ -43,15 +45,16 @@
     function finish(why) {
       const r = run; run = null; label(); if (!r) return;
       const t1 = totals(), gain = r.net - r.paid - r.rent;   // #303: yard rent is part of what the lot cost
-      const body = '<div class="card lotcard"><h2>LOT #' + r.lot + ' DONE<span>' + r.batches + ' batch' + (r.batches === 1 ? '' : 'es') + ' · ' + app.fmtNum(r.t, 1) + ' t</span></h2>' +
+      const fT = (t) => typeof app.fmtT === 'function' ? app.fmtT(t) : app.fmtNum(t, 1) + ' t', rivals = app.S && app.S.mode === 'rivals';   // #391: '200 kg', not '0.2 t', as NEXT STEP prints it; Rivals has no lots to buy
+      const body = '<div class="card lotcard"><h2>LOT #' + r.lot + ' DONE<span>' + r.batches + ' batch' + (r.batches === 1 ? '' : 'es') + ' · ' + fT(r.t) + '</span></h2>' +
         '<div class="net ' + (gain >= 0 ? 'ok' : 'bad') + '"><small>THE WHOLE LOT · AFTER WHAT IT COST</small>' + (gain >= 0 ? '+' : '') + app.fmtMoney(gain) + '</div>' +
         '<div class="small">' + app.esc(why) + '</div>' +
-        '<div class="rows"><div>Products made, less power and wear</div><b>' + app.fmtMoney(r.net) + '</b><div>Lot price</div><b>' + app.fmtMoney(r.paid) + '</b>' + (r.rent > 0 ? '<div>Yard rent</div><b>' + app.fmtMoney(r.rent) + '</b>' : '') + '<div>Sorted stock added</div><b>' + app.fmtNum(Math.max(0, t1.stock - r.stock0), 1) + ' t</b><div>To MISC</div><b>' + app.fmtNum(Math.max(0, t1.misc - r.misc0), 1) + ' t</b><div>Power</div><b>' + app.fmtNum(r.kwh, 0) + ' kWh</b><div>Bank</div><b>' + app.fmtMoney(r.money0) + ' &#8594; ' + app.fmtMoney(app.S.money) + '</b></div>' +
-        '<div class="tip small">Click to dismiss. Sell or refine your buckets, then buy the next lot.</div></div>';
+        '<div class="rows"><div>Products made, less power and wear</div><b>' + app.fmtMoney(r.net) + '</b><div>Lot price</div><b>' + app.fmtMoney(r.paid) + '</b>' + (r.rent > 0 ? '<div>Yard rent</div><b>' + app.fmtMoney(r.rent) + '</b>' : '') + '<div>Sorted stock added</div><b>' + fT(Math.max(0, t1.stock - r.stock0)) + '</b><div>To MISC</div><b>' + fT(Math.max(0, t1.misc - r.misc0)) + '</b><div>Power</div><b>' + app.fmtNum(r.kwh, 0) + ' kWh</b><div>Bank</div><b>' + app.fmtMoney(r.money0) + ' &#8594; ' + app.fmtMoney(app.S.money) + '</b></div>' +
+        '<div class="tip small">Click to dismiss. Sell or refine your buckets, then ' + (rivals ? 'bid for the next bin in the auction round.' : 'buy the next lot.') + '</div></div>';
       const sc = document.getElementById('scorecard');
       if (sc) { sc.innerHTML = body; sc.classList.remove('hidden'); }
       if (why === 'the lot is used up' && CS.Milestones && CS.Milestones.live) CS.Milestones.live.lotRun();
-      app.log('Lot #' + r.lot + ': ' + r.batches + ' batch' + (r.batches === 1 ? '' : 'es') + ', ' + app.fmtNum(r.t, 1) + ' t, ' + (r.net - r.paid >= 0 ? '+' : '') + app.fmtMoney(r.net - r.paid) + ' after the lot price (' + why + ').', r.net - r.paid >= 0 ? 'ok' : 'warn');
+      app.log('Lot #' + r.lot + ': ' + r.batches + ' batch' + (r.batches === 1 ? '' : 'es') + ', ' + fT(r.t) + ', ' + (r.net - r.paid >= 0 ? '+' : '') + app.fmtMoney(r.net - r.paid) + ' after the lot price (' + why + ').', r.net - r.paid >= 0 ? 'ok' : 'warn');
     }
     app.on('batchComplete', (p) => {
       if (!run || !p || !p.r) return;
@@ -83,7 +86,7 @@
       ref.parentNode.insertBefore(btn, ref.nextSibling);
       // RUN starts the whole lot when that is the choice; while anything runs the same button is STOP (app.startRun stops)
       ref.addEventListener('click', (e) => {
-        if (run && !app.S.run) { e.stopImmediatePropagation(); finish('stopped by you'); return; }   // between two of the lot's batches: STOP means stop
+        if (run && !app.S.run) { e.stopImmediatePropagation(); finish(stopWhy()); return; }   // between two of the lot's batches: STOP means stop
         if (run || app.S.run || !lotChosen()) return;
         e.stopImmediatePropagation(); go();
       }, true);
@@ -106,7 +109,7 @@
     app.on('tick', () => { if (spd && spd.textContent !== (app.S.speed || 1) + '×') spd.textContent = (app.S.speed || 1) + '×'; });   // the 1 2 3 keys
     app.on('newgame', () => { run = null; label(); });
     app.on('modechange', () => { run = null; label(); });
-    CS.Autorun = { live: { active: () => !!run, go, finish } };
+    CS.Autorun = { live: { active: () => !!run, go, finish, left, stopWhy } };
   }
   if (CS.app) start();
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

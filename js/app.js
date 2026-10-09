@@ -153,7 +153,7 @@
     S.plant[key] = lvl + 1; applyPlant(); Audio.ui('ok');
     log(U.name + ' level ' + (lvl + 1) + ': now ' + fmtPlant(key) + '.', 'ok'); checkRank(); return true;
   }
-  function fmtPlantVal(key, v) { const U = PLANT_UPGRADES[key]; return (key === 'market' ? v.toFixed(2) : key === 'logistics' ? String(v) : String(v)) + ' ' + U.unit; }
+  function fmtPlantVal(key, v) { const U = PLANT_UPGRADES[key]; return (key === 'market' ? v.toFixed(2) : numFmt(Number.isInteger(v) ? 0 : 1).format(v)) + ' ' + U.unit; }   // #391: '10,000 t', '4,000 m²'
   function fmtPlant(key) { return fmtPlantVal(key, plantValue(key)); }
   let lastRankIdx = null;
   function checkRank() {

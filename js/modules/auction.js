@@ -264,7 +264,8 @@
       sample: (L, perT) => sample(L, perT),
       /* deal tier k a fresh lot of one feed (the guided first lot puts car hulks in the $1k tier, #79) */
       dealTier: (k, feed) => { if (!TIERS[k] || !FEEDS[feed]) return null; st.board = st.board.filter((l) => l.tier !== k); let L = null; for (let i = 0; i < 12 && (!L || L.cls === 'terrible'); i++) L = genLot(rng, Object.assign({}, genOpts(), { clockH: clockH(), id: st.nextId++, budget: TIERS[k], tier: k, feeds: [feed] }));   // never a trap for a beginner
-        st.board.push(L); st.board.sort((a, b) => a.tier - b.tier); render(); return L; }, rep: (name) => repText(st.sellers[name]), sellers: () => st.sellers };
+        st.board.push(L); st.board.sort((a, b) => a.tier - b.tier); render(); return L; }, rep: (name) => repText(st.sellers[name]), sellers: () => st.sellers,
+      settle: () => st.settle };   // #385: the lot tonnes on the line in a batch (paid for, not yet stock)
     function priceOf(L) { const q = { lot: L, perT: L.ask }; app.emit('lotPrice', q); return q.perT > 0 ? Math.ceil(q.perT) : L.ask; }
     function closeLot(L) { const q = { lot: L, award: 0 }; app.emit('lotClose', q); if (q.award > 0) take(L, q.award, 'Won at auction:'); }
 

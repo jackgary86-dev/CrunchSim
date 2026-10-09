@@ -62,7 +62,8 @@
     board: { min: 2, max: 4, arriveH: 12 },   // two to four open jobs; a new one about every 12 sim hours (Poisson)
     maxActive: 2,        // two jobs at once: more and the yard is a toll processor, not a plant
     minTons: 0.5,
-    lineMargin: 0.85     // #360: a dealt lot runs leaner than its listing (sellers pad, the mix varies), so a job sized from the line asks 85% of what it makes
+    lineMargin: 0.85,    // #360: a dealt lot runs leaner than its listing (sellers pad, the mix varies), so a job sized from the line asks 85% of what it makes
+    purityMargin: 0.04   // #395: and its bins come out up to three or four points less pure (a lot scatters about its listing), so a job asks four points under the line's purest bin and counts only the bins that clear it by as much
   };
   const CLIENTS = ['Harbour Secondary Smelter', 'Northgate Brass Foundry', 'Two Rivers Die-casting', 'Westfield Rolling Mill', 'Kestrel Alloys', 'Lakeside Wire & Cable', 'Bayside Ingot Works', 'Delta Refiners'];
 
@@ -79,17 +80,19 @@
    * the tier's tonnage (CS.Auction). maxBudget leaves out the tiers the yard cannot pay for yet, except the first one up that deals a
    * job metal (a yard with no metal in reach is offered jobs from the next lots it can buy). null without the auction. */
   function lotSizes(open, maxBudget) {
-    // #376: a lot is no bigger than the bank can buy at the fair price, so a job asks for what can actually be bought
+    // #376: a lot is no bigger than the yard can buy at the fair price, so a job asks for what can actually be bought.
+    // #385: maxBudget is what the yard can spend (bank, stock and the loaded lot), floored at one tier-0 lot: a bank emptied by the lot it runs is not a 1 t yard
     const A = CS.Auction; if (!A || !A.TIERS || !A.TIER_FEEDS) return null;
-    const lotT = {}; let any = false, metal = false;
+    const lotT = {}, mb = maxBudget != null ? Math.max(A.TIERS[0], +maxBudget || 0) : null; let any = false, metal = false;
     for (let k = 0; k < Math.min(open || A.TIERS.length, A.TIERS.length); k++) {
-      if (k > 0 && maxBudget != null && A.TIERS[k] > maxBudget && metal) break;
-      (A.TIER_FEEDS[k] || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const fa = A.worthOf(F.comp) * A.fairRatio(id); if (!(fa > 0.5)) return; if (JOB.mats.some(function (m) { return (F.comp[m] || 0) >= JOB.minFrac; })) metal = true; const t = Math.min(A.TIER_MAX_T[k] || Infinity, A.TIERS[k] / fa * 1.1, maxBudget != null ? Math.max(1, maxBudget / fa) : Infinity); if (!(t > (lotT[id] || 0))) return; lotT[id] = t; any = true; });
+      if (k > 0 && mb != null && A.TIERS[k] > mb && metal) break;
+      (A.TIER_FEEDS[k] || []).forEach(function (id) { const F = FEEDS[id]; if (!F) return; const fa = A.worthOf(F.comp) * A.fairRatio(id); if (!(fa > 0.5)) return; if (JOB.mats.some(function (m) { return (F.comp[m] || 0) >= JOB.minFrac; })) metal = true; const t = Math.min(A.TIER_MAX_T[k] || Infinity, A.TIERS[k] / fa * 1.1, mb != null ? mb / fa : Infinity); if (!(t > (lotT[id] || 0))) return; lotT[id] = t; any = true; });
     }
     return any ? { feeds: Object.keys(lotT), lotT: lotT } : null;
   }
   /* #342: hpb, the plant hours a batch takes (its tonnes at the head rate, plus an hour to source and load), when longer than JOB.hoursPerBatch */
-  function windowFor(batches, hpb) { return Math.ceil(batches * Math.max(JOB.hoursPerBatch, hpb > 0 ? hpb : 0) * 2 + JOB.windowSlack); }
+  /* #395: aheadH, the plant hours of work already in the yard (lots and the MISC pile) that run before the job's lot gets its turn */
+  function windowFor(batches, hpb, aheadH) { return Math.ceil((batches * Math.max(JOB.hoursPerBatch, hpb > 0 ? hpb : 0) + (aheadH > 0 ? aheadH : 0)) * 2 + JOB.windowSlack); }
   /* #360: the lowest purity a job for mat asks (a bin under PURE_MIN is MISC and never ships) */
   function purityFloor(mat) { const pr = JOB.purity[mat] || [0.9, 0.95]; return Math.round(Math.max(PURE_MIN, pr[0]) * 100) / 100; }
   /* #360: { mat: { feed: [{ s: purity, f: t per head-tonne }] } }, the clean bins carrying each job metal that the line makes from a lot of
@@ -119,26 +122,28 @@
   function genJob(rng, opts) {
     opts = opts || {};
     const feeds = opts.feeds && opts.feeds.length ? opts.feeds : ['elv'], reach = opts.reach || null;
-    const lim = opts.limit > 0 ? opts.limit : 30, lotOf = function (id) { return opts.lotT && opts.lotT[id] > 0 ? Math.min(lim, opts.lotT[id]) : lim; };
-    const fromLine = function (m) { let c = { m: m, y: 0, t: 0, id: null }; feeds.forEach(function (id) { const b = reach[m] && reach[m][id], y = reachAt(b, purityFloor(m)) * lotOf(id); if (y > c.y) c = { m: m, y: y, t: lotOf(id), id: id }; }); return c; };
+    const lim = opts.limit > 0 ? opts.limit : 30, lotOf = function (id) { const t = opts.lotT && opts.lotT[id] > 0 ? Math.min(lim, opts.lotT[id]) : lim; return opts.capT && opts.capT[id] > 0 ? Math.min(t, opts.capT[id]) : t; };   // #395: never a batch bigger than the tonnes in reach
+    const fromLine = function (m) { let c = { m: m, y: 0, t: 0, id: null }; feeds.forEach(function (id) { const b = reach[m] && reach[m][id], y = reachAt(b, purityFloor(m) + JOB.purityMargin) * lotOf(id); if (y > c.y) c = { m: m, y: y, t: lotOf(id), id: id }; }); return c; };
     const cands = JOB.mats.map(function (m) { if (reach) return fromLine(m); const b = bestBatch(m, feeds, opts.limit, opts.lotT); return { m: m, y: b.y, t: b.t, id: b.id }; })
-      .filter(function (c) { return c.y > 0 && (!reach || c.y * JOB.batches[0][1] >= JOB.minTons); });   // #360: two batches make at least the smallest job
+      .filter(function (c) { const nb = opts.capT && c.id && opts.capT[c.id] > 0 && c.t > 0 ? Math.max(1, Math.min(JOB.batches[0][1], Math.floor(opts.capT[c.id] / c.t + 1e-9))) : JOB.batches[0][1]; return c.y > 0 && (!reach || c.y * nb * JOB.lineMargin >= JOB.minTons); });   // #360: two batches make at least the smallest job; #395: or the batches the lots in reach run
     if (!cands.length && reach) return null;
     const c = cands.length ? pick(rng, cands) : Object.assign({ m: 'aluminum' }, bestBatch('aluminum', ['elv'], opts.limit, opts.lotT));
-    const hpb = opts.rate > 0 && c.t > 0 ? c.t / opts.rate + 1 : 0;
+    const rate = opts.rateOf && opts.rateOf[c.id] > 0 ? opts.rateOf[c.id] : opts.rate, hpb = rate > 0 && c.t > 0 ? c.t / rate + 1 : 0;   // #395: rateOf { feed: t/h }, the line's head rate on that feed (a rich feed runs slower than the one loaded)
     const tier = Math.floor(rng() * (tierOf(opts.rep || 0) + 1));
-    const br = JOB.batches[tier], batches = Math.round(uni(rng, br[0], br[1]));
+    const br = JOB.batches[tier], capT = opts.capT && c.id && opts.capT[c.id] > 0 && c.t > 0 ? opts.capT[c.id] : 0;
+    const batches = capT ? Math.max(1, Math.min(Math.round(uni(rng, br[0], br[1])), Math.floor(capT / c.t + 1e-9))) : Math.round(uni(rng, br[0], br[1]));   // #395: capT { feed: t }, the tonnes of that feed the yard holds or can buy off the board now: a job asks no more batches than those lots run
     let tons = Math.max(JOB.minTons, Math.round(c.y * batches * 10) / 10);
     const pr = JOB.purity[c.m] || [0.9, 0.95];
     let purity = Math.round(Math.max(PURE_MIN, uni(rng, pr[0], pr[1])) * 100) / 100;   // a bin under PURE_MIN is MISC and never ships (#216), so no job asks for less
     if (reach && c.id) {   // #360: never above the line's purest bin, and the tonnes its bins of that purity make
-      const b = reach[c.m][c.id]; purity = Math.max(purityFloor(c.m), Math.min(purity, Math.floor((reachMax(b) + 1e-9) * 100) / 100));
-      tons = Math.max(JOB.minTons, Math.round(reachAt(b, purity) * c.t * batches * JOB.lineMargin * 10) / 10);
+      const b = reach[c.m][c.id], lo = purityFloor(c.m) + JOB.purityMargin, base = reachAt(b, lo); let top = lo; (b || []).forEach(function (q) { if (q.s > top && q.s + 1e-9 >= lo && q.f >= 0.25 * base) top = q.s; });   // #395: the purest bin that carries a real share of the metal, not a trace bin
+      purity = Math.max(purityFloor(c.m), Math.min(purity, Math.floor((top - JOB.purityMargin + 1e-9) * 100) / 100));
+      tons = Math.max(JOB.minTons, Math.round(reachAt(b, purity + JOB.purityMargin) * c.t * batches * JOB.lineMargin * 10) / 10);
     }
     const mult = Math.round(uni(rng, JOB.mult[0], JOB.mult[1]) * 100) / 100;
     const clockH = opts.clockH || 0;
-    return { id: opts.id || 0, mat: c.m, tier: tier, batches: batches, tons: tons, purity: purity, mult: mult, windowH: windowFor(batches, hpb),
-      offerExpiresH: clockH + Math.round(uni(rng, JOB.offerH[0], JOB.offerH[1])), client: pick(rng, CLIENTS), state: 'offered', t: 0, paid: 0, acceptedH: null, deadlineH: null };
+    return { id: opts.id || 0, mat: c.m, tier: tier, batches: batches, tons: tons, purity: purity, mult: mult, windowH: windowFor(batches, hpb, opts.aheadH),
+      offerExpiresH: clockH + Math.round(uni(rng, JOB.offerH[0], JOB.offerH[1])), client: pick(rng, CLIENTS), state: 'offered', t: 0, paid: 0, acceptedH: null, deadlineH: null, ...(capT ? { feed: c.id, feedT: Math.round(c.t * batches * 10) / 10 } : {}) };   // #395: the feed and tonnes of it the job was sized from, so the board withdraws it when those lots are gone or promised to another job
   }
   function validJob(j) { return !!(j && typeof j === 'object' && MATERIALS[j.mat] && isFinite(+j.tons) && +j.tons > 0 && isFinite(+j.purity) && isFinite(+j.mult) && isFinite(+j.windowH)); }
   function newJobs() { return { board: [], active: [], done: [], nextId: 1 }; }
@@ -231,7 +236,7 @@
     return { id: Math.floor(+j.id) || 0, mat: j.mat, tier: clamp(Math.floor(+j.tier) || 0, 0, TIERS.length - 1), batches: Math.max(1, Math.floor(+j.batches) || 1), tons: +j.tons,
       purity: clamp(+j.purity, 0, 1), mult: clamp(+j.mult, 1, JOB.mult[1]), windowH: +j.windowH, offerExpiresH: +j.offerExpiresH || 0, client: String(j.client || CLIENTS[0]),
       state: ['offered', 'active', 'done', 'failed', 'dropped'].indexOf(j.state) >= 0 ? j.state : 'offered', t: clamp(+j.t || 0, 0, +j.tons), paid: +j.paid || 0,
-      acceptedH: j.acceptedH != null && isFinite(+j.acceptedH) ? +j.acceptedH : null, deadlineH: j.deadlineH != null && isFinite(+j.deadlineH) ? +j.deadlineH : null };
+      acceptedH: j.acceptedH != null && isFinite(+j.acceptedH) ? +j.acceptedH : null, deadlineH: j.deadlineH != null && isFinite(+j.deadlineH) ? +j.deadlineH : null, ...(FEEDS[j.feed] && +j.feedT > 0 ? { feed: j.feed, feedT: +j.feedT } : {}) };
   }
   function serialize(st, rngState) {
     return { rep: st.rep, jobs: { board: st.jobs.board, active: st.jobs.active, done: st.jobs.done, nextId: st.jobs.nextId }, rngState: rngState == null ? st.rngState : rngState };
@@ -252,8 +257,8 @@
   function fmtH(h) {
     if (!isFinite(h)) return '--';
     const neg = h < 0; h = Math.abs(h);
-    const whole = Math.floor(h), min = Math.round((h - whole) * 60);
-    const s = whole >= 1 ? whole + ' h' + (min ? ' ' + String(min).padStart(2, '0') + ' min' : '') : min + ' min';
+    const tm = Math.round(h * 60), whole = Math.floor(tm / 60), min = tm - whole * 60;   // whole minutes first, so never '1 h 60 min'
+    const s = whole >= 1 ? String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' h' + (min ? ' ' + String(min).padStart(2, '0') + ' min' : '') : min + ' min';   // #391: '1,259 h', not '1259 h'
     return (neg ? '-' : '') + s;
   }
 
@@ -282,17 +287,52 @@
     const spot = function (mat) { return MATERIALS[mat].sell * (CS.Sim && CS.Sim.prices ? CS.Sim.prices.market : 1); };
     const feeds = function () { return Object.keys(FEEDS); };
     const limit = function () { return typeof API.plantValue === 'function' ? API.plantValue('logistics') : 30; };
-    /* #342: jobs are sized from the lots the auction deals at the tiers open to this yard (by rank) and within reach of its bank (lotSizes) */
+    /* #342: jobs are sized from the lots the auction deals at the tiers open to this yard (by rank) and within reach of its bank (lotSizes);
+     * #395: with the live auction, from the lots on its board the yard can pay for and the lots it holds (lotsInReach) */
     let optMemo = { key: null, v: null };   // net worth is read once per sim hour, batch, bank or limit change, not on every tick
+    const lotsKey = function () { const A = CS.Auction && CS.Auction.live; if (!A) return ''; return [A.pending()].concat(A.yard(), A.board()).map(function (L) { return L ? L.id + '/' + L.tons : ''; }).join(); };   // #395: a lot bought, dealt or run changes the jobs on offer
     const genOpts = function () {
-      const s = S(), key = Math.floor(clockH()) + ':' + (s ? s.batches + ':' + Math.round(Math.log(Math.max(1, s.money)) * 20) : '') + ':' + limit() + ':' + Math.round(headRate()) + ':' + st.rep + ':' + (s && s.line ? s.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src)).join() : ''); if (optMemo.key === key) return optMemo.v;   // #368: a changed line reaches other metals
+      const s = S(), key = Math.floor(clockH()) + ':' + (s ? s.batches + ':' + Math.round(Math.log(Math.max(1, s.money)) * 20) : '') + ':' + limit() + ':' + Math.round(headRate()) + ':' + st.rep + ':' + lotsKey() + ':' + st.jobs.active.map(function (j) { return j.id + '/' + Math.round(j.t * 10); }).join() + ':' + (s && s.line ? s.line.map((n) => n.m + n.uid + JSON.stringify(n.settings) + JSON.stringify(n.src)).join() : ''); if (optMemo.key === key) return optMemo.v;   // #368: a changed line reaches other metals
       optMemo = { key, v: genOptsNow() }; return optMemo.v;
     };
+    /* #385: what the yard can spend on a lot: the bank, its stock at the SELL quote and the lots it holds at cost, the batch on the line included
+     * (a lot just loaded leaves the bank near zero, and it comes back as stock) */
+    const spendable = function () {
+      const s = S(); if (!s) return null; let v = Math.max(0, s.money);
+      try { const I = CS.Inventory, sk = I && I.stock ? I.stock() : null; if (sk && typeof I.quote === 'function') for (const m in sk) v += Math.max(0, I.quote(m) || 0); } catch (e) { /* no inventory */ }
+      const A = CS.Auction && CS.Auction.live; if (A) { [A.pending()].concat(A.yard()).forEach(function (L) { if (L && L.tons > 0) v += L.ask * L.tons; }); const se = typeof A.settle === 'function' ? A.settle() : null; if (se && se.lot && se.tons > 0) v += se.lot.ask * se.tons; }
+      return v;
+    };
+    /* #395: the lots a job can be met from: those in the yard and those on the auction board the yard can pay for. capT { feed: t } is the
+     * tonnes of each feed they carry together, less what accepted jobs still need from it; anyT the same for every lot whatever its price
+     * (an offer is withdrawn only when its lots are gone, not when the bank dips). null without a live board. */
+    const lotsInReach = function (spend) {
+      const A = CS.Auction && CS.Auction.live; if (!A || typeof A.board !== 'function') return null;
+      const lotT = {}, capT = {}, anyT = {}, add = function (L, paid) { const id = L.base; anyT[id] = (anyT[id] || 0) + L.tons; if (!paid) return; lotT[id] = Math.max(lotT[id] || 0, L.tons); capT[id] = (capT[id] || 0) + L.tons; };
+      [A.pending()].concat(A.yard()).forEach(function (L) { if (L && L.tons > 0 && FEEDS[L.base]) add(L, true); });
+      const left = {}; A.board().map(function (L) { return { L: L, c: (typeof A.priceOf === 'function' ? A.priceOf(L) : L.ask) * L.tons }; }).sort(function (a, b) { return a.c - b.c; }).forEach(function (x) { const id = x.L.base, l = left[id] == null ? spend : left[id]; if (!(x.L.tons > 0) || !FEEDS[id]) return; const ok = x.c <= l + 1e-6; if (ok) left[id] = l - x.c; add(x.L, ok); });   // each feed's lots, cheapest first, as far as the money goes
+      st.jobs.active.forEach(function (j) { const need = j.feed ? j.feedT * Math.max(0, 1 - j.t / j.tons) : 0; if (need > 0) { if (capT[j.feed] > 0) capT[j.feed] = Math.max(0, capT[j.feed] - need); if (anyT[j.feed] > 0) anyT[j.feed] = Math.max(0, anyT[j.feed] - need); } });   // tonnes an accepted job still needs are promised: no second job is sized from the same lot
+      return { feeds: Object.keys(lotT).filter(function (id) { return capT[id] > 0; }), lotT: lotT, capT: capT, anyT: anyT };
+    };
+    /* #395: an offer whose lots are gone (sold, closed or promised to an accepted job) is withdrawn, so the board shows only jobs the yard can meet */
+    /* #395: tonnes already in the yard ahead of a new lot: the loaded lot, the yard queue, the batch on the line and the MISC pile */
+    function aheadT() {
+      let t = 0; const A = CS.Auction && CS.Auction.live; if (A) { [A.pending()].concat(A.yard()).forEach(function (L) { if (L && L.tons > 0) t += L.tons; }); const se = typeof A.settle === 'function' ? A.settle() : null; if (se && se.tons > 0) t += se.tons; }
+      try { const I = CS.Inventory; if (I && I.misc && I.miscTotal) t += I.miscTotal(I.misc()); } catch (e) { /* no inventory */ }
+      return t;
+    }
+    function pruneOffers(o) {
+      if (!o || !o.anyT) return false; const n = st.jobs.board.length;
+      st.jobs.board = st.jobs.board.filter(function (j) { return !j.feed || (o.anyT[j.feed] || 0) >= 0.9 * j.feedT; });
+      return st.jobs.board.length !== n;
+    }
     const genOptsNow = function () {
       let open = 0; try { open = CS.Auction.tiersOpen(API.rankOf(API.netWorth()).idx); } catch (e) { open = 0; }
-      const s = S(), L = lotSizes(open, s ? Math.max(0, s.money) : null);
-      const o = L ? { feeds: L.feeds, lotT: L.lotT, limit: limit(), rate: headRate(), rep: st.rep } : { feeds: feeds(), limit: limit(), rate: headRate(), rep: st.rep };
-      const r = reachNow(o.feeds); if (r) o.reach = r;
+      const spend = spendable(), live = lotsInReach(spend || 0), L = live || lotSizes(open, spend);
+      const o = L && L.feeds.length ? { feeds: L.feeds, lotT: L.lotT, limit: limit(), rate: headRate(), rep: st.rep } : { feeds: live ? [] : feeds(), limit: limit(), rate: headRate(), rep: st.rep };
+      if (live) { o.capT = live.capT; o.anyT = live.anyT; }
+      const r = reachNow(live ? feeds() : o.feeds); if (r) { o.reach = r; o.rateOf = reachMemo.rate; }   // #395: every feed, so the memo holds while the lots in reach come and go (genJob reads only o.feeds)
+      const ah = aheadT(), R = headRate(); o.aheadH = (R > 0 ? ah / R : 0) + JOB.hoursPerBatch;   // #395: the window also covers the work the yard runs before the job's lot, and one more batch (a MISC re-run)
       return o;
     };
     /* #360: what the line makes of each job metal from each feed, read again only when the line (machines, settings, wiring, levels) or the feeds change */
@@ -301,7 +341,11 @@
       const s = S(); if (!s || !Array.isArray(s.line) || !CS.Sim || !CS.Sim.evalLine || !CS.Sim.binStats) return null;
       const lv = function (m) { try { return typeof API.levelOf === 'function' ? API.levelOf(m) : 0; } catch (e) { return 0; } };
       const key = JSON.stringify(s.line.map(function (n) { return [n.m, n.uid, n.settings, n.src, lv(n.m)]; })) + '|' + fs.join();
-      if (reachMemo.key !== key) reachMemo = { key: key, v: lineReach(function (comp) { return CS.Sim.evalLine(s.line, comp); }, CS.Sim.binStats, fs) };
+      if (reachMemo.key !== key) {
+        const evs = new Map(), v = lineReach(function (comp) { const ev = CS.Sim.evalLine(s.line, comp); evs.set(comp, ev); return ev; }, CS.Sim.binStats, fs), rate = {};
+        fs.forEach(function (id) { const ev = FEEDS[id] && evs.get(FEEDS[id].comp); if (!ev || !CS.Sim.maxRate) return; try { const R = CS.Sim.maxRate(ev.nodes, s.line).R; if (R > 0) rate[id] = R; } catch (e) { /* no rate */ } });   // #395: the head rate on each feed, for the job window
+        reachMemo = { key: key, v: v, rate: rate };
+      }
       return reachMemo.v;
     }
     function credit(amount) { const s = S(); if (!s || !(amount > 0)) return; s.money += amount; s.lifetime = (s.lifetime || 0) + amount; if (API.emit) API.emit('income', { amount, from: 'job' }); }
@@ -316,21 +360,35 @@
     if (API.S && API.S.ext) restore(API.S.ext);   // registered after boot: the 'load' event has already fired
     API.on('save', function () { return { missions: serialize(st, rng.getState()) }; });
     /* rival yards (ticket #32, js/modules/rivals.js) read the live reputation and job board, and may take an offered job off the board */
-    CS.Missions.live = { rep: function () { return st.rep; }, jobs: function () { return st.jobs; }, genOpts: function () { return genOptsNow(); }, render: function () { render(); } };
+    CS.Missions.live = { rep: function () { return st.rep; }, jobs: function () { return st.jobs; }, genOpts: function () { return genOptsNow(); }, render: function () { render(); }, accept: function (id) { accept(id); } };   // accept: the ACCEPT button (tests)
 
     /* the clock moved: deadlines, grace periods, job windows and the job board */
     function advance(dh) {
       const h = clockH(); let changed = false;
       expireJobs(st.jobs, h).forEach(function (j) { log('Job #' + j.id + ' failed: ' + j.client + ' needed ' + num(j.tons, 1) + ' t of ' + MATERIALS[j.mat].name.toLowerCase() + ' and got ' + num(j.t, 1) + ' t before the window closed.', 'bad'); rep(REP.jobFail, 'job failed'); changed = true; });
-      if (tickBoard(st.jobs, rng, h, dh, genOpts())) changed = true;
+      const o = genOpts(); if (pruneOffers(o)) changed = true;
+      if (tickBoard(st.jobs, rng, h, dh, o)) changed = true;
+      if (st.jobs.board.length < JOB.board.min && !(h - lastDealH < JOB.board.arriveH) && dealFor(o)) { lastDealH = h; tickBoard(st.jobs, rng, h, 0, genOpts()); changed = true; }   // #395: keep the board stocked
       return changed;
+    }
+    /* #395: no lot in reach carries a metal the line sorts clean: a client posts its job with a lot to match, dealt in a tier the yard can
+     * pay for (never a bad buy, CS.Auction.live.dealTier) in place of that tier's lot, unless that lot is what a job counts on. At most once
+     * every JOB.board.arriveH hours of plant time, so the auction board is not churned. */
+    let lastDealH = -Infinity;
+    function dealFor(o) {
+      const A = CS.Auction, live = A && A.live; if (!live || typeof live.dealTier !== 'function' || !A.TIERS || !A.TIER_FEEDS || !o || !o.reach) return false;
+      let open = 0; try { open = A.tiersOpen(API.rankOf(API.netWorth()).idx); } catch (e) { open = A.BASE_TIERS || 6; }
+      const spend = spendable() || 0, used = {}; st.jobs.active.concat(st.jobs.board).forEach(function (j) { if (j.feed) used[j.feed] = 1; });
+      const sorts = function (id) { return JOB.mats.some(function (m) { return reachAt(o.reach[m] && o.reach[m][id], purityFloor(m) + JOB.purityMargin) > 0; }); };
+      const opts = []; for (let k = 0; k < Math.min(open, A.TIERS.length); k++) { if (A.TIERS[k] > spend) break; const cur = live.board().find(function (L) { return L.tier === k; }); if (cur && used[cur.base]) continue; (A.TIER_FEEDS[k] || []).forEach(function (id) { if (FEEDS[id] && sorts(id)) opts.push([k, id]); }); }
+      if (!opts.length) return false; const p = pick(rng, opts); return !!live.dealTier(p[0], p[1]);
     }
 
     /* ---- job actions ---- */
     function accept(id) {
       const r = acceptJob(st.jobs, id, clockH(), st.rep);
       if (!r.ok) { if (CS.Audio) CS.Audio.ui('deny'); log(r.why, 'warn'); return; }
-      const j = r.job;
+      const j = r.job; pruneOffers(genOpts());   // #395: the other offers sized from the lots this job takes are withdrawn
       if (CS.Audio) CS.Audio.ui('ok');
       log('Job #' + j.id + ' accepted: ' + num(j.tons, 1) + ' t of ' + MATERIALS[j.mat].name.toLowerCase() + ' at ≥ ' + Math.round(j.purity * 100) + '% purity for ' + j.client + ', ' + money(jobPrice(j, spot(j.mat))) + '/t (spot ' + money(spot(j.mat)) + '), due in ' + fmtH(j.windowH) + ' of plant time. Every bin that meets the purity counts, from any batch.', 'ok');
       if (typeof API.save === 'function') API.save();
@@ -352,7 +410,7 @@
       panel = API.addPanel('left', 'missions-panel', 'Missions', 'bank-panel');
       panel.querySelector('h2').appendChild(API.el('span', 'tag', ''));
       const ro = API.el('div', 'readouts two'); ro.id = 'missions-readouts'; panel.appendChild(ro);
-      const jh = API.el('h3', null, 'Job board '); jh.appendChild(API.el('span', 'small', 'paid above spot'));   // #373: a job can be under a tonne, so no promise of big lots panel.appendChild(jh);
+      const jh = API.el('h3', null, 'Job board '); jh.appendChild(API.el('span', 'small', 'paid above spot')); panel.appendChild(jh);   // #373: a job can be under a tonne, so no promise of big lots (the header had been commented out with this note)
       const jb = API.el('div'); jb.id = 'jobs'; panel.appendChild(jb);
       panel.appendChild(API.el('div', 'small', 'The mission clock runs only while a batch runs: a window is a budget of plant time. A job counts every product bin that meets its purity, from any batch, and pays its premium over spot on delivery; the bales still sell at spot from inventory.'));
       const css = document.createElement('style');
@@ -384,7 +442,7 @@
         b.addEventListener('click', function () { drop(j.id, b); });
         r.appendChild(b); els.jb.appendChild(r);
       });
-      if (!st.jobs.board.length && !st.jobs.active.length) els.jb.appendChild(API.el('div', 'empty', 'No jobs on the board: clients post jobs only for ' + JOB.mats.map(function (m) { return matName(m).toLowerCase() + ' (' + Math.round(purityFloor(m) * 100) + '%+)'; }).join(', ').replace(/, ([^,]*)$/, ' and $1') + ', when your line sorts that metal clean.'));   // #360; #373: name the job metals and their purity floors
+      if (!st.jobs.board.length && !st.jobs.active.length) els.jb.appendChild(API.el('div', 'empty', 'No jobs on the board: clients post jobs only for ' + JOB.mats.map(function (m) { return matName(m).toLowerCase() + ' (' + Math.round(purityFloor(m) * 100) + '%+)'; }).join(', ').replace(/, ([^,]*)$/, ' and $1') + ', when your line sorts that metal clean and a lot carrying it is in your yard or on the auction board at a price you can pay.'));   // #360; #373: name the job metals and their purity floors; #395: and the lot
       st.jobs.board.slice().sort(function (a, b) { return a.offerExpiresH - b.offerExpiresH; }).forEach(function (j) {
         const locked = j.tier > tier, full = st.jobs.active.length >= JOB.maxActive;
         const sp = spot(j.mat), price = jobPrice(j, sp);
@@ -405,7 +463,7 @@
     /* ---- hooks ---- */
     API.on('boot', function () {
       if (!seeded) { rng.setState((Math.floor(clockH() * 60) + 0x5eed) >>> 0); seeded = true; }   // first ever boot: seed from the clock, then the saved state carries the stream
-      tickBoard(st.jobs, rng, clockH(), 0, genOpts());
+      const o = genOpts(); pruneOffers(o); tickBoard(st.jobs, rng, clockH(), 0, o);
       build(); render();
     });
     API.on('render', function () { render(); });

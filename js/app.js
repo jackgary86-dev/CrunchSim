@@ -696,6 +696,74 @@
     Audio.ui('click'); log('Added ' + p.ms.map((m, i) => MACHINES[m].name + setText(m, sets[i])).join(' and ') + ' to the line.'); markDirty(true);
   }
 
+  /* #411: the line built one step at a time. The choices for the next sorter: every sorter on the output that suits it best,
+   * a spare unit for free, otherwise at its price, with what it would pull out and add per tonne; and for a grinder, the other
+   * grinders it could be swapped for. Ranked against what will run (the loaded feed, else the board lot NEXT PURCHASE uses). */
+  const PICK_SORTERS = ['magnet', 'eddy', 'air', 'screen', 'sinkfloat', 'sensor'];
+  const PICK_GRINDERS = ['hammer', 'jaw', 'cone', 'roll', 'vsi', 'twin', 'single', 'granulator', 'chipper', 'tub', 'hpgr', 'ball', 'cryo'];
+  const pickMemo = new Map();
+  function withRank(fn) {
+    rankComp = null; rankLot = null;
+    const A = CS.Auction && CS.Auction.live;
+    if (!S.feedPrepaid && A && A.board) {
+      const can = A.board().filter((L) => L.ask * L.tons <= S.money).sort((a, b) => b.ask * b.tons - a.ask * a.tons)[0];
+      if (can) { rankComp = can.declared; rankLot = can; }
+    }
+    const key = lineKey() + '|' + JSON.stringify(rankComp || S.comp) + '|' + (S.feedPrepaid ? JSON.stringify(S.feedOpts) : '') + '|' + Object.keys(S.units).map((m) => m + S.units[m]).join() + '|' + Math.floor(S.money / 1000) + '|' + (CS.Slots && CS.Slots.live && CS.Slots.live.owned ? CS.Slots.live.owned() : '');
+    try { return fn(key); } finally { rankComp = null; rankLot = null; }
+  }
+  function memo(key, f) { if (pickMemo.has(key)) return pickMemo.get(key); const v = f(); pickMemo.set(key, v); if (pickMemo.size > 12) pickMemo.delete(pickMemo.keys().next().value); return v; }
+  function pickOptions() {
+    if (!S.line.length) return null;
+    return withRank((key) => memo('pick|' + key, () => {
+      const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
+      const ports = freePorts(S.line), comp = rankComp || S.comp, opts = rankComp ? rankOpts : S.feedOpts;
+      return PICK_SORTERS.filter((m) => MACHINES[m]).map((m) => {
+        const spare = freeUnit(m), o = { ms: [m], src: null, sets: [{}], gain: 0, price: spare ? 0 : MACHINES[m].price, spare, why: API.veto('addMachine', { m }) || '' };
+        if (o.why) return o;
+        let best = null;
+        ports.forEach((src) => trialSettings(m).forEach((set) => {
+          const n = Sim.makeNode(m, set, src); n.level = levelOf(m);
+          const gain = lineMarginNoFeed(S.line.concat([n])) - base;
+          if (!best || gain > best.gain) best = { src, set, gain, n };
+        }));
+        if (!best) return o;
+        o.src = best.src; o.sets = [best.set]; o.gain = best.gain;
+        try {   // what it would pull out: its extract bin's main material and share
+          const ev = evalTrial(S.line.concat([best.n]), comp, opts), p = ev.ports[best.n.uid + ':extract'], st = p ? Sim.binStats(p.m) : null;
+          if (st && st.total > 0) { let mm = null, mk = 0; for (const k in st.perMat) if (st.perMat[k].mass > mk) { mk = st.perMat[k].mass; mm = k; } o.pulls = { m: mm, share: mk / st.total, sellable: !!st.sellable }; }
+        } catch (e) { /* the gain stands without the detail */ }
+        return o;
+      }).sort((a, b) => (a.why ? 1 : 0) - (b.why ? 1 : 0) || b.gain - a.gain);   // a machine with no slot or floor goes last
+    }));
+  }
+  function grinderOptions(uid) {
+    const old = S.line.find((x) => x.uid === uid); if (!old || MACHINES[old.m].kind !== 'comminution') return null;
+    return withRank((key) => memo('grind|' + uid + '|' + key, () => {
+      const base = lineMarginNoFeed(S.line); if (!isFinite(base)) return null;
+      return PICK_GRINDERS.filter((m) => MACHINES[m]).map((m) => {
+        if (m === old.m) return { m, gain: 0, price: 0, spare: true, current: true };
+        const n = Sim.makeNode(m, {}, old.src); n.level = levelOf(m);
+        const trial = S.line.map((x) => (x === old ? n : x.src && x.src !== 'feed' && x.src.uid === uid ? Object.assign({}, x, { src: { uid: n.uid, port: x.src.port } }) : x));
+        const g = lineMarginNoFeed(trial);
+        return { m, gain: isFinite(g) ? g - base : -Infinity, price: freeUnit(m) ? 0 : MACHINES[m].price, spare: freeUnit(m) };
+      }).filter((o) => o.current || isFinite(o.gain)).sort((a, b) => b.gain - a.gain);
+    }));
+  }
+  /* swap a grinder on the line for another: buy it unless a spare unit waits, the old unit goes back to the shelf with its wear */
+  function swapGrinder(uid, m) {
+    if (runLocked()) return false;
+    const i = S.line.findIndex((x) => x.uid === uid), old = S.line[i]; if (!old || old.m === m || !MACHINES[m]) return false;
+    const spare = freeUnit(m);
+    if (!spare && !buyMachine(m)) { renderBank(); return false; }
+    const n = Sim.makeNode(m, {}, old.src); if (spare && Eco()) Eco().unshelve(S.shelf, n);
+    if (Eco()) Eco().shelve(S.shelf, old);
+    S.line[i] = n; S.line.forEach((x) => { if (x.src && x.src !== 'feed' && x.src.uid === uid) x.src = { uid: n.uid, port: x.src.port }; });
+    if (S.sel === uid) S.sel = n.uid;
+    S.linePreset = 'custom'; Audio.ui('click'); log('Swapped the ' + MACHINES[old.m].name + ' for a ' + MACHINES[m].name + ' (you still own the ' + MACHINES[old.m].name + ').'); markDirty(true);
+    return true;
+  }
+
   /* ---------------- telemetry ---------------- */
   function ro(lbl, v, u, cls) { return '<div class="ro ' + (cls || '') + '"><span class="lbl">' + lbl + '</span><span class="v">' + v + '</span><span class="u">' + (u || '') + '</span></div>'; }
   function renderTelemetry() {
@@ -1150,7 +1218,7 @@
   function boot() {
     API.S = S;
     S.mode = storedMode() || 'progress';
-    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, buyPlant, purchaseLot: () => rankLot, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtT, fmtPerT, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
+    Object.assign(API, { S, Score, checkRank, softReset, switchMode, storedMode, hideCard, restoreSave, readSave, runLocked, runBlock, buyPlant, purchaseLot: () => rankLot, serviceNode, buyMachine, saveKeys: () => ({ progress: SAVE_KEY, rivals: SAVE_KEY + '.rivals', mode: MODE_KEY }), unitsOf, nodeOwned, nextPurchases, buyAndAdd, pickOptions, grinderOptions, swapGrinder, pairPrice, lotEstimate, bestTune, applyTune, portName, serviceCost, recompute, camState, info, node, netWorth, rankOf, log, save, spend, markDirty, renderAll, renderBank, renderPlant, applyFeedPreset, syncFeedRows, renderFeedSelect, binList, feedCostPerT, marginPerT, startRun, stopRun, fmtMoney, fmtNum, fmtT, fmtPerT, fmtSize, fmtClock, esc, el, ro, plantValue, levelOf,
       setFeed(comp, presetId, tons) { S.comp = Object.assign({}, comp); S.feedPreset = presetId || 'custom'; if (tons) S.tons = tons; renderFeedSelect(); syncFeedRows(); markDirty(true); } });
     const had = load();
     if (!S.ext) S.ext = {};

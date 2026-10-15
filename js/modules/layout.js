@@ -206,6 +206,17 @@
   const drawerLabel = (key, label) => app.S.mode === 'rivals' ? ({ auction: 'Auction round', records: 'Standings' }[key] || label) : label;
   let seenPanels = {};   // panels the player has already been shown (a NEW badge marks the drawer the first time one appears)
   const MACHINE_COLS = 3;          // three machine sections, then the buckets section
+  /* #411: ONE STEP AT A TIME (the default): the plant shows one process per screen, the grinder, THE BIN, each sorter, the
+   * pick of the next sorter and the end buckets, and a running batch walks through them in order. WHOLE PLANT is the side-by-side
+   * view. The choice is a per-viewer convenience kept in this browser. */
+  let sceneMode = true, userPaged = false;
+  try { if (typeof localStorage !== 'undefined' && localStorage.getItem('crunchsim.scenes') === '0') sceneMode = false; } catch (e) { /* storage blocked: the default */ }
+  function cols() { return sceneMode ? 1 : MACHINE_COLS; }
+  function setSceneMode(on) {
+    sceneMode = !!on; userPaged = false;
+    try { localStorage.setItem('crunchsim.scenes', on ? '1' : '0'); } catch (e) { /* kept for this page only */ }
+    offset = 0; renderFlow(true);
+  }
   const CLEAN = 0.9;               // a station bin at 90% purity or better is a straight grade (drawn green)
   let app = null, offset = 0, openDrawer = null, stationOpen = false, lastSig = '';
   const $ = (s) => document.querySelector(s);
@@ -244,14 +255,16 @@
     bar.appendChild(modes);
     appEl.insertBefore(bar, $('#left'));
     const plant = el('section', 'panel'); plant.id = 'flow-panel';
-    plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span></h2><div id="flow-feed" class="flow-feed"></div><div id="flow-margin" class="flow-margin"></div>' +
+    plant.innerHTML = '<nav id="loop" class="loop" aria-label="The game loop"></nav><h2>Plant <span class="tag" id="flow-count"></span><span class="scene-tog" role="group" aria-label="Plant view"><button type="button" id="view-scenes">ONE STEP AT A TIME</button><button type="button" id="view-whole">WHOLE PLANT</button></span></h2><div id="flow-feed" class="flow-feed"></div><div id="flow-margin" class="flow-margin"></div>' +
       '<div class="flow"><button type="button" class="flow-nav" id="flow-prev" aria-label="Earlier machines">&lsaquo;</button><div class="flow-wrap"><div id="flow-nodes"></div><div id="flow-cta" class="flow-cta hidden"></div></div><button type="button" class="flow-nav" id="flow-next" aria-label="Later machines">&rsaquo;</button></div>' +
       '<div class="small flow-hint">Machines run left to right in the order you placed them. Click one to sit at its station and tune it.</div>';
     const center = $('#center');
     center.insertBefore(plant, center.firstChild);
     $('#loop').classList.add('process');   // #328: the whole process, drawn by renderProcess
-    $('#flow-prev').addEventListener('click', () => { offset = Math.max(0, offset - 1); renderFlow(true); });
-    $('#flow-next').addEventListener('click', () => { offset += 1; renderFlow(true); });
+    $('#flow-prev').addEventListener('click', () => { offset = Math.max(0, offset - 1); userPaged = !!app.S.run; renderFlow(true); });
+    $('#flow-next').addEventListener('click', () => { offset += 1; userPaged = !!app.S.run; renderFlow(true); });
+    $('#view-scenes').addEventListener('click', () => setSceneMode(true));
+    $('#view-whole').addEventListener('click', () => setSceneMode(false));
     const drawer = el('div', 'overlay hidden'); drawer.id = 'drawer';
     drawer.innerHTML = '<div class="sheet"><div class="sheet-h"><b id="drawer-title"></b><button type="button" class="danger" id="drawer-close">CLOSE</button></div><div class="sheet-b" id="drawer-body"></div></div>';
     document.body.appendChild(drawer);
@@ -372,7 +385,7 @@
   /* #367: the folded node pages the plant view to its first station */
   function pageTo(uid) {
     closeDrawer(); closeStation();
-    offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === uid)); renderFlow(true);
+    offset = Math.max(0, flowSeq().findIndex((x) => x.n && x.n.uid === uid)); userPaged = !!app.S.run; renderFlow(true);
     const col = document.querySelector('#flow-nodes .fcol.mach'); if (col) { col.classList.remove('flash'); void col.offsetWidth; col.classList.add('flash'); }
   }
   let procSig = '', procRound = '';
@@ -910,6 +923,12 @@
         col.appendChild(nx);
       });
     }
+    if (sceneMode && M.kind === 'comminution' && !idleNow) { const g = grinderBox(n); if (g) col.appendChild(g); }   // #411
+    if (sceneMode) {   // #411: the machine and its settings on the left, its bins and choices on the right
+      const l = el('div', 'sc-l'), r = el('div', 'sc-r');
+      Array.from(col.children).forEach((x) => { if (x.classList.contains('fn-k')) return; (x.classList.contains('fbins') || x.classList.contains('fnext') || x.classList.contains('grind') ? r : l).appendChild(x); });
+      col.appendChild(l); col.appendChild(r);
+    }
     addConv(col, idleNow ? null : beltSeg(S.ev, n.uid, S.tons), M.kind, n.uid);   // #397
     if (idleNow) col.classList.add('idle');
     const open = () => showStation(n.uid);
@@ -1046,6 +1065,7 @@
     app.markDirty();   // the feed cost and projected margin change with the flag
   }
   function onBatchStart(p) {
+    userPaged = false;   // #411: each batch is followed through the scenes again
     if (!loaded) return;
     const S = app.S, Inv = CS.Inventory, l = loaded; loaded = null;
     if (!sameComp(S.comp, l.comp)) { S.feedOpts = null; return; }
@@ -1074,6 +1094,7 @@
       // nothing is bought by the tonne any more (#57): the auction module reloads the lot waiting in the yard
       app.markDirty(true);
     }
+    if (sceneMode && !userPaged && p && p.r) offset = sceneSeq().length - 1;   // #411: the batch lands in the buckets
     setTimeout(() => renderFlow(true), 0);
   }
   /* the market's word on a material this round (#44): HOT or COLD with the factor and the reason, else the price trend */
@@ -1229,6 +1250,73 @@
     if (k > 0) seq.splice(k, 0, { bin: true, from: S.line[k - 1] });
     return seq.concat([{ add: true }]);
   }
+  function sceneSeq() { const s = flowSeq(); return sceneMode ? s.map((x) => (x.add ? { pick: true } : x)).concat([{ end: true }]) : s; }
+  /* #411: a running batch walks the scenes: the grinder, THE BIN, each sorter in turn (the end buckets once it lands) */
+  function runScene(seq) {
+    const stages = seq.filter((x) => !x.pick && !x.end); if (!stages.length || runProg < 0) return -1;
+    return seq.indexOf(stages[Math.min(stages.length - 1, Math.floor(runProg * stages.length))]);
+  }
+  /* what is left over: every unconnected output that is not a pure bin, in tonnes for this batch, and its mix */
+  function leftOver() {
+    const S = app.S, comp = {}; let kg = 0; if (!S.ev) return { t: 0, comp };
+    S.ev.terminals.forEach((t) => {
+      const st = Sim.binStats(t.stream.m, t.form); if (!Sim.binMatters(st) || st.sellable) return;
+      kg += st.total; for (const m in st.perMat) comp[m] = (comp[m] || 0) + st.perMat[m].mass;
+    });
+    for (const m in comp) comp[m] /= Math.max(kg, 1e-9);
+    return { t: kg / 1000 * S.tons, comp };
+  }
+  /* #411: the scene after the last station: pick the next sorter, until everything is sorted or nothing on offer sorts the rest */
+  function pickCol() {
+    const S = app.S, col = el('div', 'fcol pick'), toEnd = () => { offset = sceneSeq().length - 1; renderFlow(true); };
+    col.appendChild(el('div', 'fn-k', 'NEXT STEP OF THE LINE'));
+    const endBtn = (label) => { const b = el('button', null, label + ' &#9654;'); b.type = 'button'; b.addEventListener('click', toEnd); return b; };
+    if (idleNow) { col.appendChild(el('div', 'small', 'Load a lot: then this step shows what is left on the belt and which sorter would take it next.')); return col; }
+    const left = leftOver(), mats = Object.keys(left.comp).sort((a, b) => left.comp[b] - left.comp[a]).filter((m) => left.comp[m] >= 0.01);
+    if (!(left.t > 0.05)) {
+      col.appendChild(el('div', 'pick-done ok', '<b>ALL SORTED</b><span>Everything leaves the line in pure bins.</span>'));
+      col.appendChild(endBtn('TO THE BUCKETS')); return col;
+    }
+    col.appendChild(el('div', 'pick-left', '<div class="fn-sub">LEFT ON THE BELT</div><b>' + fmtW(left.t) + '</b> not pure yet: ' + esc(mats.slice(0, 4).map((m) => MATERIALS[m].name.toLowerCase() + ' ' + Math.round(left.comp[m] * 100) + '%').join(', ')) +
+      '<div class="bin-bands">' + mats.slice(0, 8).map((m) => '<i style="flex:' + left.comp[m].toFixed(4) + ';background:' + MATERIALS[m].color + '"></i>').join('') + '</div>'));
+    const opts = (app.pickOptions && app.pickOptions()) || [], good = opts.filter((o) => o.src && !o.why && o.gain > 0.5);
+    if (!good.length) {
+      const blocked = opts.filter((o) => o.why)[0];
+      col.appendChild(el('div', 'pick-done', '<b>NOTHING MORE SORTS IT</b><span>No sorter you have or can buy pulls anything pure out of what is left' + (blocked ? ' (' + esc(blocked.why) + ')' : '') + ': it goes to MISC, to re-run later.</span>'));
+      col.appendChild(endBtn('TO THE BUCKETS')); return col;
+    }
+    col.appendChild(el('div', 'fn-sub', 'PICK THE NEXT SORTER'));
+    const list = el('div', 'pick-list');
+    good.slice(0, 4).forEach((o, k) => {
+      const M = MACHINES[o.ms[0]], at = S.line.findIndex((n) => n.uid === o.src.uid), port = PORT_NAME[o.src.port] || o.src.port;
+      const row = el('div', 'pick-row' + (k === 0 ? ' best' : ''));
+      row.innerHTML = '<span class="pick-t"><b>' + esc(M.name) + '</b><span class="small">' + (o.pulls ? 'pulls out ' + esc(MATERIALS[o.pulls.m].name.toLowerCase()) + ' ' + Math.floor(o.pulls.share * 100) + '%' + (o.pulls.sellable ? ' · pure' : '') + ' · ' : '') + 'from station ' + (at + 1) + '\'s ' + esc(port) + '</span></span><b class="ok">+' + app.fmtMoney(o.gain) + '/t</b>';
+      const b = el('button', 'buy' + (S.money < o.price ? ' poor' : ''), o.price > 0 ? 'BUY &amp; PLACE ' + app.fmtMoney(o.price) : 'PLACE · in the yard'); b.type = 'button';
+      if (S.run) { b.disabled = true; b.title = 'Wait for the batch to finish before changing the line'; }
+      b.addEventListener('click', () => { const n0 = S.line.length; app.buyAndAdd(o); if (S.line.length > n0) { offset = sceneSeq().findIndex((x) => x.n && x.n.uid === S.line[S.line.length - 1].uid); renderFlow(true); } });
+      row.appendChild(b); list.appendChild(row);
+    });
+    col.appendChild(list);
+    col.appendChild(endBtn('DONE · THE REST GOES TO MISC'));
+    return col;
+  }
+  /* #411: at a grinder's scene, the grinders it could be swapped for, by what each adds per tonne on this feed */
+  function grinderBox(n) {
+    const S = app.S, opts = !S.run && app.grinderOptions ? app.grinderOptions(n.uid) : null; if (!opts || opts.length < 2) return null;
+    const box = el('div', 'pick-list grind'); box.appendChild(el('div', 'fn-sub', 'GRINDER TYPE'));
+    opts.filter((o) => o.current || o.gain > -Infinity).slice(0, 4).forEach((o) => {
+      const M = MACHINES[o.m], row = el('div', 'pick-row' + (o.current ? ' cur' : ''));
+      row.innerHTML = '<span class="pick-t"><b>' + esc(M.name) + '</b><span class="small">' + esc(M.cat) + '</span></span>' + (o.current ? '<b>on the line</b>' : '<b class="' + (o.gain >= 0 ? 'ok' : 'bad') + '">' + (o.gain >= 0 ? '+' : '') + app.fmtMoney(o.gain) + '/t</b>');
+      if (!o.current) {
+        const b = el('button', o.gain > 0.5 ? 'buy' + (S.money < o.price ? ' poor' : '') : '', o.price > 0 ? 'SWAP · ' + app.fmtMoney(o.price) : 'SWAP · in the yard'); b.type = 'button';
+        b.addEventListener('click', (e) => { e.stopPropagation(); if (app.swapGrinder(n.uid, o.m)) renderFlow(true); });
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    });
+    box.addEventListener('click', (e) => e.stopPropagation());   // the column itself opens the station
+    return box;
+  }
   function binCol(from) {
     const S = app.S, col = el('div', 'fcol bincol');
     const port = !idleNow && S.ev && S.ev.ports[from.uid + ':product'];
@@ -1301,8 +1389,9 @@
     idleNow = isIdle(); runProg = S.run && S.run.total > 0 ? Math.min(1, S.run.done / S.run.total) : -1;
     document.body.classList.toggle('plant-running', !!S.run);
     renderMode(); renderMargin(); renderLotCard(); renderSideCards();
-    const seq = flowSeq();
-    offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - MACHINE_COLS)));
+    const seq = sceneSeq();
+    if (sceneMode && S.run && !userPaged) { const k = runScene(seq); if (k >= 0) offset = k; }   // #411: the screen follows the batch
+    offset = Math.max(0, Math.min(offset, Math.max(0, seq.length - cols())));
     const stock = CS.Inventory && CS.Inventory.stock ? CS.Inventory.stock() : {};
     const sig = JSON.stringify([offset, S.line.map((n) => [n.uid, n.m, n.settings, n.src]), S.comp, S.tons, S.feedPreset, S.feedPrepaid, S.feedOpts, !!S.run, S.run ? Math.round(20 * S.run.done / Math.max(S.run.total, 1e-9)) : -1, CS.Auction && CS.Auction.live ? [CS.Auction.live.yard().length, CS.Auction.live.pending() && CS.Auction.live.pending().tons] : 0, S.money, Object.keys(stock).map((m) => stock[m] && stock[m].t), CS.Inventory && CS.Inventory.misc ? CS.Inventory.miscTotal(CS.Inventory.misc()) : 0, CS.Round && CS.Round.live && CS.Round.live.miscAllowed ? CS.Round.live.miscAllowed() : 0]);   // miscAllowed: the MISC RE-RUN button (#313); #332: n.src, so a rewire (Input select, REWIRE) redraws the process line
     if (!force && sig === lastSig) {
@@ -1347,13 +1436,18 @@
       cta.querySelector('button').addEventListener('click', () => nextStep().go());
       cta.classList.remove('hidden');
     } else cta.classList.add('hidden');
-    seq.slice(offset, offset + MACHINE_COLS).forEach((x) => box.appendChild(x.add ? addCol() : x.bin ? binCol(x.from) : machineCol(x.n, x.i)));
+    box.classList.toggle('scenes', sceneMode);
+    $('#view-scenes').classList.toggle('on', sceneMode); $('#view-whole').classList.toggle('on', !sceneMode);
+    $('#view-scenes').setAttribute('aria-pressed', String(sceneMode)); $('#view-whole').setAttribute('aria-pressed', String(!sceneMode));
+    seq.slice(offset, offset + cols()).forEach((x) => box.appendChild(x.end ? bucketsCol() : x.pick ? pickCol() : x.add ? addCol() : x.bin ? binCol(x.from) : machineCol(x.n, x.i)));
     renderProcess();
-    for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
-    box.appendChild(bucketsCol());
-    $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + MACHINE_COLS >= seq.length;
+    if (!sceneMode) {
+      for (let k = box.children.length; k < MACHINE_COLS; k++) box.appendChild(el('div', 'fcol empty'));
+      box.appendChild(bucketsCol());
+    }
+    $('#flow-prev').disabled = offset === 0; $('#flow-next').disabled = offset + cols() >= seq.length;
     const SL = CS.Slots && CS.Slots.live;
-    $('#flow-count').textContent = S.line.length + ' machine' + (S.line.length === 1 ? '' : 's') + (SL ? ' · sorters ' + SL.used() + ' / ' + SL.owned() + ' slots' : '') + (seq.length > MACHINE_COLS ? (() => { const st = seq.slice(offset, offset + MACHINE_COLS).filter((x) => x.n).map((x) => x.i + 1); return st.length ? ' · showing station' + (st.length > 1 ? 's ' + st[0] + '-' + st[st.length - 1] : ' ' + st[0]) : ''; })() : '');   // #351: the stations on screen, not columns (the BIN and + are columns too)
+    $('#flow-count').textContent = S.line.length + ' machine' + (S.line.length === 1 ? '' : 's') + (SL ? ' · sorters ' + SL.used() + ' / ' + SL.owned() + ' slots' : '') + (sceneMode ? ' · step ' + (offset + 1) + ' of ' + seq.length + (seq[offset] && seq[offset].n ? ' · station ' + (seq[offset].i + 1) : '') : seq.length > MACHINE_COLS ? (() => { const st = seq.slice(offset, offset + MACHINE_COLS).filter((x) => x.n).map((x) => x.i + 1); return st.length ? ' · showing station' + (st.length > 1 ? 's ' + st[0] + '-' + st[st.length - 1] : ' ' + st[0]) : ''; })() : '');   // #351: the stations on screen, not columns (the BIN and + are columns too)
   }
 
   function init() {

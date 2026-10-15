@@ -24,7 +24,8 @@ console.log('== #370 / #367 the process line fold ==');
   check(html.some((h) => /STATION 11</.test(h) && /Omniprocessor/.test(h)), 'the Omniprocessor keeps its own node');
   check(st.length <= 4 && last.length <= 9, 'at most 4 station nodes (the fold is one), 9 in all, so MONEY fits 1440 px (' + st.length + ' / ' + last.length + ')');
   fold.click(); env.flush();
-  check(/showing stations? 3/.test(String(env.sel['#flow-count'].textContent)), 'a click on the fold pages the plant view to station 3 (#367): ' + env.sel['#flow-count'].textContent);
+  // #411: one step at a time names the station on screen
+  check(/(showing stations?|· station) 3(?!\d)/.test(String(env.sel['#flow-count'].textContent)), 'a click on the fold pages the plant view to station 3 (#367): ' + env.sel['#flow-count'].textContent);
 }
 function MACHINES_KIND(CS, m) { return CS.MACHINES[m].kind === 'separator' ? 'residue' : 'product'; }
 

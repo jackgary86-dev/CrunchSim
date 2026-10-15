@@ -86,6 +86,7 @@
       const q = quote(mat), I = Inv(); if (!q) return;
       if (!q.ok) { API.log(q.why, 'warn'); return; }
       if (API.S.run) { API.log('The furnace crew is on the line: refine between batches.', 'warn'); return; }
+      if (!(q.net > 0)) { API.log('Refining this ' + mat + ' would cost more than it brings (' + Math.round(q.net) + ' $): sell it as it is.', 'warn'); return; }   // #408
       const out = I.withdraw(mat, I.stock()[mat].t); if (!(out.t > 0)) return;
       credit(q.net);
       if (CS.Audio && CS.Audio.fx) CS.Audio.fx('roar');   // #81

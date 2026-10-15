@@ -43,6 +43,10 @@ s = R.settleRivals(L, 90, 'b', { a: 92 });
 check(s.by === 'b' && s.perT === 90, 'a standing bid holds when nobody can top it by a step');
 s = R.settleRivals(L, 90, 'b', { a: 120 });
 check(s.by === 'a' && s.perT > 90 && s.perT <= 120, 'a richer rival tops the standing bid');
+s = R.settleRivals({ opening: 60, ask: 100, tons: 10 }, 0, null, { a: 50, b: 30 });
+check(s.by === null, '#404: no rival whose limit is under the opening can take it when you pass (' + JSON.stringify(s) + ')');
+s = R.settleRivals({ opening: 60, ask: 100, tons: 10 }, 0, null, { a: 90, b: 30 });
+check(s.by === 'a' && s.perT === 60, '#404: alone over the opening, a rival pays the opening, not a step over a lower runner-up (' + s.perT + ')');
 
 /* the match (#72, #77) */
 check(R.MATCH_LENGTHS.includes(R.MATCH_DEFAULT) && R.MATCH_DEFAULT === 12, 'a match is 12 rounds by default (8, 12 or 20)');

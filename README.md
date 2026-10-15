@@ -111,6 +111,7 @@ node tests/fixes-329.js
 node tests/fixes-359.js
 node tests/fixes-370.js
 node tests/fixes-385.js
+node tests/fixes-407.js
 node tests/floor.js
 node tests/furnace.js
 node tests/gallery-grid.js

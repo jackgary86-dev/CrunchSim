@@ -148,5 +148,35 @@ console.log('== #387: a small gold bucket is shown and offered by its value ==')
   check(ns.title === 'SELL' && /GOLD/.test(ns.label), 'NEXT STEP sells the 1.2 kg of gold first (' + ns.label + ')');
   check(CS.Layout.splitBuckets(I.stock(), CS.MAT_ORDER).clean.some((x) => x.m === 'gold'), 'the gold has its own bucket on the plant screen');
 }
+console.log('== #405: RUN THE LOT finishes a Rivals bin bought on the trade credit ==');
+{
+  const env = mk(), { CS, app } = env, RL = CS.Round.live, A = CS.Auction.live, AR = CS.Autorun.live;
+  app.switchMode('rivals'); env.flush();
+  RL.open(); playRound(env, { bidOn: 0, maxBids: 20 }); env.flush();
+  const P = A.pending();
+  if (!P) check(false, 'a bin was won to test with');
+  else {
+    app.S.money = -4990; AR.go();
+    let k = 0; while (k++ < 200000 && (app.S.run || AR.active())) { env.tick(0.1); env.flush(); }
+    check(!(A.pending() && A.pending().tons > 0.05), 'the whole bin ran (' + (A.pending() ? A.pending().tons : 0) + ' t left)');
+    check(!env.logs.some((l) => /credit line is used up/.test(l)), 'no stop for the credit line');
+  }
+}
+
+console.log('== #406: after the round\'s MISC batch, MISC is not offered again with the wrong reason ==');
+{
+  const env = mk(), { CS, app } = env, RL = CS.Round.live, I = CS.Inventory;
+  app.switchMode('rivals'); env.flush();
+  I.addMisc(I.misc(), 'steel', 20, 30); I.addMisc(I.misc(), 'wood', 20, 30);
+  RL.open(); playRound(env, { bidOn: 99 }); env.flush();
+  const mats = () => Object.keys(I.misc()).filter((m) => I.misc()[m].t > 0);
+  app.layout.rerun(mats(), 'MISC', 'misc'); env.flush(); env.runBatch(); env.flush();
+  check(!RL.miscAllowed() && RL.miscUsed(), 'the round\'s one MISC batch is used');
+  RL.open(); env.flush();
+  const txt = String(env.roundOv().querySelector('.round-main').innerHTML).replace(/<[^>]+>/g, ' ');
+  check(!/run one batch of your/.test(txt) && /MISC batch has run/.test(txt), 'the auction screen no longer says to run MISC');
+  app.layout.rerun(mats(), 'MISC', 'misc');
+  check(/already run/.test(env.logs[env.logs.length - 1]) && !/win no bin/.test(env.logs[env.logs.length - 1]), 'RE-RUN says the batch has run, not that you won a bin');
+}
 console.log('\n' + (fails ? fails + ' of ' + n + ' checks FAILED' : 'all ' + n + ' regression checks pass'));
 process.exit(fails ? 1 : 0);

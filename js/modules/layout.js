@@ -906,7 +906,7 @@
       col.appendChild(binsBox);
       f.next.forEach((x) => {
         const nx = el('div', 'fnext');
-        nx.innerHTML = '<span class="fnext-a">&#10140;</span><span>' + esc(x.port === 'product' ? 'shred' : 'left over') + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
+        nx.innerHTML = '<span class="fnext-a">&#10140;</span><span>' + esc(fmtW(x.tons) + (x.port === 'product' ? ' of shred' : ' left over')) + ' to station ' + x.to.join(' & ') + '<span class="small"> · mostly ' + esc(x.mats.join(', ')) + '</span></span>';
         col.appendChild(nx);
       });
     }
@@ -987,11 +987,17 @@
     for (const k of keys) if (Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-6) return false;
     return true;
   }
+  /* #406: why a Rivals MISC re-run is refused: this round's batch has run already, or you won a bin this round */
+  function miscRefusal(short) {
+    const RL = CS.Round.live;
+    if (RL.miscUsed && RL.miscUsed()) return short ? 'This round\'s MISC batch has run: open the next round' : 'This round\'s one MISC batch has already run. Open the next round in the auction.';
+    return short ? 'In Rivals your MISC bin runs only in a round where you win no bin' : 'In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.';
+  }
   function srcMap(src) { const Inv = CS.Inventory; return src === 'misc' ? (Inv.misc ? Inv.misc() : {}) : Inv.stock(); }
   /* #313: why RE-RUN would refuse this bucket now ('' when it may load); the button is disabled with this as its title */
   function rerunWhy(mats, src) {
     const S = app.S, stock = srcMap(src);
-    if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) return 'In Rivals your MISC bin runs only in a round where you win no bin';
+    if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) return miscRefusal(true);
     if (S.run) return 'Wait for the batch to finish before loading a bucket';
     if (src !== 'misc' && mats.some((m) => stock[m] && stock[m].alloy)) return 'Alloy ingots cannot be sorted back into their metals: sell them';
     if (rerunPlan(stock, mats, app.plantValue ? app.plantValue('logistics') : 1).error) return 'Under 1 t: too little to run a batch. Sell it, or let it fill up';
@@ -1000,7 +1006,7 @@
   function rerunButton(re, mats, src, title) { const why = rerunWhy(mats, src); re.disabled = !!why; re.title = why || title; }   // #313
   function rerun(mats, label, src) {
     const S = app.S, stock = srcMap(src);
-    if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log('In Rivals mode your MISC bin runs only in a round where you win no bin. Pass on the cards (or lose them) and it is yours to run.', 'warn'); return; }
+    if (src === 'misc' && S.mode === 'rivals' && CS.Round && CS.Round.live && !CS.Round.live.miscAllowed()) { app.log(miscRefusal(false), 'warn'); return; }
     if (S.run) { app.log('Wait for the batch to finish before loading a bucket.', 'warn'); return; }
     if (src !== 'misc' && mats.some((m) => stock[m] && stock[m].alloy)) { app.log('The ' + label + ' bucket holds alloy ingots or furnace dross: cast metal cannot be sorted back into its metals. Sell it.', 'warn'); return; }   // #291
     const cap = app.plantValue('logistics'), plan = rerunPlan(stock, mats, cap);
@@ -1087,7 +1093,8 @@
     const q = R.quote(m); if (!q || !q.need) return null;
     const b = el('button', 'refine' + (q.ok && q.gain > 0 ? ' buy' : ''), q.ok ? 'REFINE ' + app.fmtMoney(q.net) : 'REFINE · needs ' + esc(q.needName.toLowerCase())); b.type = 'button';
     b.title = q.ok ? 'Refine into ' + q.form + ': ' + app.fmtMoney(q.value) + ' less ' + app.fmtMoney(q.cost) + ' = ' + app.fmtMoney(q.net) + ' (' + (q.gain >= 0 ? '+' : '-') + app.fmtMoney(Math.abs(q.gain)) + ' against selling raw)' : q.why;
-    if (!q.ok) b.disabled = true;
+    if (q.ok && !(q.net > 0)) { b.textContent = 'REFINE · costs more than it brings'; b.title += '. Sell it raw.'; }   // #408
+    if (!q.ok || !(q.net > 0)) b.disabled = true;
     b.addEventListener('click', () => withMoney(b, () => { R.refine(m); renderFlow(true); }));
     return b;
   }
@@ -1138,17 +1145,21 @@
   /* #398: an end bucket as a bin filling in its material's colour: the level by tonnes, the impure share as a grey layer on top,
    * and a purity band with the 90% sell line; a bin that is pure enough lights up (and flashes the first time it gets there).
    * The level grows from where it was drawn last, so a batch landing visibly fills it. */
-  const binWas = {}, readyWas = {};
+  // #400: what each bin was drawn at last; a bucket that empties drops out, so its next landing fills from empty. Cleared on a new
+  // game, a mode switch and a load; until the first draw after that has seeded it, nothing flashes as newly pure.
+  let binWas = {}, readyWas = {}, binsSeeded = false;
+  function resetBins() { binWas = {}; readyWas = {}; binsSeeded = false; }
+  const pct = (p) => Math.floor(p * 100 + 1e-9);   // #402: shown against the 90% line, so never rounded up across it
   function fillBin(m, t, purity) {
-    const D = MATERIALS[m], lv = binLevel(t, app.S.tons), p = Math.max(0, Math.min(1, purity || 0)), ready = p >= 0.9;
-    const from = binWas[m] != null ? binWas[m] : 0, lit = ready && readyWas[m] === false;
+    const D = MATERIALS[m], lv = binLevel(t, app.plantValue ? app.plantValue('logistics') : 30), p = Math.max(0, Math.min(1, purity || 0)), ready = p >= 0.9;   // #401: against the plant's batch cap, not the loaded batch
+    const from = binWas[m] != null ? binWas[m] : 0, lit = ready && binsSeeded && readyWas[m] !== true;
     binWas[m] = lv; readyWas[m] = ready;
-    return '<span class="vbin' + (ready ? ' ready' : '') + (lit ? ' lit' : '') + '" title="' + esc(fmtW(t) + ' of ' + D.name.toLowerCase() + ', ' + Math.round(p * 100) + '% pure' + (ready ? ': pure enough to sell' : ': under 90%, sells for less')) + '">' +
+    return '<span class="vbin' + (ready ? ' ready' : '') + (lit ? ' lit' : '') + '" title="' + esc(fmtW(t) + ' of ' + D.name.toLowerCase() + ', ' + pct(p) + '% pure' + (ready ? ': pure enough to sell' : ': under 90%, sells for less')) + '">' +
       '<span class="vbin-fill" data-lv="' + (lv * 100).toFixed(1) + '" style="height:' + (from * 100).toFixed(1) + '%;--c:' + D.color + '"><i style="height:' + ((1 - p) * 100).toFixed(1) + '%"></i></span></span>';
   }
   function pband(purity) {
     const p = Math.max(0, Math.min(1, purity || 0));
-    return '<span class="pband' + (p >= 0.9 ? ' ok' : '') + '" title="Purity ' + Math.round(p * 100) + '%; the line marks 90%, pure enough to sell"><i style="width:' + (p * 100).toFixed(1) + '%"></i><b></b></span>';
+    return '<span class="pband' + (p >= 0.9 ? ' ok' : '') + '" title="Purity ' + pct(p) + '%; the line marks 90%, pure enough to sell"><i style="width:' + (p * 100).toFixed(1) + '%"></i><b></b></span>';
   }
   function growBins(box) {   // after the rows are in the page: run each level up to its new height
     requestAnimationFrame(() => requestAnimationFrame(() => box.querySelectorAll('.vbin-fill[data-lv]').forEach((f) => { f.style.height = f.dataset.lv + '%'; })));
@@ -1162,7 +1173,7 @@
     b.clean.forEach((x) => {
       const D = MATERIALS[x.m], row = el('div', 'bk shelf');
       const mk = marketTag(x.m), pay = Inv && Inv.quote ? Inv.quote(x.m) : x.value;
-      row.innerHTML = fillBin(x.m, x.t, x.purity) + '<span class="bk-t"><b>' + esc(D.name) + (x.purity >= 0.9 ? ' <span class="bk-ready">' + app.fmtMoney(pay) + '</span>' : '') + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + Math.round(x.purity * 100) + '% pure</span>' + pband(x.purity) + '</span>';   // #398
+      row.innerHTML = fillBin(x.m, x.t, x.purity) + '<span class="bk-t"><b>' + esc(D.name) + (x.purity >= 0.9 ? ' <span class="bk-ready">' + app.fmtMoney(pay) + '</span>' : '') + '</b><span class="small">' + mk + fmtW(x.t) + ' · ' + pct(x.purity) + '% pure</span>' + pband(x.purity) + '</span>';   // #398
       const sell = el('button', 'buy', 'SELL ' + app.fmtMoney(pay)); sell.type = 'button'; sell.title = 'Sell all ' + fmtW(x.t) + ' now for ' + app.fmtMoney(pay) + (loan > 0 ? ' (25% repays the ' + app.fmtMoney(loan) + ' yard advance)' : ''); sell.addEventListener('click', () => withMoney(sell, () => { if (Inv && Inv.sellMat) Inv.sellMat(x.m); app.renderAll(); }));
       const re = el('button', null, 'RE-RUN'); re.type = 'button'; rerunButton(re, [x.m], 'stock', 'Load this bucket as the next batch\'s feed'); re.addEventListener('click', () => rerun([x.m], D.name.toLowerCase(), 'stock'));
       row.appendChild(sell); row.appendChild(re);
@@ -1189,6 +1200,7 @@
       list.appendChild(row);
     }
     col.appendChild(list); growBins(list);
+    const kept = new Set(b.clean.map((x) => x.m)); Object.keys(binWas).forEach((m) => { if (!kept.has(m)) { delete binWas[m]; delete readyWas[m]; } }); binsSeeded = true;   // #400
     // #129: the refinery, once owned, stands at the end of the line: a furnace glowing, pouring ingots when something is refined
     const RF = CS.Refinery && CS.Refinery.live, lvl = RF ? RF.level() : 0;
     if (lvl >= 1) {
@@ -1296,7 +1308,7 @@
     if (!force && sig === lastSig) {
       if (roundKey() !== procRound) renderProcess();   // #390: a new Rivals round redraws the process line
       const cb = idleNow && $('#flow-cta button');   // #399: the note's step changes without a redraw (a lot ends, its result card closes)
-      if (cb) { const l = nextStep().label; if (cb.textContent !== l) cb.textContent = l; }
+      if (cb) { const a = nextStep(); if (cb.textContent !== a.label) cb.textContent = a.label; if (cb.parentElement && cb.parentElement.title !== a.sub) cb.parentElement.title = a.sub || ''; }   // #403: the tooltip too
       return;
     }
     lastSig = sig;
@@ -1385,10 +1397,10 @@
       // #148: the page closed mid-batch on a re-run: what the batch took goes back to its bucket
       const ra = d.rerunActive; if (ra && ra.took && !S.run && CS.Inventory && CS.Inventory.putBack) setTimeout(() => { for (const m in ra.took) CS.Inventory.putBack(ra.src, m, ra.took[m]); app.log('The bucket batch was on the line when the page closed: it is back in the bucket.', 'warn'); }, 0);
     };
-    app.on('load', restore);
+    app.on('load', restore); app.on('load', resetBins);   // #400
     let acc = 0; app.on('tick', (p) => { guardLoaded(); acc += (p && p.dt) || 0; if (acc > 0.5) { acc = 0; renderFlow(false); } });
-    app.on('modechange', () => { offset = 0; closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
-    app.on('newgame', () => { offset = 0; seenPanels = {}; lastBatch = null; loan = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
+    app.on('modechange', () => { offset = 0; resetBins(); closeDrawer(); closeStation(); renderFlow(true); });   // #94: 'newgame' and 'load' already set loaded for this mode
+    app.on('newgame', () => { offset = 0; resetBins(); seenPanels = {}; lastBatch = null; loan = 0; loaded = null; rerunActive = false; closeDrawer(); closeStation(); renderFlow(true); });
     app.layout = { showDrawer, closeDrawer, showStation, closeStation, buckets, nextStep, rerun, loan: () => loan };   // nextStep, rerun and loan for tests
   }
   if (CS.app) init();

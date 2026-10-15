@@ -73,7 +73,7 @@
     const ids = Object.keys(maxes).filter((id) => maxes[id] > 0).sort((a, b) => maxes[b] - maxes[a]);
     if (!ids.length) return { by: leader || null, perT: price };
     const top = ids[0], second = ids[1] ? maxes[ids[1]] : 0;
-    let p = Math.max(price, second > 0 ? Math.min(maxes[top], nextBid(second, L.opening)) : (leader ? price : L.opening));
+    let p = Math.max(price, leader ? 0 : L.opening, second > 0 ? Math.min(maxes[top], nextBid(second, L.opening)) : (leader ? price : L.opening));   // #404: with no standing bid a card never goes under its opening
     if (leader && leader !== top && maxes[top] < nextBid(price, L.opening)) return { by: leader, perT: price };   // nobody can top the standing bid
     if (leader !== top && leader) p = Math.max(p, Math.min(maxes[top], nextBid(price, L.opening)));
     return maxes[top] >= p ? { by: top, perT: p } : { by: leader || null, perT: price };
@@ -140,7 +140,7 @@
       m.over = true; m.ending = false; st.misc = false;
       setTimeout(() => { const top = standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, worth: m.final ? m.final[id] : 0 })))[0]; snd(top && top.id === 'you' ? 'matchwin' : 'matchlose'); }, 400);   // #118
       m.final = {}; ['you'].concat(PLAYERS.filter((id) => rival(id))).forEach((id) => { m.final[id] = id === 'you' ? app.netWorth() : rivalRec(id).worth; });
-      app.log('The match is over after ' + st.n + ' rounds. Final standings are on the auction screen.', 'ok');
+      app.log('The match is over after ' + st.n + ' round' + (st.n === 1 ? '' : 's') + '. Final standings are on the auction screen.', 'ok');
       app.save(); render(); return true;
     }
 
@@ -148,7 +148,7 @@
     function newRound() {
       if (!canStart()) return false;
       if (st.n === 0) { const m = M_(); m.start = app.netWorth(); m.over = false; m.ending = false; m.final = null; PLAYERS.forEach((id) => { if (rival(id)) m.rivals[id] = { worth: m.start, bins: 0, t: 0, best: null }; }); }
-      st.n++; st.misc = false;
+      st.n++; st.misc = false; st.miscUsed = false;
       const rng = CS.Auction.mulberry32((st.seed ^ Math.imul(st.n, 2654435761) ^ Math.floor(app.S.clock)) >>> 0);
       const want = roundSize(app.S.money, stockValue());
       const cards = makeCards(rng, want, { market: {}, limit: app.plantValue('logistics'), clockH: app.S.clock / 3600, id0: 3000 + st.n * 10 });
@@ -354,7 +354,7 @@
           const eb = main.querySelector('#round-end'); if (eb) eb.addEventListener('click', () => { if (checkEnd(true)) render(); });
           return;
         }
-        h += '<div class="round-next">' + (r && r.done && !r.won.you ? (miscT() >= 1 ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '<p class="warn">No bin for you this round, and your MISC bin holds under 1 t: nothing to run this round.</p>') : '') +
+        h += '<div class="round-next">' + (r && r.done && !r.won.you ? (st.miscUsed ? '<p class="small">No bin for you this round, and its one MISC batch has run: open the next round.</p>' : miscT() >= 1 ? '<p class="warn">No bin for you this round: run one batch of your <b>MISC bin</b> (RE-RUN on the MISC bucket), then open the next round.</p>' : '<p class="warn">No bin for you this round, and your MISC bin holds under 1 t: nothing to run this round.</p>') : '') +
           (can ? '' : '<p class="small">' + (app.S.run ? 'A batch is running.' : M_().ending ? 'The last bin is in your yard: run it through the plant to end the match.' : 'Your yard still holds a bin: run it through the plant first.') + ' The next round opens when the yard is empty.</p>') +
           '<button type="button" class="primary" id="round-start"' + (can ? '' : ' disabled') + '>' + (M_().ending ? 'RUN THE LAST BIN TO FINISH' : st.n > 0 ? 'NEXT ROUND · ' + (st.n + 1) + ' OF ' + M_().length : 'START THE MATCH') + '</button></div>';
         main.innerHTML = h;
@@ -376,14 +376,14 @@
     /* ---- hooks ---- */
     function restore(ext) {
       const d = ext && ext.round;
-      st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() };
+      st = { n: d && d.n > 0 ? Math.floor(d.n) : 0, misc: !!(d && d.misc), miscUsed: !!(d && d.miscUsed), open: d && d.open && Array.isArray(d.open.cards) && d.open.cards.length && !d.open.done ? d.open : null, last: d && d.last || null, seed: d && d.seed > 0 ? d.seed >>> 0 : newSeed(), match: d && d.match && d.match.length ? d.match : newMatch() };
       if (st.open) st.open.settling = false;   // #306: a settle timer never outlives the page that started it
       if (st.match.over) st.misc = false;   // #305: an older save that ended with st.misc still set
       busy = false; setTimeout(() => checkEnd(), 0);
     }
     app.on('load', restore);   // #264: a match left in 'ending' by a tab closed before the batchComplete timer ends on load. #107: an open round survives a reload or a mode switch
     if (app.S && app.S.ext && app.S.ext.round) restore(app.S.ext);   // #309: registered after boot: the 'load' event has already fired
-    app.on('save', () => ({ round: { n: st.n, misc: st.misc, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? Object.assign({}, st.open, { settling: false }) : null } }));   // #306: never persist settling
+    app.on('save', () => ({ round: { n: st.n, misc: st.misc, miscUsed: !!st.miscUsed, last: st.last, seed: st.seed, match: st.match, open: st.open && !st.open.done ? Object.assign({}, st.open, { settling: false }) : null } }));   // #306: never persist settling
     app.on('batchComplete', () => { setTimeout(checkEnd, 0); });
     // #319: shipping out or refining the MISC also settles a last round that was waiting for it
     const endSoon = () => { if (M_().ending && !M_().over) setTimeout(() => { if (checkEnd()) render(); }, 0); };
@@ -411,7 +411,8 @@
       /* the match table for other panels: every seat with its worth, bins and tonnes, ranked (#111) */
       table: () => { const m = M_(); return standings(['you'].concat(PLAYERS.filter((id) => rival(id))).map((id) => ({ id, name: nameOf(id), label: id === 'you' ? 'you' : rival(id).label, worth: worthOf(id), bins: id === 'you' ? m.you.bins : recOf(id).bins, t: id === 'you' ? m.you.t : recOf(id).t }))); },
       round: () => ({ n: st.n, length: M_().length, over: !!M_().over }),
-      useMisc: () => { st.misc = false; app.save(); },
+      useMisc: () => { st.misc = false; st.miscUsed = true; app.save(); },
+      miscUsed: () => !!st.miscUsed,   // #406: this round's one MISC batch has run
       ending: () => !!M_().ending && !M_().over,   // #325: the last round is waiting for your MISC batch
       endMatch: () => { const ok = checkEnd(true); if (ok) render(); return ok; }
     };

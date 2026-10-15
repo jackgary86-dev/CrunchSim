@@ -184,7 +184,8 @@
     (bins || []).forEach(function (b) {
       const st = b && b.st; if (!st || !(st.total > 0) || b.form === 'dross' || !st.sellable) return;
       const pm = st.perMat && st.perMat[mat]; if (!pm || !(pm.mass > 0)) return;
-      if (pm.mass / st.total + 1e-9 >= purity) out.push({ kg: pm.mass, share: pm.mass / st.total });
+      const solid = Math.max(1e-9, st.total - (st.liquid || 0));   // #409: purity on the solids, as applyBins and lineReach measure it
+      if (pm.mass / solid + 1e-9 >= purity) out.push({ kg: pm.mass, share: pm.mass / solid });
     });
     return out;
   }
@@ -352,13 +353,15 @@
     function rep(delta, why) { const before = st.rep; st.rep = repApply(st.rep, delta); if (st.rep !== before) log('Reputation ' + (delta > 0 ? '+' : '') + delta + ' (' + why + '): now ' + st.rep + ', ' + tierName(st.rep) + '.', delta > 0 ? 'ok' : 'warn'); }
 
     /* ---- persistence ---- */
+    let lastDealH = -Infinity;   // #395: plant hour of the last job lot dealt; saved (#410), so a reload does not reset the limit
     function restore(ext) {
       st = deserialize(ext && ext.missions);
+      const dh = ext && ext.missions && ext.missions.dealH; lastDealH = typeof dh === 'number' && isFinite(dh) ? dh : -Infinity;
       if (st.rngState != null) { rng.setState(st.rngState); seeded = true; }
     }
     API.on('load', restore);
     if (API.S && API.S.ext) restore(API.S.ext);   // registered after boot: the 'load' event has already fired
-    API.on('save', function () { return { missions: serialize(st, rng.getState()) }; });
+    API.on('save', function () { return { missions: Object.assign(serialize(st, rng.getState()), isFinite(lastDealH) ? { dealH: lastDealH } : {}) }; });
     /* rival yards (ticket #32, js/modules/rivals.js) read the live reputation and job board, and may take an offered job off the board */
     CS.Missions.live = { rep: function () { return st.rep; }, jobs: function () { return st.jobs; }, genOpts: function () { return genOptsNow(); }, render: function () { render(); }, accept: function (id) { accept(id); } };   // accept: the ACCEPT button (tests)
 
@@ -374,13 +377,12 @@
     /* #395: no lot in reach carries a metal the line sorts clean: a client posts its job with a lot to match, dealt in a tier the yard can
      * pay for (never a bad buy, CS.Auction.live.dealTier) in place of that tier's lot, unless that lot is what a job counts on. At most once
      * every JOB.board.arriveH hours of plant time, so the auction board is not churned. */
-    let lastDealH = -Infinity;
     function dealFor(o) {
       const A = CS.Auction, live = A && A.live; if (!live || typeof live.dealTier !== 'function' || !A.TIERS || !A.TIER_FEEDS || !o || !o.reach) return false;
       let open = 0; try { open = A.tiersOpen(API.rankOf(API.netWorth()).idx); } catch (e) { open = A.BASE_TIERS || 6; }
       const spend = spendable() || 0, used = {}; st.jobs.active.concat(st.jobs.board).forEach(function (j) { if (j.feed) used[j.feed] = 1; });
       const sorts = function (id) { return JOB.mats.some(function (m) { return reachAt(o.reach[m] && o.reach[m][id], purityFloor(m) + JOB.purityMargin) > 0; }); };
-      const opts = []; for (let k = 0; k < Math.min(open, A.TIERS.length); k++) { if (A.TIERS[k] > spend) break; const cur = live.board().find(function (L) { return L.tier === k; }); if (cur && used[cur.base]) continue; (A.TIER_FEEDS[k] || []).forEach(function (id) { if (FEEDS[id] && sorts(id)) opts.push([k, id]); }); }
+      const opts = []; for (let k = 0; k < Math.min(open, A.TIERS.length); k++) { if (A.TIERS[k] > spend) break; const cur = live.board().find(function (L) { return L.tier === k; }); if (cur && (used[cur.base] || cur.sample)) continue;   /* #410: never throw away a lot the yard paid to sample */ (A.TIER_FEEDS[k] || []).forEach(function (id) { if (FEEDS[id] && sorts(id)) opts.push([k, id]); }); }
       if (!opts.length) return false; const p = pick(rng, opts); return !!live.dealTier(p[0], p[1]);
     }
 
@@ -485,7 +487,7 @@
     }
     API.on('batchComplete', function (p) {
       if (!p || !p.r || rivals()) return;
-      const dl = p.r.src === 'stock' || p.r.src === 'misc' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, null);   // #98: re-running a held bucket does not deliver it a second time
+      const dl = p.r.src === 'stock' ? [] : applyBins(st.jobs, p.bins, p.r.done, spot, null);   // #98: re-running a held bucket does not deliver it a second time; #407: MISC was never delivered (its bins were not pure), so a MISC re-run counts
       dl.forEach(function (d) {
         const j = d.job;
         credit(d.pay);

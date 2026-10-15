@@ -38,8 +38,9 @@
     function trouble() {
       const worn = app.S.line.find((n) => (n.wear || 0) >= WEAR_STOP);
       if (worn) return CS.MACHINES[worn.m].name + ' is ' + Math.round(worn.wear * 100) + '% worn: service it at its station';
-      const credit = app.S.mode === 'rivals' && CS.Round ? CS.Round.CREDIT || 0 : 0;   // a Rivals yard runs on its trade credit
-      if (app.S.money < -credit) return credit ? 'the credit line is used up' : 'the bank is in the red';
+      // #405: a Rivals bin is paid for when it is won (down to the trade credit) and a batch's power and rent may go past the
+      // credit line, as a hand RUN does: the yard finishes the bin and sells. Progress stops in the red.
+      if (app.S.mode !== 'rivals' && app.S.money < 0) return 'the bank is in the red';
       return '';
     }
     function finish(why) {
